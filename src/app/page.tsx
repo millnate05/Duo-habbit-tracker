@@ -1,3 +1,5 @@
+import HomePage from "@/UI/pages/HomePage";
+
 export default function Page() {
-  return <div>DUO HABIT TRACKER - BUILD TEST A</div>;
+  return <HomePage />;
 }
