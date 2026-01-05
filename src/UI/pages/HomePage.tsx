@@ -1,4 +1,4 @@
-import { theme } from "@/UI/theme";
+import { theme } from "@/UI/theme"; 
 
 export default function HomePage() {
   return (
