@@ -16,7 +16,6 @@ export default function HomePage() {
         textAlign: "center",
       }}
     >
-      {/* Chris Bumstead Image */}
       <img
         src="/chris-bumstead-3.jpg.webp"
         alt="Chris Bumstead"
@@ -28,14 +27,7 @@ export default function HomePage() {
         }}
       />
 
-      {/* Quote */}
-      <h1
-        style={{
-          fontSize: 40,
-          fontWeight: 900,
-          letterSpacing: "0.5px",
-        }}
-      >
+      <h1 style={{ fontSize: 40, fontWeight: 900 }}>
         “pain is privilege”
       </h1>
     </main>
