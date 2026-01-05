@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { theme } from "@/UI/theme";
 
 export default function HomePage() {
@@ -13,27 +14,27 @@ export default function HomePage() {
         textAlign: "center",
       }}
     >
-      {/* Chris Bumstead image */}
-      <img
-        src="https://upload.wikimedia.org/wikipedia/commons/9/9f/Chris_Bumstead_2022_Mr_Olympia.jpg"
-        alt="Chris Bumstead"
+      <div
         style={{
-          width: "280px",
-          maxWidth: "90%",
-          borderRadius: "12px",
-          marginBottom: "32px",
           border: `1px solid ${theme.accent.primary}`,
-        }}
-      />
-
-      {/* Quote */}
-      <h1
-        style={{
-          fontSize: 36,
-          fontWeight: 900,
-          letterSpacing: "0.5px",
+          borderRadius: 12,
+          overflow: "hidden",
+          width: 320,
+          maxWidth: "90vw",
+          marginBottom: 28,
         }}
       >
+        <Image
+          src="/images/cbum.jpg"
+          alt="Chris Bumstead"
+          width={320}
+          height={400}
+          style={{ width: "100%", height: "auto", display: "block" }}
+          priority
+        />
+      </div>
+
+      <h1 style={{ fontSize: 36, fontWeight: 900 }}>
         “pain is privilege”
       </h1>
     </main>
