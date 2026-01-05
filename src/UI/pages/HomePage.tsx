@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { theme } from "@/UI/theme";
+import cbum from "@/UI/assets/cbum.jpg";
 
 export default function HomePage() {
   return (
@@ -10,31 +11,29 @@ export default function HomePage() {
         color: theme.page.text,
         ...theme.layout.center,
         flexDirection: "column",
-        padding: "24px",
+        padding: 24,
         textAlign: "center",
       }}
     >
       <div
         style={{
-          border: `1px solid ${theme.accent.primary}`,
-          borderRadius: 12,
-          overflow: "hidden",
           width: 320,
           maxWidth: "90vw",
+          borderRadius: 12,
+          overflow: "hidden",
+          border: `1px solid ${theme.accent.primary}`,
           marginBottom: 28,
         }}
       >
         <Image
-          src="/images/cbum.jpg"
+          src={cbum}
           alt="Chris Bumstead"
-          width={320}
-          height={400}
-          style={{ width: "100%", height: "auto", display: "block" }}
           priority
+          style={{ width: "100%", height: "auto", display: "block" }}
         />
       </div>
 
-      <h1 style={{ fontSize: 36, fontWeight: 900 }}>
+      <h1 style={{ fontSize: 40, fontWeight: 900 }}>
         “pain is privilege”
       </h1>
     </main>
