@@ -1,18 +1,37 @@
+import { UI } from "./tokens";
+
 export const theme = {
-  colors: {
-    bg: "#000000",
-    text: "#FFFFFF",
-    accent: "#FF7A00",
-    mutedText: "rgba(255, 255, 255, 0.7)",
-    border: "rgba(255, 255, 255, 0.15)",
+  page: {
+    background: UI.bg,
+    text: UI.text,
   },
 
-  typography: {
-    h1: { fontSize: 48, fontWeight: 900 as const },
-    body: { fontSize: 16, fontWeight: 600 as const },
+  accent: {
+    primary: UI.accent,
+  },
+
+  text: {
+    heading: {
+      fontSize: 48,
+      fontWeight: 900 as const,
+      color: UI.text,
+    },
+    body: {
+      fontSize: 16,
+      fontWeight: 600 as const,
+      color: UI.text,
+    },
+    muted: {
+      color: UI.muted,
+    },
   },
 
   layout: {
-    pageMinHeight: "100vh",
+    fullHeight: "100vh",
+    center: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+    },
   },
 };
