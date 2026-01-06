@@ -51,23 +51,19 @@ export default function ProfilePage() {
     if (!userId) return;
 
     (async () => {
-      // 1) Try to fetch profile
       const { data, error } = await supabase
         .from("profiles")
         .select("display_name")
         .eq("user_id", userId)
         .maybeSingle();
 
-      // If table doesn't exist yet, this will error — we'll show a helpful message.
       if (error) {
         console.error(error);
-        setStatus(
-          'Profile table not found yet. In Supabase SQL editor, create a "profiles" table (I can paste the SQL).'
-        );
+        setStatus(error.message);
         return;
       }
 
-      // 2) If no row, create one
+      // If no row, create one
       if (!data) {
         const { error: insErr } = await supabase.from("profiles").insert({
           user_id: userId,
@@ -100,17 +96,19 @@ export default function ProfilePage() {
       }
 
       if (mode === "signup") {
+        // ✅ include emailRedirectTo so confirmation links return to your site
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/profile`,
+          },
         });
         if (error) throw error;
 
         // If email confirmations are enabled, user may need to verify email
         if (!data.session) {
-          setStatus(
-            "Account created. Check your email to confirm, then log in."
-          );
+          setStatus("Account created. Check your email to confirm, then log in.");
         } else {
           setStatus("Signed up and logged in.");
         }
@@ -187,9 +185,7 @@ export default function ProfilePage() {
         }}
       >
         <div>
-          <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>
-            Profile
-          </h1>
+          <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>Profile</h1>
           <p style={{ margin: "6px 0 0 0", opacity: 0.8 }}>
             Log in to sync tasks, completions, and photo proof per user.
           </p>
