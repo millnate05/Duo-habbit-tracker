@@ -1,6 +1,6 @@
-// FORCE NEW COMMIT: 2026-01-05-1525
-  
-import { theme } from "@/UI/theme"; 
+// FORCE NEW COMMIT: 2026-01-05-1535
+
+import { theme } from "@/UI/theme";
 
 export default function HomePage() {
   return (
@@ -22,14 +22,20 @@ export default function HomePage() {
         src="/chris-bumstead-3.jpg.webp"
         alt="Chris Bumstead"
         style={{
-          width: 320,
+          width: "clamp(220px, 60vw, 520px)", // responsive: phone → desktop
+          height: "auto",
           maxWidth: "90vw",
           borderRadius: 12,
           border: `1px solid ${theme.accent.primary}`,
         }}
       />
 
-      <h1 style={{ fontSize: 40, fontWeight: 900 }}>
+      <h1
+        style={{
+          fontSize: "clamp(28px, 6vw, 40px)", // responsive text too
+          fontWeight: 900,
+        }}
+      >
         “pain is privilege”
       </h1>
     </main>
