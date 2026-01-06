@@ -5,6 +5,12 @@ import Link from "next/link";
 import { theme } from "@/UI/theme";
 import { supabase } from "@/lib/supabaseClient";
 
+type TaskMini = {
+  id: string;
+  title: string;
+  type: "habit" | "single";
+};
+
 type CompletionRow = {
   id: string;
   task_id: string;
@@ -13,11 +19,8 @@ type CompletionRow = {
   proof_note: string | null;
   photo_path: string | null;
   completed_at: string;
-  tasks?: {
-    id: string;
-    title: string;
-    type: "habit" | "single";
-  } | null;
+  // IMPORTANT: Supabase join is coming back as an array here
+  tasks?: TaskMini[]; // <-- FIX
 };
 
 function startOfTodayLocalISO() {
@@ -28,7 +31,11 @@ function startOfTodayLocalISO() {
 
 function formatDayAndDate(now: Date) {
   const day = now.toLocaleDateString(undefined, { weekday: "long" });
-  const date = now.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+  const date = now.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
   return { day, date };
 }
 
@@ -46,7 +53,7 @@ export default function CompletedPage() {
 
   // Keep date/day fresh + auto-reset list when the day changes
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 30_000); // update every 30s
+    const t = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(t);
   }, []);
 
@@ -82,7 +89,6 @@ export default function CompletedPage() {
 
     const since = startOfTodayLocalISO();
 
-    // Fetch today's completions and join tasks for titles
     const { data, error } = await supabase
       .from("completions")
       .select(
@@ -109,6 +115,7 @@ export default function CompletedPage() {
       return;
     }
 
+    // Strongly-typed safe set (no cast mismatch)
     setRows((data ?? []) as CompletionRow[]);
     setLoading(false);
   }
@@ -124,10 +131,9 @@ export default function CompletedPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
-  // Reload when the day changes (auto “reset”)
+  // Reload when day changes (auto “reset”)
   useEffect(() => {
     if (!userId) return;
-    // any time "now" updates, check if we crossed midnight by just reloading using today's start
     loadToday(userId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [now.toDateString(), userId]);
@@ -143,7 +149,14 @@ export default function CompletedPage() {
     >
       <div style={{ maxWidth: 980, margin: "0 auto" }}>
         {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
           <div>
             <h1 style={{ margin: 0, fontSize: 36, fontWeight: 900 }}>{day}</h1>
             <div style={{ marginTop: 6, opacity: 0.85, fontSize: 16 }}>{date}</div>
@@ -154,36 +167,35 @@ export default function CompletedPage() {
             ) : null}
           </div>
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-start" }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <Link
+              href="/"
+              style={{
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: `1px solid ${theme.accent.primary}`,
+                color: "var(--text)",
+                textDecoration: "none",
+                fontWeight: 900,
+              }}
+            >
+              Home
+            </Link>
+
             {userId ? (
-              <>
-                <Link
-                  href="/"
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    border: `1px solid ${theme.accent.primary}`,
-                    color: "var(--text)",
-                    textDecoration: "none",
-                    fontWeight: 900,
-                  }}
-                >
-                  Home
-                </Link>
-                <Link
-                  href="/tasks"
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    border: "1px solid var(--border)",
-                    color: "var(--text)",
-                    textDecoration: "none",
-                    fontWeight: 900,
-                  }}
-                >
-                  Manage Tasks
-                </Link>
-              </>
+              <Link
+                href="/tasks"
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid var(--border)",
+                  color: "var(--text)",
+                  textDecoration: "none",
+                  fontWeight: 900,
+                }}
+              >
+                Manage Tasks
+              </Link>
             ) : (
               <Link
                 href="/profile"
@@ -280,68 +292,69 @@ export default function CompletedPage() {
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {rows.map((c) => (
-                <div
-                  key={c.id}
-                  style={{
-                    border: "1px solid var(--border)",
-                    borderRadius: 14,
-                    padding: 12,
-                    background: "rgba(255,255,255,0.02)",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    flexWrap: "wrap",
-                    alignItems: "center",
-                  }}
-                >
-                  <div style={{ minWidth: 220 }}>
-                    <div style={{ fontWeight: 900 }}>
-                      {c.tasks?.title ?? "Task"}
+              {rows.map((c) => {
+                const task = c.tasks?.[0] ?? null; // <-- FIX: tasks is an array
+                return (
+                  <div
+                    key={c.id}
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 14,
+                      padding: 12,
+                      background: "rgba(255,255,255,0.02)",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div style={{ minWidth: 220 }}>
+                      <div style={{ fontWeight: 900 }}>{task?.title ?? "Task"}</div>
+                      <div style={{ opacity: 0.8, marginTop: 4 }}>
+                        {new Date(c.completed_at).toLocaleTimeString(undefined, {
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}
+                        {" • "}
+                        {c.proof_type === "photo"
+                          ? "Photo proof"
+                          : `Override${c.proof_note ? ` — ${c.proof_note}` : ""}`}
+                      </div>
                     </div>
-                    <div style={{ opacity: 0.8, marginTop: 4 }}>
-                      {new Date(c.completed_at).toLocaleTimeString(undefined, {
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}
-                      {" • "}
-                      {c.proof_type === "photo"
-                        ? "Photo proof"
-                        : `Override${c.proof_note ? ` — ${c.proof_note}` : ""}`}
-                    </div>
+
+                    {c.proof_type === "photo" && c.photo_path ? (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const { data, error } = await supabase.storage
+                              .from("proofs")
+                              .createSignedUrl(c.photo_path!, 60);
+
+                            if (error) throw error;
+                            window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+                          } catch (e: any) {
+                            console.error(e);
+                            setStatus(e?.message ?? "Could not open photo.");
+                          }
+                        }}
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: 12,
+                          border: `1px solid ${theme.accent.primary}`,
+                          background: "transparent",
+                          color: "var(--text)",
+                          fontWeight: 900,
+                          cursor: "pointer",
+                        }}
+                      >
+                        View photo
+                      </button>
+                    ) : null}
                   </div>
-
-                  {c.proof_type === "photo" && c.photo_path ? (
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          const { data, error } = await supabase.storage
-                            .from("proofs")
-                            .createSignedUrl(c.photo_path!, 60);
-
-                          if (error) throw error;
-                          window.open(data.signedUrl, "_blank", "noopener,noreferrer");
-                        } catch (e: any) {
-                          console.error(e);
-                          setStatus(e?.message ?? "Could not open photo.");
-                        }
-                      }}
-                      style={{
-                        padding: "10px 12px",
-                        borderRadius: 12,
-                        border: `1px solid ${theme.accent.primary}`,
-                        background: "transparent",
-                        color: "var(--text)",
-                        fontWeight: 900,
-                        cursor: "pointer",
-                      }}
-                    >
-                      View photo
-                    </button>
-                  ) : null}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>
