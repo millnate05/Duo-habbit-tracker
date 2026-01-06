@@ -1,3 +1,5 @@
+import ProfilePage from "@/UI/pages/ProfilePage";
+
 export default function Page() {
-  return <div>Profile</div>;
+  return <ProfilePage />;
 }
