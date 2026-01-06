@@ -5,23 +5,34 @@ import React, { useEffect, useMemo, useState } from "react";
 import { theme } from "@/UI/theme";
 
 type TaskType = "habit" | "single";
-type FrequencyUnit = "day" | "week" | "month";
+type FrequencyUnit = "day" | "week" | "month" | "year";
 
 type HabitFrequency = {
-  every: number;
-  unit: FrequencyUnit;
+  times: number; // ✅ how many times
+  per: FrequencyUnit; // ✅ per day/week/month/year
+};
+
+type Proof = {
+  kind: "photo" | "override";
+  note?: string; // required for override
+  photoName?: string; // basic metadata (we are not storing image data in localStorage)
+  completedAt: number;
 };
 
 type Task = {
   id: string;
   title: string;
   type: TaskType;
-  frequency?: HabitFrequency;
+  frequency?: HabitFrequency; // only for habit
   createdAt: number;
   archived: boolean;
+
+  // completion snapshot (latest)
+  lastCompletedAt?: number;
+  lastProof?: Proof;
 };
 
-const STORAGE_KEY = "duo_tasks_v1";
+const STORAGE_KEY = "duo_tasks_v2"; // ✅ bump version since frequency model changed
 
 function uid() {
   return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -29,24 +40,24 @@ function uid() {
 
 function formatFrequency(freq?: HabitFrequency) {
   if (!freq) return "";
-  const n = Math.max(1, freq.every);
-  const unit = n === 1 ? freq.unit : (freq.unit + "s") as `${FrequencyUnit}s`;
-  return `Every ${n} ${unit}`;
+  const t = Math.max(1, freq.times);
+  const per = freq.per;
+  return `${t}x per ${per}`;
 }
 
 const selectStyle: React.CSSProperties = {
   padding: "10px 10px",
   borderRadius: 10,
   border: "1px solid var(--border)",
-  background: "#000", // ✅ black background
-  color: "#fff", // ✅ white text
+  background: "#000",
+  color: "#fff",
   outline: "none",
   cursor: "pointer",
 };
 
 const optionStyle: React.CSSProperties = {
-  background: "#000", // ✅ black dropdown rows
-  color: "#fff", // ✅ white text
+  background: "#000",
+  color: "#fff",
 };
 
 export default function Page() {
@@ -54,9 +65,9 @@ export default function Page() {
   const [title, setTitle] = useState("");
   const [type, setType] = useState<TaskType>("habit");
 
-  // habit frequency inputs
-  const [every, setEvery] = useState<number>(1);
-  const [unit, setUnit] = useState<FrequencyUnit>("day");
+  // ✅ habit frequency inputs (times per period)
+  const [times, setTimes] = useState<number>(3);
+  const [per, setPer] = useState<FrequencyUnit>("week");
 
   const [showArchived, setShowArchived] = useState(false);
 
@@ -95,7 +106,7 @@ export default function Page() {
       type,
       frequency:
         type === "habit"
-          ? { every: Math.max(1, Number(every) || 1), unit }
+          ? { times: Math.max(1, Number(times) || 1), per }
           : undefined,
       createdAt: Date.now(),
       archived: false,
@@ -119,8 +130,8 @@ export default function Page() {
               ...t,
               type: "habit",
               frequency: {
-                every: Math.max(1, Number(freq.every) || 1),
-                unit: freq.unit,
+                times: Math.max(1, Number(freq.times) || 1),
+                per: freq.per,
               },
             }
           : t
@@ -177,8 +188,7 @@ export default function Page() {
           <div>
             <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>Tasks</h1>
             <p style={{ margin: "6px 0 0 0", opacity: 0.8 }}>
-              Create habits (recurring) or single tasks. Archive or delete any
-              time.
+              Habits are recurring as “times per period”. Singles are one-offs.
             </p>
           </div>
 
@@ -272,14 +282,14 @@ export default function Page() {
                   border: "1px solid var(--border)",
                 }}
               >
-                <span style={{ opacity: 0.85 }}>Every</span>
+                <span style={{ opacity: 0.85 }}>Times</span>
                 <input
                   type="number"
                   min={1}
-                  value={every}
-                  onChange={(e) => setEvery(Number(e.target.value))}
+                  value={times}
+                  onChange={(e) => setTimes(Number(e.target.value))}
                   style={{
-                    width: 74,
+                    width: 84,
                     padding: "10px 10px",
                     borderRadius: 10,
                     border: "1px solid var(--border)",
@@ -288,19 +298,23 @@ export default function Page() {
                     outline: "none",
                   }}
                 />
+                <span style={{ opacity: 0.85 }}>per</span>
                 <select
-                  value={unit}
-                  onChange={(e) => setUnit(e.target.value as FrequencyUnit)}
-                  style={selectStyle} // ✅ black bg / white text
+                  value={per}
+                  onChange={(e) => setPer(e.target.value as FrequencyUnit)}
+                  style={selectStyle}
                 >
                   <option value="day" style={optionStyle}>
-                    Day(s)
+                    Day
                   </option>
                   <option value="week" style={optionStyle}>
-                    Week(s)
+                    Week
                   </option>
                   <option value="month" style={optionStyle}>
-                    Month(s)
+                    Month
+                  </option>
+                  <option value="year" style={optionStyle}>
+                    Year
                   </option>
                 </select>
               </div>
@@ -350,7 +364,7 @@ export default function Page() {
                   } else {
                     updateTask(t.id, {
                       type: "habit",
-                      frequency: t.frequency ?? { every: 1, unit: "day" },
+                      frequency: t.frequency ?? { times: 3, per: "week" },
                     });
                   }
                 }}
@@ -432,16 +446,7 @@ function TaskRow({
         </div>
       </div>
 
-      {/* Controls */}
-      <div
-        style={{
-          display: "flex",
-          gap: 10,
-          alignItems: "center",
-          flexWrap: "wrap",
-        }}
-      >
-        {/* Type Toggle */}
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <div
           style={{
             display: "flex",
@@ -462,7 +467,6 @@ function TaskRow({
           />
         </div>
 
-        {/* Frequency editor (only for habit) */}
         {task.type === "habit" && (
           <div
             style={{
@@ -474,19 +478,19 @@ function TaskRow({
               border: "1px solid var(--border)",
             }}
           >
-            <span style={{ opacity: 0.85 }}>Every</span>
+            <span style={{ opacity: 0.85 }}>Times</span>
             <input
               type="number"
               min={1}
-              value={task.frequency?.every ?? 1}
+              value={task.frequency?.times ?? 1}
               onChange={(e) =>
                 onUpdateFrequency({
-                  every: Number(e.target.value),
-                  unit: task.frequency?.unit ?? "day",
+                  times: Number(e.target.value),
+                  per: task.frequency?.per ?? "week",
                 })
               }
               style={{
-                width: 70,
+                width: 80,
                 padding: "10px 10px",
                 borderRadius: 10,
                 border: "1px solid var(--border)",
@@ -495,30 +499,33 @@ function TaskRow({
                 outline: "none",
               }}
             />
+            <span style={{ opacity: 0.85 }}>per</span>
             <select
-              value={task.frequency?.unit ?? "day"}
+              value={task.frequency?.per ?? "week"}
               onChange={(e) =>
                 onUpdateFrequency({
-                  every: task.frequency?.every ?? 1,
-                  unit: e.target.value as FrequencyUnit,
+                  times: task.frequency?.times ?? 1,
+                  per: e.target.value as FrequencyUnit,
                 })
               }
-              style={selectStyle} // ✅ black bg / white text
+              style={selectStyle}
             >
               <option value="day" style={optionStyle}>
-                Day(s)
+                Day
               </option>
               <option value="week" style={optionStyle}>
-                Week(s)
+                Week
               </option>
               <option value="month" style={optionStyle}>
-                Month(s)
+                Month
+              </option>
+              <option value="year" style={optionStyle}>
+                Year
               </option>
             </select>
           </div>
         )}
 
-        {/* Archive / Delete */}
         {task.archived ? (
           <button onClick={onUnarchive} style={actionBtnStyle()} type="button">
             Unarchive
