@@ -1,4 +1,4 @@
-// FORCE NEW COMMIT: 2026-01-06-1615
+// FORCE NEW COMMIT: 2026-01-06-1635
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -37,16 +37,41 @@ function formatFrequency(t: TaskRow) {
   return `${times}x per ${per}`;
 }
 
-// Treat "done today" using LOCAL DATE (user’s device time)
-function isCompletedToday(completedAtIso: string) {
-  const d = new Date(completedAtIso);
-  const now = new Date();
+// ---- Period helpers (LOCAL TIME) ----
+function startOfDayLocal(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+}
 
-  return (
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate()
-  );
+// Week starts Monday (local). If you prefer Sunday, tell me and I’ll flip it.
+function startOfWeekLocal(d: Date) {
+  const day = d.getDay(); // 0 Sun ... 6 Sat
+  const diff = (day + 6) % 7; // Monday=0, Sunday=6
+  const start = startOfDayLocal(d);
+  start.setDate(start.getDate() - diff);
+  return start;
+}
+
+function startOfMonthLocal(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
+}
+
+function startOfYearLocal(d: Date) {
+  return new Date(d.getFullYear(), 0, 1, 0, 0, 0, 0);
+}
+
+function periodStartFor(freq: FrequencyUnit, now: Date) {
+  switch (freq) {
+    case "day":
+      return startOfDayLocal(now);
+    case "week":
+      return startOfWeekLocal(now);
+    case "month":
+      return startOfMonthLocal(now);
+    case "year":
+      return startOfYearLocal(now);
+    default:
+      return startOfWeekLocal(now);
+  }
 }
 
 export default function HomePage() {
@@ -54,12 +79,10 @@ export default function HomePage() {
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
 
   const [tasks, setTasks] = useState<TaskRow[]>([]);
+  const [completions, setCompletions] = useState<CompletionRow[]>([]);
   const [latestByTask, setLatestByTask] = useState<Record<string, CompletionRow>>(
     {}
   );
-
-  // NEW: store which tasks should be hidden today (instant UI removal after completion)
-  const [hiddenTaskIds, setHiddenTaskIds] = useState<Set<string>>(new Set());
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -112,9 +135,6 @@ export default function HomePage() {
     setLoading(true);
     setStatus(null);
 
-    // reset hidden list whenever we load fresh
-    setHiddenTaskIds(new Set());
-
     // 1) Tasks (active only)
     const { data: tasksData, error: tasksErr } = await supabase
       .from("tasks")
@@ -127,6 +147,7 @@ export default function HomePage() {
       console.error(tasksErr);
       setStatus(tasksErr.message);
       setTasks([]);
+      setCompletions([]);
       setLatestByTask({});
       setLoading(false);
       return;
@@ -135,24 +156,33 @@ export default function HomePage() {
     const nextTasks = (tasksData ?? []) as TaskRow[];
     setTasks(nextTasks);
 
-    // 2) Latest completions (we’ll pull recent ones and keep first per task)
+    // 2) Completions: grab from start of year (covers day/week/month/year logic)
+    const now = new Date();
+    const earliest = startOfYearLocal(now).toISOString();
+
     const { data: compData, error: compErr } = await supabase
       .from("completions")
       .select("*")
       .eq("user_id", uid)
+      .gte("completed_at", earliest)
       .order("completed_at", { ascending: false })
-      .limit(300);
+      .limit(2000);
 
     if (compErr) {
       console.error(compErr);
       setStatus(compErr.message);
+      setCompletions([]);
       setLatestByTask({});
       setLoading(false);
       return;
     }
 
+    const comps = (compData ?? []) as CompletionRow[];
+    setCompletions(comps);
+
+    // Latest-by-task (for "Last done" and photo viewer)
     const map: Record<string, CompletionRow> = {};
-    for (const c of (compData ?? []) as CompletionRow[]) {
+    for (const c of comps) {
       if (!map[c.task_id]) map[c.task_id] = c;
     }
     setLatestByTask(map);
@@ -162,9 +192,10 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!userId) {
+      // Logged out: keep homepage visible, but clear user-specific data
       setTasks([]);
+      setCompletions([]);
       setLatestByTask({});
-      setHiddenTaskIds(new Set());
       setLoading(false);
       return;
     }
@@ -172,15 +203,64 @@ export default function HomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
-  // NEW: only show tasks that are NOT completed today AND not manually hidden
-  const activeTasks = useMemo(() => {
+  // Count progress per task in the current period
+  const progressByTask = useMemo(() => {
+    const now = new Date();
+    const out: Record<string, number> = {};
+
+    // Pre-group completions by task_id for fast counting
+    const byTask: Record<string, CompletionRow[]> = {};
+    for (const c of completions) {
+      (byTask[c.task_id] ??= []).push(c);
+    }
+
+    for (const t of tasks) {
+      if (t.type !== "habit") continue;
+
+      const freq = (t.freq_per ?? "week") as FrequencyUnit;
+      const start = periodStartFor(freq, now).getTime();
+
+      const list = byTask[t.id] ?? [];
+      let count = 0;
+      for (const c of list) {
+        const ts = new Date(c.completed_at).getTime();
+        if (ts >= start) count++;
+        else break; // comps are sorted desc overall; per-task list isn't guaranteed sorted, but usually is
+      }
+
+      // If the per-task list isn't strictly sorted, this is safer:
+      // count = list.filter(c => new Date(c.completed_at).getTime() >= start).length;
+
+      out[t.id] = count;
+    }
+
+    return out;
+  }, [tasks, completions]);
+
+  // Only show tasks that still need work in the current period
+  const remainingTasks = useMemo(() => {
+    const now = new Date();
+
     return tasks.filter((t) => {
-      if (hiddenTaskIds.has(t.id)) return false;
-      const last = latestByTask[t.id];
-      if (!last?.completed_at) return true;
-      return !isCompletedToday(last.completed_at);
+      if (t.archived) return false;
+
+      if (t.type === "single") {
+        // Single tasks: hide once completed at least once (ever in this loaded range).
+        // If you want "single" to reset daily instead, tell me.
+        return !latestByTask[t.id];
+      }
+
+      // Habit tasks: hide only after meeting the required count in the current period.
+      const required = Math.max(1, Number(t.freq_times ?? 1));
+      const done = progressByTask[t.id] ?? 0;
+
+      // Extra safety: if freq_per is null, treat as weekly
+      const _start = periodStartFor((t.freq_per ?? "week") as FrequencyUnit, now);
+      void _start;
+
+      return done < required;
     });
-  }, [tasks, latestByTask, hiddenTaskIds]);
+  }, [tasks, latestByTask, progressByTask]);
 
   function openCompleteModal(task: TaskRow) {
     setCompleteTask(task);
@@ -197,7 +277,7 @@ export default function HomePage() {
   async function uploadPhotoAndComplete(file: File) {
     if (!userId || !completeTask) return;
 
-    const completing = completeTask; // capture to avoid state timing issues
+    const completing = completeTask; // capture
     setBusy(true);
     setStatus(null);
 
@@ -205,14 +285,12 @@ export default function HomePage() {
       const safeName = file.name.replace(/[^\w.\-()]+/g, "_");
       const path = `${userId}/${completing.id}/${Date.now()}_${safeName}`;
 
-      // Upload to Storage bucket "proofs"
       const { error: upErr } = await supabase.storage
         .from("proofs")
         .upload(path, file, { upsert: false });
 
       if (upErr) throw upErr;
 
-      // Insert completion row
       const { data, error } = await supabase
         .from("completions")
         .insert({
@@ -227,20 +305,11 @@ export default function HomePage() {
 
       if (error) throw error;
 
-      // Update latest completion in UI
       const completion = data as CompletionRow;
 
-      setLatestByTask((prev) => ({
-        ...prev,
-        [completing.id]: completion,
-      }));
-
-      // NEW: Hide immediately so it "goes away" as soon as proof is submitted
-      setHiddenTaskIds((prev) => {
-        const next = new Set(prev);
-        next.add(completing.id);
-        return next;
-      });
+      // Update completions list + latest map (this alone will make the task disappear when it hits requirement)
+      setCompletions((prev) => [completion, ...prev]);
+      setLatestByTask((prev) => ({ ...prev, [completing.id]: completion }));
 
       setCompleteTask(null);
     } catch (e: any) {
@@ -264,7 +333,7 @@ export default function HomePage() {
   async function submitOverride() {
     if (!userId || !completeTask) return;
 
-    const completing = completeTask; // capture
+    const completing = completeTask;
     const note = overrideText.trim();
     if (!note) {
       setStatus("Override requires a note.");
@@ -291,17 +360,8 @@ export default function HomePage() {
 
       const completion = data as CompletionRow;
 
-      setLatestByTask((prev) => ({
-        ...prev,
-        [completing.id]: completion,
-      }));
-
-      // NEW: hide immediately on override too
-      setHiddenTaskIds((prev) => {
-        const next = new Set(prev);
-        next.add(completing.id);
-        return next;
-      });
+      setCompletions((prev) => [completion, ...prev]);
+      setLatestByTask((prev) => ({ ...prev, [completing.id]: completion }));
 
       setOverrideOpen(false);
       setCompleteTask(null);
@@ -322,7 +382,6 @@ export default function HomePage() {
     setStatus(null);
 
     try {
-      // Create signed URL (works with private bucket)
       const { data, error } = await supabase.storage
         .from("proofs")
         .createSignedUrl(c.photo_path, 60);
@@ -342,54 +401,7 @@ export default function HomePage() {
     }
   }
 
-  // Logged out view
-  if (!userId) {
-    return (
-      <main
-        style={{
-          minHeight: theme.layout.fullHeight,
-          background: theme.page.background,
-          color: theme.page.text,
-          padding: 24,
-        }}
-      >
-        <div style={{ maxWidth: 980, margin: "0 auto" }}>
-          <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>Home</h1>
-          <p style={{ margin: "8px 0 0 0", opacity: 0.8 }}>
-            Log in to see your tasks and complete them with proof.
-          </p>
-
-          <div style={{ height: 14 }} />
-
-          <section
-            style={{
-              border: "1px solid var(--border)",
-              borderRadius: 16,
-              padding: 16,
-              background: "rgba(255,255,255,0.02)",
-              boxShadow: "0 10px 24px rgba(0,0,0,0.20)",
-            }}
-          >
-            <Link
-              href="/profile"
-              style={{
-                display: "inline-block",
-                padding: "12px 14px",
-                borderRadius: 12,
-                border: `1px solid ${theme.accent.primary}`,
-                color: "var(--text)",
-                textDecoration: "none",
-                fontWeight: 900,
-              }}
-            >
-              Go to Profile
-            </Link>
-          </section>
-        </div>
-      </main>
-    );
-  }
-
+  // ---- Always-visible homepage (logged in OR logged out) ----
   return (
     <main
       style={{
@@ -462,7 +474,7 @@ export default function HomePage() {
           </div>
         ) : null}
 
-        {/* Tasks card */}
+        {/* Tasks card (only shows tasks if logged in) */}
         <section
           style={{
             width: "100%",
@@ -485,30 +497,65 @@ export default function HomePage() {
           >
             <div>
               <div style={{ fontSize: 22, fontWeight: 900 }}>Today</div>
-              <div style={{ opacity: 0.8, marginTop: 4 }}>
-                Logged in as <b>{sessionEmail}</b> • Remaining today:{" "}
-                <b>{activeTasks.length}</b>
-              </div>
+              {userId ? (
+                <div style={{ opacity: 0.8, marginTop: 4 }}>
+                  Logged in as <b>{sessionEmail}</b> • Remaining today:{" "}
+                  <b>{remainingTasks.length}</b>
+                </div>
+              ) : (
+                <div style={{ opacity: 0.8, marginTop: 4 }}>
+                  Log in to see your tasks and complete them with proof.
+                </div>
+              )}
             </div>
 
-            <Link
-              href="/tasks"
-              style={{
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: `1px solid ${theme.accent.primary}`,
-                color: "var(--text)",
-                textDecoration: "none",
-                fontWeight: 900,
-              }}
-            >
-              Manage Tasks
-            </Link>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {userId ? (
+                <Link
+                  href="/tasks"
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border: `1px solid ${theme.accent.primary}`,
+                    color: "var(--text)",
+                    textDecoration: "none",
+                    fontWeight: 900,
+                  }}
+                >
+                  Manage Tasks
+                </Link>
+              ) : (
+                <Link
+                  href="/profile"
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border: `1px solid ${theme.accent.primary}`,
+                    color: "var(--text)",
+                    textDecoration: "none",
+                    fontWeight: 900,
+                  }}
+                >
+                  Log in
+                </Link>
+              )}
+            </div>
           </div>
 
           <div style={{ height: 12 }} />
 
-          {loading ? (
+          {!userId ? (
+            <div
+              style={{
+                border: "1px dashed var(--border)",
+                borderRadius: 16,
+                padding: 14,
+                opacity: 0.85,
+              }}
+            >
+              Tasks are user-based. Log in to view and complete yours.
+            </div>
+          ) : loading ? (
             <div
               style={{
                 border: "1px dashed var(--border)",
@@ -519,7 +566,7 @@ export default function HomePage() {
             >
               Loading…
             </div>
-          ) : activeTasks.length === 0 ? (
+          ) : remainingTasks.length === 0 ? (
             <div
               style={{
                 border: "1px dashed var(--border)",
@@ -528,12 +575,16 @@ export default function HomePage() {
                 opacity: 0.85,
               }}
             >
-              You’re done for today 🎉
+              You’re done for this period 🎉
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {activeTasks.map((t) => {
+              {remainingTasks.map((t) => {
                 const last = latestByTask[t.id];
+                const required =
+                  t.type === "habit" ? Math.max(1, Number(t.freq_times ?? 1)) : 1;
+                const done = t.type === "habit" ? progressByTask[t.id] ?? 0 : 0;
+
                 return (
                   <div
                     key={t.id}
@@ -551,17 +602,22 @@ export default function HomePage() {
                   >
                     <div style={{ minWidth: 220 }}>
                       <div style={{ fontWeight: 900 }}>{t.title}</div>
+
                       <div style={{ opacity: 0.8, marginTop: 4 }}>
                         {t.type === "habit" ? (
-                          <>Habit • {formatFrequency(t)}</>
+                          <>
+                            Habit • {formatFrequency(t)} • Progress:{" "}
+                            <b>
+                              {done}/{required}
+                            </b>
+                          </>
                         ) : (
                           <>Single</>
                         )}
                         {last?.completed_at ? (
                           <span>
                             {" "}
-                            • Last done:{" "}
-                            {new Date(last.completed_at).toLocaleString()}
+                            • Last done: {new Date(last.completed_at).toLocaleString()}
                           </span>
                         ) : null}
                       </div>
@@ -621,8 +677,8 @@ export default function HomePage() {
           )}
         </section>
 
-        {/* Complete modal */}
-        {completeTask && (
+        {/* Complete modal (only reachable when logged in) */}
+        {completeTask && userId && (
           <div
             style={{
               position: "fixed",
@@ -656,9 +712,7 @@ export default function HomePage() {
               <div style={{ fontWeight: 900, fontSize: 18 }}>
                 Complete: {completeTask.title}
               </div>
-              <div style={{ opacity: 0.8, marginTop: 6 }}>
-                Choose proof type.
-              </div>
+              <div style={{ opacity: 0.8, marginTop: 6 }}>Choose proof type.</div>
 
               <div style={{ height: 12 }} />
 
@@ -832,9 +886,7 @@ export default function HomePage() {
                 <div style={{ fontWeight: 900 }}>{photoViewer.title}</div>
                 <button
                   type="button"
-                  onClick={() =>
-                    setPhotoViewer({ open: false, url: null, title: "" })
-                  }
+                  onClick={() => setPhotoViewer({ open: false, url: null, title: "" })}
                   style={{
                     padding: "8px 10px",
                     borderRadius: 10,
