@@ -1,11 +1,12 @@
-// FORCE NEW COMMIT: 2026-01-06-1405
-// src/app/page.tsx (or your HomePage file)
+// FORCE NEW COMMIT: 2026-01-06-1415
+// HomePage.tsx (wherever this file lives)
 
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { theme } from "@/UI/theme";
+import { supabase } from "@/lib/supabaseClient"; // ✅ Step 7 test import
 
 type TaskType = "habit" | "single";
 type FrequencyUnit = "day" | "week" | "month" | "year";
@@ -40,6 +41,14 @@ function formatFrequency(freq?: HabitFrequency) {
 }
 
 export default function HomePage() {
+  // ✅ Step 7: verify Supabase env + client works (remove after you see console log)
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data, error }) => {
+      console.log("Supabase session:", data);
+      if (error) console.error("Supabase error:", error);
+    });
+  }, []);
+
   const [tasks, setTasks] = useState<Task[]>([]);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
 
@@ -71,7 +80,6 @@ export default function HomePage() {
     }
   }, [tasks]);
 
-  // ✅ Active only, no “show archived” UI/message
   const activeTasks = useMemo(() => {
     return tasks
       .filter((t) => !t.archived)
@@ -93,7 +101,6 @@ export default function HomePage() {
   }
 
   function startComplete(taskId: string) {
-    // basic choice prompt
     const choice = window.prompt(
       'Complete task:\nType "photo" for photo proof OR "override" for override.',
       "photo"
@@ -122,7 +129,6 @@ export default function HomePage() {
   function onPickedPhoto(file: File | null) {
     if (!file || !activeTaskId) return;
 
-    // NOTE: We store only filename metadata, not the image itself (localStorage is not great for big files).
     setCompleted(activeTaskId, {
       kind: "photo",
       photoName: file.name,
@@ -130,7 +136,6 @@ export default function HomePage() {
     });
 
     setActiveTaskId(null);
-    // reset input so selecting same file again still triggers change
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -195,7 +200,6 @@ export default function HomePage() {
           “pain is privilege”
         </h1>
 
-        {/* Hidden file input for photo proof */}
         <input
           ref={fileInputRef}
           type="file"
@@ -205,7 +209,6 @@ export default function HomePage() {
           onChange={(e) => onPickedPhoto(e.target.files?.[0] ?? null)}
         />
 
-        {/* Tasks card */}
         <section
           style={{
             width: "100%",
@@ -296,7 +299,9 @@ export default function HomePage() {
                     </div>
 
                     {t.lastProof ? (
-                      <div style={{ opacity: 0.75, marginTop: 6, fontSize: 13 }}>
+                      <div
+                        style={{ opacity: 0.75, marginTop: 6, fontSize: 13 }}
+                      >
                         Proof:{" "}
                         {t.lastProof.kind === "photo"
                           ? `Photo (${t.lastProof.photoName ?? "image"})`
@@ -326,7 +331,6 @@ export default function HomePage() {
           )}
         </section>
 
-        {/* Override modal */}
         {overrideOpen && (
           <div
             style={{
