@@ -41,11 +41,7 @@ function Header() {
         zIndex: 50,
       }}
     >
-      <div style={{ fontWeight: 900, letterSpacing: 0.5 }}>
-        Duo-Habbit-Tracker
-      </div>
-
-      {/* Hamburger + dropdown */}
+ {/* Hamburger + dropdown */}
       <details style={{ position: "relative" }}>
         <summary
           aria-label="Open menu"
@@ -69,7 +65,7 @@ function Header() {
         <nav
           style={{
             position: "absolute",
-            right: 0,
+            left: 0,
             top: 52,
             minWidth: 220,
             background: "var(--bg)",
@@ -86,6 +82,15 @@ function Header() {
           <MenuItem href="/profile" label="Profile" />
         </nav>
       </details>
+
+
+
+      
+      <div style={{ fontWeight: 900, letterSpacing: 0.5 }}>
+        Duo-Habbit-Tracker
+      </div>
+
+     
 
       {/* Make summary triangle disappear */}
       <style>{`
