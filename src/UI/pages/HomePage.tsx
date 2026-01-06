@@ -1,4 +1,4 @@
-// FORCE NEW COMMIT: 2026-01-06-1635
+// FORCE NEW COMMIT: 2026-01-06-REWRITE-HOME
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -18,6 +18,9 @@ type TaskRow = {
   freq_per: FrequencyUnit | null;
   archived: boolean;
   created_at: string;
+
+  scheduled_days?: number[] | null; // 0=Sun..6=Sat, null => every day
+  weekly_skips_allowed?: number; // default 0
 };
 
 type CompletionRow = {
@@ -30,6 +33,13 @@ type CompletionRow = {
   completed_at: string;
 };
 
+type SkipRow = {
+  id: string;
+  user_id: string;
+  task_id: string;
+  skipped_at: string;
+};
+
 function formatFrequency(t: TaskRow) {
   if (t.type !== "habit") return "";
   const times = Math.max(1, Number(t.freq_times ?? 1));
@@ -37,29 +47,25 @@ function formatFrequency(t: TaskRow) {
   return `${times}x per ${per}`;
 }
 
-// ---- Period helpers (LOCAL TIME) ----
+// ---------- Local time helpers ----------
 function startOfDayLocal(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
 }
-
-// Week starts Monday (local). If you prefer Sunday, tell me and I’ll flip it.
+// Week starts Monday
 function startOfWeekLocal(d: Date) {
   const day = d.getDay(); // 0 Sun ... 6 Sat
-  const diff = (day + 6) % 7; // Monday=0, Sunday=6
+  const diff = (day + 6) % 7; // Monday=0
   const start = startOfDayLocal(d);
   start.setDate(start.getDate() - diff);
   return start;
 }
-
 function startOfMonthLocal(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
 }
-
 function startOfYearLocal(d: Date) {
   return new Date(d.getFullYear(), 0, 1, 0, 0, 0, 0);
 }
-
-function periodStartFor(freq: FrequencyUnit, now: Date) {
+function periodStart(freq: FrequencyUnit, now: Date) {
   switch (freq) {
     case "day":
       return startOfDayLocal(now);
@@ -73,6 +79,9 @@ function periodStartFor(freq: FrequencyUnit, now: Date) {
       return startOfWeekLocal(now);
   }
 }
+function clamp(n: number, a: number, b: number) {
+  return Math.max(a, Math.min(b, n));
+}
 
 export default function HomePage() {
   const [userId, setUserId] = useState<string | null>(null);
@@ -80,32 +89,34 @@ export default function HomePage() {
 
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [completions, setCompletions] = useState<CompletionRow[]>([]);
-  const [latestByTask, setLatestByTask] = useState<Record<string, CompletionRow>>(
-    {}
-  );
+  const [skips, setSkips] = useState<SkipRow[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
-  // Complete flow state
+  // Complete flow
   const [completeTask, setCompleteTask] = useState<TaskRow | null>(null);
-
-  // Override modal
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [overrideText, setOverrideText] = useState("");
 
-  // Photo picker
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // "View photo" signed URL
+  // photo viewer
   const [photoViewer, setPhotoViewer] = useState<{
     open: boolean;
     url: string | null;
     title: string;
   }>({ open: false, url: null, title: "" });
 
-  // Auth session
+  // Tick so day rolls without refresh
+  const [todayKey, setTodayKey] = useState<string>(() => new Date().toDateString());
+  useEffect(() => {
+    const t = setInterval(() => setTodayKey(new Date().toDateString()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Auth
   useEffect(() => {
     let alive = true;
 
@@ -113,7 +124,6 @@ export default function HomePage() {
       const { data, error } = await supabase.auth.getSession();
       if (!alive) return;
       if (error) setStatus(error.message);
-
       const u = data.session?.user ?? null;
       setUserId(u?.id ?? null);
       setSessionEmail(u?.email ?? null);
@@ -131,11 +141,15 @@ export default function HomePage() {
     };
   }, []);
 
-  async function loadHomeData(uid: string) {
+  async function loadHome(uid: string) {
     setLoading(true);
     setStatus(null);
 
-    // 1) Tasks (active only)
+    const now = new Date();
+    const weekStartIso = startOfWeekLocal(now).toISOString();
+    const yearStartIso = startOfYearLocal(now).toISOString();
+
+    // tasks
     const { data: tasksData, error: tasksErr } = await supabase
       .from("tasks")
       .select("*")
@@ -144,123 +158,166 @@ export default function HomePage() {
       .order("created_at", { ascending: false });
 
     if (tasksErr) {
-      console.error(tasksErr);
       setStatus(tasksErr.message);
       setTasks([]);
       setCompletions([]);
-      setLatestByTask({});
+      setSkips([]);
       setLoading(false);
       return;
     }
+    setTasks((tasksData ?? []) as TaskRow[]);
 
-    const nextTasks = (tasksData ?? []) as TaskRow[];
-    setTasks(nextTasks);
-
-    // 2) Completions: grab from start of year (covers day/week/month/year logic)
-    const now = new Date();
-    const earliest = startOfYearLocal(now).toISOString();
-
+    // completions (from year start so week/month/year logic works)
     const { data: compData, error: compErr } = await supabase
       .from("completions")
       .select("*")
       .eq("user_id", uid)
-      .gte("completed_at", earliest)
+      .gte("completed_at", yearStartIso)
       .order("completed_at", { ascending: false })
-      .limit(2000);
+      .limit(3000);
 
     if (compErr) {
-      console.error(compErr);
       setStatus(compErr.message);
       setCompletions([]);
-      setLatestByTask({});
+      setSkips([]);
       setLoading(false);
       return;
     }
+    setCompletions((compData ?? []) as CompletionRow[]);
 
-    const comps = (compData ?? []) as CompletionRow[];
-    setCompletions(comps);
+    // skips (only current week needed)
+    const { data: skipData, error: skipErr } = await supabase
+      .from("task_skips")
+      .select("*")
+      .eq("user_id", uid)
+      .gte("skipped_at", weekStartIso)
+      .order("skipped_at", { ascending: false })
+      .limit(1000);
 
-    // Latest-by-task (for "Last done" and photo viewer)
-    const map: Record<string, CompletionRow> = {};
-    for (const c of comps) {
-      if (!map[c.task_id]) map[c.task_id] = c;
+    if (skipErr) {
+      setStatus(skipErr.message);
+      setSkips([]);
+      setLoading(false);
+      return;
     }
-    setLatestByTask(map);
+    setSkips((skipData ?? []) as SkipRow[]);
 
     setLoading(false);
   }
 
   useEffect(() => {
     if (!userId) {
-      // Logged out: keep homepage visible, but clear user-specific data
       setTasks([]);
       setCompletions([]);
-      setLatestByTask({});
+      setSkips([]);
       setLoading(false);
       return;
     }
-    loadHomeData(userId);
+    loadHome(userId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
-  // Count progress per task in the current period
-  const progressByTask = useMemo(() => {
-    const now = new Date();
-    const out: Record<string, number> = {};
+  useEffect(() => {
+    if (!userId) return;
+    loadHome(userId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayKey, userId]);
 
-    // Pre-group completions by task_id for fast counting
-    const byTask: Record<string, CompletionRow[]> = {};
-    for (const c of completions) {
-      (byTask[c.task_id] ??= []).push(c);
+  // Derived time markers
+  const now = useMemo(() => new Date(), [todayKey]);
+  const todayStartMs = useMemo(() => startOfDayLocal(now).getTime(), [now]);
+  const weekStartMs = useMemo(() => startOfWeekLocal(now).getTime(), [now]);
+
+  // Group rows by task
+  const completionsByTask = useMemo(() => {
+    const m: Record<string, CompletionRow[]> = {};
+    for (const c of completions) (m[c.task_id] ??= []).push(c);
+    return m;
+  }, [completions]);
+
+  const skipsByTask = useMemo(() => {
+    const m: Record<string, SkipRow[]> = {};
+    for (const s of skips) (m[s.task_id] ??= []).push(s);
+    return m;
+  }, [skips]);
+
+  function countCompletionsSince(taskId: string, startMs: number) {
+    const list = completionsByTask[taskId] ?? [];
+    let count = 0;
+    for (const c of list) {
+      if (new Date(c.completed_at).getTime() >= startMs) count++;
     }
+    return count;
+  }
 
-    for (const t of tasks) {
-      if (t.type !== "habit") continue;
-
-      const freq = (t.freq_per ?? "week") as FrequencyUnit;
-      const start = periodStartFor(freq, now).getTime();
-
-      const list = byTask[t.id] ?? [];
-      let count = 0;
-      for (const c of list) {
-        const ts = new Date(c.completed_at).getTime();
-        if (ts >= start) count++;
-        else break; // comps are sorted desc overall; per-task list isn't guaranteed sorted, but usually is
-      }
-
-      // If the per-task list isn't strictly sorted, this is safer:
-      // count = list.filter(c => new Date(c.completed_at).getTime() >= start).length;
-
-      out[t.id] = count;
+  function countSkipsSince(taskId: string, startMs: number) {
+    const list = skipsByTask[taskId] ?? [];
+    let count = 0;
+    for (const s of list) {
+      if (new Date(s.skipped_at).getTime() >= startMs) count++;
     }
+    return count;
+  }
 
-    return out;
-  }, [tasks, completions]);
+  function allowedToday(task: TaskRow) {
+    const days = task.scheduled_days ?? null;
+    if (!days || days.length === 0) return true;
+    const dow = now.getDay(); // 0..6
+    return days.includes(dow);
+  }
 
-  // Only show tasks that still need work in the current period
-  const remainingTasks = useMemo(() => {
-    const now = new Date();
+  function didSomethingToday(taskId: string) {
+    const done = countCompletionsSince(taskId, todayStartMs) > 0;
+    const skipped = countSkipsSince(taskId, todayStartMs) > 0;
+    return done || skipped;
+  }
 
+  function dailyProgress(task: TaskRow) {
+    const required = Math.max(1, Number(task.freq_times ?? 1));
+    const done = countCompletionsSince(task.id, todayStartMs);
+    const pct = clamp((done / required) * 100, 0, 100);
+    return { done, required, pct };
+  }
+
+  function periodQuotaMet(task: TaskRow) {
+    if (task.type === "single") {
+      // one-and-done forever
+      return (completionsByTask[task.id]?.length ?? 0) > 0;
+    }
+    const freq = (task.freq_per ?? "week") as FrequencyUnit;
+    const required = Math.max(1, Number(task.freq_times ?? 1));
+    const start = periodStart(freq, now).getTime();
+    const done = countCompletionsSince(task.id, start);
+    return done >= required;
+  }
+
+  function weeklySkipsUsed(taskId: string) {
+    return countSkipsSince(taskId, weekStartMs);
+  }
+
+  // ✅ Tasks shown on home (this is the core logic)
+  const homeTasks = useMemo(() => {
     return tasks.filter((t) => {
       if (t.archived) return false;
+      if (!allowedToday(t)) return false;
 
-      if (t.type === "single") {
-        // Single tasks: hide once completed at least once (ever in this loaded range).
-        // If you want "single" to reset daily instead, tell me.
-        return !latestByTask[t.id];
+      // If you already satisfied this period, hide
+      if (periodQuotaMet(t)) return false;
+
+      const isDaily = t.type === "habit" && (t.freq_per ?? "week") === "day";
+
+      if (isDaily) {
+        // daily tasks stay visible until requirement is met (progress bar)
+        const { done, required } = dailyProgress(t);
+        return done < required;
       }
 
-      // Habit tasks: hide only after meeting the required count in the current period.
-      const required = Math.max(1, Number(t.freq_times ?? 1));
-      const done = progressByTask[t.id] ?? 0;
+      // week/month/year: if you complete once today, hide until tomorrow
+      if (didSomethingToday(t.id)) return false;
 
-      // Extra safety: if freq_per is null, treat as weekly
-      const _start = periodStartFor((t.freq_per ?? "week") as FrequencyUnit, now);
-      void _start;
-
-      return done < required;
+      return true;
     });
-  }, [tasks, latestByTask, progressByTask]);
+  }, [tasks, todayKey, completionsByTask, skipsByTask]);
 
   function openCompleteModal(task: TaskRow) {
     setCompleteTask(task);
@@ -276,8 +333,8 @@ export default function HomePage() {
 
   async function uploadPhotoAndComplete(file: File) {
     if (!userId || !completeTask) return;
+    const completing = completeTask;
 
-    const completing = completeTask; // capture
     setBusy(true);
     setStatus(null);
 
@@ -288,7 +345,6 @@ export default function HomePage() {
       const { error: upErr } = await supabase.storage
         .from("proofs")
         .upload(path, file, { upsert: false });
-
       if (upErr) throw upErr;
 
       const { data, error } = await supabase
@@ -305,18 +361,12 @@ export default function HomePage() {
 
       if (error) throw error;
 
-      const completion = data as CompletionRow;
-
-      // Update completions list + latest map (this alone will make the task disappear when it hits requirement)
-      setCompletions((prev) => [completion, ...prev]);
-      setLatestByTask((prev) => ({ ...prev, [completing.id]: completion }));
-
+      setCompletions((prev) => [data as CompletionRow, ...prev]);
       setCompleteTask(null);
     } catch (e: any) {
-      console.error(e);
       setStatus(
         e?.message ??
-          'Photo upload failed. Make sure you created a Storage bucket named "proofs".'
+          'Photo upload failed. Ensure the Storage bucket "proofs" exists.'
       );
     } finally {
       setBusy(false);
@@ -324,16 +374,10 @@ export default function HomePage() {
     }
   }
 
-  function openOverride() {
-    if (!completeTask) return;
-    setOverrideText("");
-    setOverrideOpen(true);
-  }
-
   async function submitOverride() {
     if (!userId || !completeTask) return;
-
     const completing = completeTask;
+
     const note = overrideText.trim();
     if (!note) {
       setStatus("Override requires a note.");
@@ -358,24 +402,51 @@ export default function HomePage() {
 
       if (error) throw error;
 
-      const completion = data as CompletionRow;
-
-      setCompletions((prev) => [completion, ...prev]);
-      setLatestByTask((prev) => ({ ...prev, [completing.id]: completion }));
-
+      setCompletions((prev) => [data as CompletionRow, ...prev]);
       setOverrideOpen(false);
       setCompleteTask(null);
       setOverrideText("");
     } catch (e: any) {
-      console.error(e);
       setStatus(e?.message ?? "Failed to submit override.");
     } finally {
       setBusy(false);
     }
   }
 
-  async function viewLastPhoto(task: TaskRow) {
-    const c = latestByTask[task.id];
+  async function skipTask(task: TaskRow) {
+    if (!userId) return;
+
+    const allowed = Math.max(0, Number(task.weekly_skips_allowed ?? 0));
+    const used = weeklySkipsUsed(task.id);
+    if (used >= allowed) {
+      setStatus("No skips remaining for this task this week.");
+      return;
+    }
+
+    setBusy(true);
+    setStatus(null);
+
+    try {
+      const { data, error } = await supabase
+        .from("task_skips")
+        .insert({ user_id: userId, task_id: task.id })
+        .select("*")
+        .single();
+
+      if (error) throw error;
+
+      setSkips((prev) => [data as SkipRow, ...prev]);
+    } catch (e: any) {
+      setStatus(e?.message ?? "Failed to skip.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function viewLastPhoto(taskId: string, title: string) {
+    const c = (completionsByTask[taskId] ?? []).find(
+      (x) => x.proof_type === "photo" && x.photo_path
+    );
     if (!c?.photo_path) return;
 
     setBusy(true);
@@ -388,40 +459,60 @@ export default function HomePage() {
 
       if (error) throw error;
 
-      setPhotoViewer({
-        open: true,
-        url: data.signedUrl,
-        title: `Proof: ${task.title}`,
-      });
+      setPhotoViewer({ open: true, url: data.signedUrl, title });
     } catch (e: any) {
-      console.error(e);
       setStatus(e?.message ?? "Could not load photo.");
     } finally {
       setBusy(false);
     }
   }
 
-  // ---- Always-visible homepage (logged in OR logged out) ----
+  // ---------------- UI ----------------
+
+  // Logged out: show hero, NO tasks
+  if (!userId) {
+    return (
+      <main style={{ minHeight: theme.layout.fullHeight, background: theme.page.background, color: theme.page.text, padding: 24 }}>
+        <div style={{ maxWidth: 980, margin: "0 auto", display: "flex", flexDirection: "column", gap: 20, alignItems: "center", textAlign: "center" }}>
+          <img
+            src="/chris-bumstead-3.jpg.webp"
+            alt="Chris Bumstead"
+            style={{
+              width: "clamp(220px, 60vw, 520px)",
+              height: "auto",
+              maxWidth: "90vw",
+              borderRadius: 12,
+              border: `1px solid ${theme.accent.primary}`,
+            }}
+          />
+          <h1 style={{ fontSize: "clamp(28px, 6vw, 40px)", fontWeight: 900, margin: 0 }}>
+            “pain is privilege”
+          </h1>
+
+          <section style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 16, padding: 16, background: "rgba(255,255,255,0.02)", boxShadow: "0 10px 24px rgba(0,0,0,0.20)", textAlign: "left" }}>
+            <div style={{ fontSize: 22, fontWeight: 900 }}>Welcome</div>
+            <div style={{ opacity: 0.8, marginTop: 6 }}>
+              Log in to see your tasks, submit proof, and track completions.
+            </div>
+            <div style={{ height: 12 }} />
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <Link href="/profile" style={{ padding: "10px 12px", borderRadius: 12, border: `1px solid ${theme.accent.primary}`, color: "var(--text)", textDecoration: "none", fontWeight: 900 }}>
+                Log in
+              </Link>
+              <Link href="/completed" style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid var(--border)", color: "var(--text)", textDecoration: "none", fontWeight: 900 }}>
+                Completed
+              </Link>
+            </div>
+          </section>
+        </div>
+      </main>
+    );
+  }
+
+  // Logged in: show tasks card
   return (
-    <main
-      style={{
-        minHeight: theme.layout.fullHeight,
-        background: theme.page.background,
-        color: theme.page.text,
-        padding: 24,
-      }}
-    >
-      <div
-        style={{
-          maxWidth: 980,
-          margin: "0 auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: 20,
-          alignItems: "center",
-          textAlign: "center",
-        }}
-      >
+    <main style={{ minHeight: theme.layout.fullHeight, background: theme.page.background, color: theme.page.text, padding: 24 }}>
+      <div style={{ maxWidth: 980, margin: "0 auto", display: "flex", flexDirection: "column", gap: 20, alignItems: "center", textAlign: "center" }}>
         <img
           src="/chris-bumstead-3.jpg.webp"
           alt="Chris Bumstead"
@@ -434,17 +525,10 @@ export default function HomePage() {
           }}
         />
 
-        <h1
-          style={{
-            fontSize: "clamp(28px, 6vw, 40px)",
-            fontWeight: 900,
-            margin: 0,
-          }}
-        >
+        <h1 style={{ fontSize: "clamp(28px, 6vw, 40px)", fontWeight: 900, margin: 0 }}>
           “pain is privilege”
         </h1>
 
-        {/* hidden input for photo proof */}
         <input
           ref={fileInputRef}
           type="file"
@@ -453,137 +537,50 @@ export default function HomePage() {
           style={{ display: "none" }}
           onChange={(e) => {
             const f = e.target.files?.[0] ?? null;
-            if (!f) return;
-            uploadPhotoAndComplete(f);
+            if (f) uploadPhotoAndComplete(f);
           }}
         />
 
-        {/* Status */}
         {status ? (
-          <div
-            style={{
-              width: "100%",
-              border: "1px solid var(--border)",
-              borderRadius: 14,
-              padding: 12,
-              background: "rgba(255,255,255,0.02)",
-              textAlign: "left",
-            }}
-          >
+          <div style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 14, padding: 12, background: "rgba(255,255,255,0.02)", textAlign: "left" }}>
             {status}
           </div>
         ) : null}
 
-        {/* Tasks card (only shows tasks if logged in) */}
-        <section
-          style={{
-            width: "100%",
-            border: "1px solid var(--border)",
-            borderRadius: 16,
-            padding: 16,
-            background: "rgba(255,255,255,0.02)",
-            boxShadow: "0 10px 24px rgba(0,0,0,0.20)",
-            textAlign: "left",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "flex-end",
-              gap: 12,
-              flexWrap: "wrap",
-            }}
-          >
+        <section style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 16, padding: 16, background: "rgba(255,255,255,0.02)", boxShadow: "0 10px 24px rgba(0,0,0,0.20)", textAlign: "left" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
             <div>
               <div style={{ fontSize: 22, fontWeight: 900 }}>Today</div>
-              {userId ? (
-                <div style={{ opacity: 0.8, marginTop: 4 }}>
-                  Logged in as <b>{sessionEmail}</b> • Remaining today:{" "}
-                  <b>{remainingTasks.length}</b>
-                </div>
-              ) : (
-                <div style={{ opacity: 0.8, marginTop: 4 }}>
-                  Log in to see your tasks and complete them with proof.
-                </div>
-              )}
+              <div style={{ opacity: 0.8, marginTop: 4 }}>
+                Logged in as <b>{sessionEmail}</b> • Remaining: <b>{homeTasks.length}</b>
+              </div>
             </div>
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              {userId ? (
-                <Link
-                  href="/tasks"
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    border: `1px solid ${theme.accent.primary}`,
-                    color: "var(--text)",
-                    textDecoration: "none",
-                    fontWeight: 900,
-                  }}
-                >
-                  Manage Tasks
-                </Link>
-              ) : (
-                <Link
-                  href="/profile"
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    border: `1px solid ${theme.accent.primary}`,
-                    color: "var(--text)",
-                    textDecoration: "none",
-                    fontWeight: 900,
-                  }}
-                >
-                  Log in
-                </Link>
-              )}
+              <Link href="/tasks" style={{ padding: "10px 12px", borderRadius: 12, border: `1px solid ${theme.accent.primary}`, color: "var(--text)", textDecoration: "none", fontWeight: 900 }}>
+                Manage Tasks
+              </Link>
+              <Link href="/completed" style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid var(--border)", color: "var(--text)", textDecoration: "none", fontWeight: 900 }}>
+                Completed
+              </Link>
             </div>
           </div>
 
           <div style={{ height: 12 }} />
 
-          {!userId ? (
-            <div
-              style={{
-                border: "1px dashed var(--border)",
-                borderRadius: 16,
-                padding: 14,
-                opacity: 0.85,
-              }}
-            >
-              Tasks are user-based. Log in to view and complete yours.
-            </div>
-          ) : loading ? (
-            <div
-              style={{
-                border: "1px dashed var(--border)",
-                borderRadius: 16,
-                padding: 14,
-                opacity: 0.85,
-              }}
-            >
-              Loading…
-            </div>
-          ) : remainingTasks.length === 0 ? (
-            <div
-              style={{
-                border: "1px dashed var(--border)",
-                borderRadius: 16,
-                padding: 14,
-                opacity: 0.85,
-              }}
-            >
-              You’re done for this period 🎉
-            </div>
+          {loading ? (
+            <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>Loading…</div>
+          ) : homeTasks.length === 0 ? (
+            <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>You’re done for today 🎉</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {remainingTasks.map((t) => {
-                const last = latestByTask[t.id];
-                const required =
-                  t.type === "habit" ? Math.max(1, Number(t.freq_times ?? 1)) : 1;
-                const done = t.type === "habit" ? progressByTask[t.id] ?? 0 : 0;
+              {homeTasks.map((t) => {
+                const isDaily = t.type === "habit" && (t.freq_per ?? "week") === "day";
+                const daily = isDaily ? dailyProgress(t) : null;
+
+                const skipsAllowed = Math.max(0, Number(t.weekly_skips_allowed ?? 0));
+                const skipsUsed = weeklySkipsUsed(t.id);
+                const skipsLeft = Math.max(0, skipsAllowed - skipsUsed);
 
                 return (
                   <div
@@ -600,76 +597,69 @@ export default function HomePage() {
                       alignItems: "center",
                     }}
                   >
-                    <div style={{ minWidth: 220 }}>
+                    <div style={{ minWidth: 240 }}>
                       <div style={{ fontWeight: 900 }}>{t.title}</div>
-
                       <div style={{ opacity: 0.8, marginTop: 4 }}>
-                        {t.type === "habit" ? (
+                        {t.type === "habit" ? <>Habit • {formatFrequency(t)}</> : <>Single</>}
+                        {skipsAllowed > 0 ? (
                           <>
-                            Habit • {formatFrequency(t)} • Progress:{" "}
-                            <b>
-                              {done}/{required}
-                            </b>
-                          </>
-                        ) : (
-                          <>Single</>
-                        )}
-                        {last?.completed_at ? (
-                          <span>
                             {" "}
-                            • Last done: {new Date(last.completed_at).toLocaleString()}
-                          </span>
+                            • Skips left this week: <b>{skipsLeft}</b>
+                          </>
                         ) : null}
                       </div>
 
-                      {last ? (
-                        <div style={{ opacity: 0.75, marginTop: 6, fontSize: 13 }}>
-                          Proof:{" "}
-                          {last.proof_type === "photo"
-                            ? "Photo"
-                            : `Override — ${last.proof_note ?? ""}`}
+                      {daily ? (
+                        <div style={{ marginTop: 10 }}>
+                          <div style={{ opacity: 0.8, fontSize: 13 }}>
+                            Today: <b>{daily.done}/{daily.required}</b> ({Math.round(daily.pct)}%)
+                          </div>
+                          <div style={{ marginTop: 6, width: "min(320px, 100%)", height: 10, borderRadius: 999, border: "1px solid var(--border)", overflow: "hidden", background: "rgba(255,255,255,0.04)" }}>
+                            <div style={{ height: "100%", width: `${daily.pct}%`, background: "#f59e0b" }} />
+                          </div>
                         </div>
                       ) : null}
+                    </div>
 
-                      {last?.proof_type === "photo" && last.photo_path ? (
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      {skipsAllowed > 0 ? (
                         <button
-                          onClick={() => viewLastPhoto(t)}
-                          disabled={busy}
+                          onClick={() => skipTask(t)}
+                          disabled={busy || skipsLeft <= 0}
                           style={{
-                            marginTop: 8,
-                            padding: "8px 10px",
-                            borderRadius: 10,
+                            padding: "10px 12px",
+                            borderRadius: 12,
                             border: "1px solid var(--border)",
                             background: "transparent",
                             color: "var(--text)",
                             fontWeight: 900,
-                            cursor: busy ? "not-allowed" : "pointer",
-                            opacity: busy ? 0.6 : 1,
+                            cursor: busy || skipsLeft <= 0 ? "not-allowed" : "pointer",
+                            opacity: busy || skipsLeft <= 0 ? 0.6 : 1,
                           }}
                           type="button"
                         >
-                          View last photo
+                          Skip
                         </button>
                       ) : null}
-                    </div>
 
-                    <button
-                      onClick={() => openCompleteModal(t)}
-                      disabled={busy}
-                      style={{
-                        padding: "10px 12px",
-                        borderRadius: 12,
-                        border: `1px solid ${theme.accent.primary}`,
-                        background: "transparent",
-                        color: "var(--text)",
-                        fontWeight: 900,
-                        cursor: busy ? "not-allowed" : "pointer",
-                        opacity: busy ? 0.6 : 1,
-                      }}
-                      type="button"
-                    >
-                      Complete
-                    </button>
+                      <button
+                        onClick={() => openCompleteModal(t)}
+                        disabled={busy}
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: 12,
+                          border: `1px solid ${theme.accent.primary}`,
+                          background: "transparent",
+                          color: "var(--text)",
+                          fontWeight: 900,
+                          cursor: busy ? "not-allowed" : "pointer",
+                          opacity: busy ? 0.6 : 1,
+                        }}
+                        type="button"
+                      >
+                        Complete
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -677,8 +667,8 @@ export default function HomePage() {
           )}
         </section>
 
-        {/* Complete modal (only reachable when logged in) */}
-        {completeTask && userId && (
+        {/* Complete modal */}
+        {completeTask && (
           <div
             style={{
               position: "fixed",
@@ -709,9 +699,7 @@ export default function HomePage() {
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div style={{ fontWeight: 900, fontSize: 18 }}>
-                Complete: {completeTask.title}
-              </div>
+              <div style={{ fontWeight: 900, fontSize: 18 }}>Complete: {completeTask.title}</div>
               <div style={{ opacity: 0.8, marginTop: 6 }}>Choose proof type.</div>
 
               <div style={{ height: 12 }} />
@@ -738,7 +726,10 @@ export default function HomePage() {
 
                   <button
                     type="button"
-                    onClick={openOverride}
+                    onClick={() => {
+                      setOverrideText("");
+                      setOverrideOpen(true);
+                    }}
                     disabled={busy}
                     style={{
                       padding: "10px 12px",
@@ -774,9 +765,7 @@ export default function HomePage() {
                 </div>
               ) : (
                 <>
-                  <div style={{ opacity: 0.8, marginTop: 6 }}>
-                    Override requires a note.
-                  </div>
+                  <div style={{ opacity: 0.8, marginTop: 6 }}>Override requires a note.</div>
 
                   <textarea
                     value={overrideText}
@@ -796,15 +785,7 @@ export default function HomePage() {
                     }}
                   />
 
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "flex-end",
-                      gap: 10,
-                      marginTop: 12,
-                      flexWrap: "wrap",
-                    }}
-                  >
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
                     <button
                       type="button"
                       onClick={() => setOverrideOpen(false)}
@@ -874,15 +855,7 @@ export default function HomePage() {
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 10,
-                  alignItems: "center",
-                  padding: 8,
-                }}
-              >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", padding: 8 }}>
                 <div style={{ fontWeight: 900 }}>{photoViewer.title}</div>
                 <button
                   type="button"
@@ -905,12 +878,7 @@ export default function HomePage() {
                 <img
                   src={photoViewer.url}
                   alt="Proof"
-                  style={{
-                    width: "100%",
-                    height: "auto",
-                    borderRadius: 12,
-                    border: "1px solid var(--border)",
-                  }}
+                  style={{ width: "100%", height: "auto", borderRadius: 12, border: "1px solid var(--border)" }}
                 />
               ) : (
                 <div style={{ padding: 10, opacity: 0.8 }}>Loading…</div>
