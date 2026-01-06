@@ -5,11 +5,10 @@ import React, { useEffect, useMemo, useState } from "react";
 import { theme } from "@/UI/theme";
 
 type TaskType = "habit" | "single";
-
 type FrequencyUnit = "day" | "week" | "month";
 
 type HabitFrequency = {
-  every: number; // e.g. every 2 weeks
+  every: number;
   unit: FrequencyUnit;
 };
 
@@ -17,7 +16,7 @@ type Task = {
   id: string;
   title: string;
   type: TaskType;
-  frequency?: HabitFrequency; // only for habit
+  frequency?: HabitFrequency;
   createdAt: number;
   archived: boolean;
 };
@@ -31,10 +30,24 @@ function uid() {
 function formatFrequency(freq?: HabitFrequency) {
   if (!freq) return "";
   const n = Math.max(1, freq.every);
-  const unit =
-    n === 1 ? freq.unit : (freq.unit + "s") as `${FrequencyUnit}s`;
+  const unit = n === 1 ? freq.unit : (freq.unit + "s") as `${FrequencyUnit}s`;
   return `Every ${n} ${unit}`;
 }
+
+const selectStyle: React.CSSProperties = {
+  padding: "10px 10px",
+  borderRadius: 10,
+  border: "1px solid var(--border)",
+  background: "#000", // ✅ black background
+  color: "#fff", // ✅ white text
+  outline: "none",
+  cursor: "pointer",
+};
+
+const optionStyle: React.CSSProperties = {
+  background: "#000", // ✅ black dropdown rows
+  color: "#fff", // ✅ white text
+};
 
 export default function Page() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -55,7 +68,7 @@ export default function Page() {
       const parsed = JSON.parse(raw) as Task[];
       if (Array.isArray(parsed)) setTasks(parsed);
     } catch {
-      // ignore (bad storage)
+      // ignore
     }
   }, []);
 
@@ -64,7 +77,7 @@ export default function Page() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
     } catch {
-      // ignore (storage full / blocked)
+      // ignore
     }
   }, [tasks]);
 
@@ -93,7 +106,9 @@ export default function Page() {
   }
 
   function updateTask(id: string, patch: Partial<Task>) {
-    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+    setTasks((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, ...patch } : t))
+    );
   }
 
   function updateHabitFrequency(id: string, freq: HabitFrequency) {
@@ -160,9 +175,7 @@ export default function Page() {
           }}
         >
           <div>
-            <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>
-              Tasks
-            </h1>
+            <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>Tasks</h1>
             <p style={{ margin: "6px 0 0 0", opacity: 0.8 }}>
               Create habits (recurring) or single tasks. Archive or delete any
               time.
@@ -278,19 +291,17 @@ export default function Page() {
                 <select
                   value={unit}
                   onChange={(e) => setUnit(e.target.value as FrequencyUnit)}
-                  style={{
-                    padding: "10px 10px",
-                    borderRadius: 10,
-                    border: "1px solid var(--border)",
-                    background: "transparent",
-                    color: "var(--text)",
-                    outline: "none",
-                    cursor: "pointer",
-                  }}
+                  style={selectStyle} // ✅ black bg / white text
                 >
-                  <option value="day">Day(s)</option>
-                  <option value="week">Week(s)</option>
-                  <option value="month">Month(s)</option>
+                  <option value="day" style={optionStyle}>
+                    Day(s)
+                  </option>
+                  <option value="week" style={optionStyle}>
+                    Week(s)
+                  </option>
+                  <option value="month" style={optionStyle}>
+                    Month(s)
+                  </option>
                 </select>
               </div>
             )}
@@ -337,7 +348,6 @@ export default function Page() {
                   if (nextType === "single") {
                     updateTask(t.id, { type: "single", frequency: undefined });
                   } else {
-                    // default habit frequency if switching from single
                     updateTask(t.id, {
                       type: "habit",
                       frequency: t.frequency ?? { every: 1, unit: "day" },
@@ -423,7 +433,14 @@ function TaskRow({
       </div>
 
       {/* Controls */}
-      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          alignItems: "center",
+          flexWrap: "wrap",
+        }}
+      >
         {/* Type Toggle */}
         <div
           style={{
@@ -486,38 +503,28 @@ function TaskRow({
                   unit: e.target.value as FrequencyUnit,
                 })
               }
-              style={{
-                padding: "10px 10px",
-                borderRadius: 10,
-                border: "1px solid var(--border)",
-                background: "transparent",
-                color: "var(--text)",
-                outline: "none",
-                cursor: "pointer",
-              }}
+              style={selectStyle} // ✅ black bg / white text
             >
-              <option value="day">Day(s)</option>
-              <option value="week">Week(s)</option>
-              <option value="month">Month(s)</option>
+              <option value="day" style={optionStyle}>
+                Day(s)
+              </option>
+              <option value="week" style={optionStyle}>
+                Week(s)
+              </option>
+              <option value="month" style={optionStyle}>
+                Month(s)
+              </option>
             </select>
           </div>
         )}
 
         {/* Archive / Delete */}
         {task.archived ? (
-          <button
-            onClick={onUnarchive}
-            style={actionBtnStyle()}
-            type="button"
-          >
+          <button onClick={onUnarchive} style={actionBtnStyle()} type="button">
             Unarchive
           </button>
         ) : (
-          <button
-            onClick={onArchive}
-            style={actionBtnStyle()}
-            type="button"
-          >
+          <button onClick={onArchive} style={actionBtnStyle()} type="button">
             Archive
           </button>
         )}
