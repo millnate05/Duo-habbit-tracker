@@ -75,6 +75,7 @@ function Header() {
             boxShadow: "0 12px 30px rgba(0,0,0,0.35)",
           }}
         >
+          <MenuItem href="/home" label="Home" />
           <MenuItem href="/tasks" label="Tasks" />
           <MenuItem href="/completed" label="Completed" />
           <MenuItem href="/stats" label="Stats" />
