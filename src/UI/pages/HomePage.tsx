@@ -1,4 +1,4 @@
-// FORCE NEW COMMIT: 2026-01-06-1605
+// FORCE NEW COMMIT: 2026-01-06-1615
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -37,6 +37,18 @@ function formatFrequency(t: TaskRow) {
   return `${times}x per ${per}`;
 }
 
+// Treat "done today" using LOCAL DATE (user’s device time)
+function isCompletedToday(completedAtIso: string) {
+  const d = new Date(completedAtIso);
+  const now = new Date();
+
+  return (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  );
+}
+
 export default function HomePage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
@@ -45,6 +57,9 @@ export default function HomePage() {
   const [latestByTask, setLatestByTask] = useState<Record<string, CompletionRow>>(
     {}
   );
+
+  // NEW: store which tasks should be hidden today (instant UI removal after completion)
+  const [hiddenTaskIds, setHiddenTaskIds] = useState<Set<string>>(new Set());
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -97,6 +112,9 @@ export default function HomePage() {
     setLoading(true);
     setStatus(null);
 
+    // reset hidden list whenever we load fresh
+    setHiddenTaskIds(new Set());
+
     // 1) Tasks (active only)
     const { data: tasksData, error: tasksErr } = await supabase
       .from("tasks")
@@ -123,7 +141,7 @@ export default function HomePage() {
       .select("*")
       .eq("user_id", uid)
       .order("completed_at", { ascending: false })
-      .limit(200);
+      .limit(300);
 
     if (compErr) {
       console.error(compErr);
@@ -146,6 +164,7 @@ export default function HomePage() {
     if (!userId) {
       setTasks([]);
       setLatestByTask({});
+      setHiddenTaskIds(new Set());
       setLoading(false);
       return;
     }
@@ -153,7 +172,15 @@ export default function HomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
-  const activeTasks = useMemo(() => tasks, [tasks]);
+  // NEW: only show tasks that are NOT completed today AND not manually hidden
+  const activeTasks = useMemo(() => {
+    return tasks.filter((t) => {
+      if (hiddenTaskIds.has(t.id)) return false;
+      const last = latestByTask[t.id];
+      if (!last?.completed_at) return true;
+      return !isCompletedToday(last.completed_at);
+    });
+  }, [tasks, latestByTask, hiddenTaskIds]);
 
   function openCompleteModal(task: TaskRow) {
     setCompleteTask(task);
@@ -170,12 +197,13 @@ export default function HomePage() {
   async function uploadPhotoAndComplete(file: File) {
     if (!userId || !completeTask) return;
 
+    const completing = completeTask; // capture to avoid state timing issues
     setBusy(true);
     setStatus(null);
 
     try {
       const safeName = file.name.replace(/[^\w.\-()]+/g, "_");
-      const path = `${userId}/${completeTask.id}/${Date.now()}_${safeName}`;
+      const path = `${userId}/${completing.id}/${Date.now()}_${safeName}`;
 
       // Upload to Storage bucket "proofs"
       const { error: upErr } = await supabase.storage
@@ -189,7 +217,7 @@ export default function HomePage() {
         .from("completions")
         .insert({
           user_id: userId,
-          task_id: completeTask.id,
+          task_id: completing.id,
           proof_type: "photo",
           proof_note: null,
           photo_path: path,
@@ -200,15 +228,23 @@ export default function HomePage() {
       if (error) throw error;
 
       // Update latest completion in UI
+      const completion = data as CompletionRow;
+
       setLatestByTask((prev) => ({
         ...prev,
-        [completeTask.id]: data as CompletionRow,
+        [completing.id]: completion,
       }));
+
+      // NEW: Hide immediately so it "goes away" as soon as proof is submitted
+      setHiddenTaskIds((prev) => {
+        const next = new Set(prev);
+        next.add(completing.id);
+        return next;
+      });
 
       setCompleteTask(null);
     } catch (e: any) {
       console.error(e);
-      // Most common cause: bucket doesn't exist yet
       setStatus(
         e?.message ??
           'Photo upload failed. Make sure you created a Storage bucket named "proofs".'
@@ -228,6 +264,7 @@ export default function HomePage() {
   async function submitOverride() {
     if (!userId || !completeTask) return;
 
+    const completing = completeTask; // capture
     const note = overrideText.trim();
     if (!note) {
       setStatus("Override requires a note.");
@@ -242,7 +279,7 @@ export default function HomePage() {
         .from("completions")
         .insert({
           user_id: userId,
-          task_id: completeTask.id,
+          task_id: completing.id,
           proof_type: "override",
           proof_note: note,
           photo_path: null,
@@ -252,10 +289,19 @@ export default function HomePage() {
 
       if (error) throw error;
 
+      const completion = data as CompletionRow;
+
       setLatestByTask((prev) => ({
         ...prev,
-        [completeTask.id]: data as CompletionRow,
+        [completing.id]: completion,
       }));
+
+      // NEW: hide immediately on override too
+      setHiddenTaskIds((prev) => {
+        const next = new Set(prev);
+        next.add(completing.id);
+        return next;
+      });
 
       setOverrideOpen(false);
       setCompleteTask(null);
@@ -279,7 +325,7 @@ export default function HomePage() {
       // Create signed URL (works with private bucket)
       const { data, error } = await supabase.storage
         .from("proofs")
-        .createSignedUrl(c.photo_path, 60); // 60 seconds
+        .createSignedUrl(c.photo_path, 60);
 
       if (error) throw error;
 
@@ -440,7 +486,7 @@ export default function HomePage() {
             <div>
               <div style={{ fontSize: 22, fontWeight: 900 }}>Today</div>
               <div style={{ opacity: 0.8, marginTop: 4 }}>
-                Logged in as <b>{sessionEmail}</b> • Active tasks:{" "}
+                Logged in as <b>{sessionEmail}</b> • Remaining today:{" "}
                 <b>{activeTasks.length}</b>
               </div>
             </div>
@@ -482,7 +528,7 @@ export default function HomePage() {
                 opacity: 0.85,
               }}
             >
-              No active tasks yet. Create one in <b>Manage Tasks</b>.
+              You’re done for today 🎉
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
