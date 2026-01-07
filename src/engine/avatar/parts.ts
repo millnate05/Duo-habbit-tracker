@@ -27,15 +27,18 @@ export const palette = {
   },
 } as const;
 
-// All parts are authored to the SAME pose.
-// ViewBox chosen so it's easy to scale everywhere.
+// ViewBox for full body
 export const viewBox = "0 0 320 520";
 
-// Helper to keep style consistent.
+// Shared head shape (used for both drawing + hair clipping)
+export const headPathD =
+  "M160 40 C110 40 92 78 92 118 C92 170 122 202 160 202 C198 202 228 170 228 118 C228 78 210 40 160 40 Z";
+
+// Helper to keep style consistent
 export function svgStyleVars(recipe: AvatarRecipe) {
   return {
     outline: palette.outline,
-    shadow: palette.shadow, // ✅ FIX: include shadow so c.shadow exists
+    shadow: palette.shadow,
     skin: palette.skin[recipe.skin],
     hair: palette.hair[recipe.hairColor],
     outfit: palette.outfit[recipe.outfit],
@@ -43,22 +46,23 @@ export function svgStyleVars(recipe: AvatarRecipe) {
   };
 }
 
-// --- Layers (base → top) ---
+// -------------------------
+// Layers (base → top)
+// -------------------------
+
 export function layerBody(recipe: AvatarRecipe) {
   const c = svgStyleVars(recipe);
 
   return `
   <g id="body">
+    <!-- head -->
+    <path d="${headPathD}"
+      fill="${c.skin}" stroke="${c.outline}" stroke-width="4" stroke-linejoin="round"/>
+
     <!-- neck -->
     <path d="M146 148 C146 170 174 170 174 148 L174 132 C174 118 146 118 146 132 Z"
       fill="${c.skin}" stroke="${c.outline}" stroke-width="4" stroke-linejoin="round"/>
-    <!-- head -->
-    <path d="M160 40
-      C110 40 92 78 92 118
-      C92 170 122 202 160 202
-      C198 202 228 170 228 118
-      C228 78 210 40 160 40 Z"
-      fill="${c.skin}" stroke="${c.outline}" stroke-width="4" stroke-linejoin="round"/>
+
     <!-- subtle cheek shadow -->
     <path d="M112 132 C120 165 135 178 152 186" fill="none" stroke="${c.shadow}" stroke-width="10" stroke-linecap="round"/>
     <path d="M208 132 C200 165 185 178 168 186" fill="none" stroke="${c.shadow}" stroke-width="10" stroke-linecap="round"/>
@@ -110,7 +114,6 @@ export function layerFace(recipe: AvatarRecipe) {
       ? `<path d="M140 164 C150 176 170 176 180 164" fill="none" stroke="${c.outline}" stroke-width="4" stroke-linecap="round"/>`
       : `<path d="M140 166 C150 158 170 158 180 166" fill="none" stroke="${c.outline}" stroke-width="4" stroke-linecap="round"/>`;
 
-  // simple nose
   const nose = `<path d="M160 132 C156 144 156 150 164 154" fill="none" stroke="${c.outline}" stroke-width="4" stroke-linecap="round"/>`;
 
   return `
@@ -123,54 +126,100 @@ export function layerFace(recipe: AvatarRecipe) {
   `;
 }
 
+// Hair is clipped to head so it "sits" right.
+// render.ts defines <clipPath id="headClip"> using headPathD.
 export function layerHair(recipe: AvatarRecipe) {
   const c = svgStyleVars(recipe);
-
   if (recipe.hair === "h0") return "";
 
+  const common = `fill="${c.hair}" stroke="${c.outline}" stroke-width="4" stroke-linejoin="round" clip-path="url(#headClip)"`;
+
   if (recipe.hair === "h1") {
+    // clean short
     return `
     <g id="hair">
-      <path d="M96 118
-        C92 72 124 40 160 40
-        C196 40 228 72 224 118
-        C210 96 190 84 160 84
-        C130 84 110 96 96 118 Z"
-        fill="${c.hair}" stroke="${c.outline}" stroke-width="4" stroke-linejoin="round"/>
-      <path d="M112 78 C128 62 148 58 160 58 C180 58 196 64 208 76"
-        fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="6" stroke-linecap="round"/>
-    </g>
-    `;
+      <path d="M92 118 C98 72 124 44 160 44 C196 44 222 72 228 118
+               C212 98 192 88 160 88 C128 88 108 98 92 118 Z" ${common}/>
+      <path d="M112 76 C128 62 148 58 160 58 C182 58 198 64 210 76"
+        fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="6" stroke-linecap="round" clip-path="url(#headClip)"/>
+    </g>`;
   }
 
-  // h2
+  if (recipe.hair === "h2") {
+    // messy top
+    return `
+    <g id="hair">
+      <path d="M92 120 C94 78 120 54 160 54 C204 54 228 78 228 120
+               C214 110 200 108 184 108 C160 108 144 120 124 116
+               C108 112 98 114 92 120 Z" ${common}/>
+    </g>`;
+  }
+
+  if (recipe.hair === "h3") {
+    // curly top
+    return `
+    <g id="hair">
+      <path d="M92 120 C92 82 118 54 160 54 C204 54 228 82 228 120
+               C216 104 200 96 182 96 C170 96 160 102 150 104
+               C136 108 120 106 106 116 C100 120 96 122 92 120 Z" ${common}/>
+      <circle cx="120" cy="78" r="10" fill="${c.hair}" stroke="${c.outline}" stroke-width="4" clip-path="url(#headClip)"/>
+      <circle cx="150" cy="70" r="11" fill="${c.hair}" stroke="${c.outline}" stroke-width="4" clip-path="url(#headClip)"/>
+      <circle cx="182" cy="74" r="10" fill="${c.hair}" stroke="${c.outline}" stroke-width="4" clip-path="url(#headClip)"/>
+    </g>`;
+  }
+
+  if (recipe.hair === "h4") {
+    // side part
+    return `
+    <g id="hair">
+      <path d="M92 120 C96 74 130 44 160 44 C204 44 226 72 228 120
+               C214 92 188 84 166 86 C142 88 124 104 110 116 C104 120 98 122 92 120 Z" ${common}/>
+      <path d="M120 70 C138 56 162 54 190 62"
+        fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="6" stroke-linecap="round" clip-path="url(#headClip)"/>
+    </g>`;
+  }
+
+  // h5: longer fringe
   return `
   <g id="hair">
-    <path d="M98 120
-      C92 84 114 52 160 52
-      C210 52 232 86 222 120
-      C210 108 196 104 176 104
-      C156 104 140 114 122 112
-      C112 110 104 114 98 120 Z"
-      fill="${c.hair}" stroke="${c.outline}" stroke-width="4" stroke-linejoin="round"/>
-  </g>
-  `;
+    <path d="M92 120 C96 72 130 44 160 44 C198 44 222 72 228 120
+             C218 100 202 92 182 92 C160 92 146 106 132 112
+             C118 118 108 120 92 120 Z" ${common}/>
+    <path d="M118 116 C132 132 150 140 160 140 C170 140 186 132 202 116"
+      fill="none" stroke="${c.outline}" stroke-width="4" stroke-linecap="round" clip-path="url(#headClip)"/>
+  </g>`;
 }
 
+// Torso + arms + hands = defined silhouette (no more blob)
 export function layerOutfit(recipe: AvatarRecipe) {
   const c = svgStyleVars(recipe);
   const hoodie = recipe.outfit === "o2";
 
   return `
   <g id="outfit">
-    <!-- torso -->
-    <path d="M92 210
-      C110 190 130 182 160 182
-      C190 182 210 190 228 210
-      L250 310
-      C250 340 230 360 200 360
-      L120 360
-      C90 360 70 340 70 310 Z"
+    <!-- arms (behind torso) -->
+    <path d="M78 240 C60 260 56 292 68 322 C74 338 92 340 102 326 C86 300 88 272 108 252 Z"
+      fill="${c.outfit}" stroke="${c.outline}" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M242 240 C260 260 264 292 252 322 C246 338 228 340 218 326 C234 300 232 272 212 252 Z"
+      fill="${c.outfit}" stroke="${c.outline}" stroke-width="4" stroke-linejoin="round"/>
+
+    <!-- hands -->
+    <path d="M92 330 C88 346 100 360 116 356 C126 354 130 342 124 334 C116 324 98 320 92 330 Z"
+      fill="${c.skin}" stroke="${c.outline}" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M228 330 C232 346 220 360 204 356 C194 354 190 342 196 334 C204 324 222 320 228 330 Z"
+      fill="${c.skin}" stroke="${c.outline}" stroke-width="4" stroke-linejoin="round"/>
+
+    <!-- torso (shoulders + waist) -->
+    <path d="M92 214
+      C110 194 132 184 160 184
+      C188 184 210 194 228 214
+      C242 230 248 254 250 280
+      L250 312
+      C248 350 226 372 192 372
+      L128 372
+      C94 372 72 350 70 312
+      L70 280
+      C72 254 78 230 92 214 Z"
       fill="${c.outfit}" stroke="${c.outline}" stroke-width="4" stroke-linejoin="round"/>
 
     ${
@@ -184,7 +233,7 @@ export function layerOutfit(recipe: AvatarRecipe) {
         C136 202 118 206 104 214 Z"
         fill="${c.outfit}" stroke="${c.outline}" stroke-width="4" stroke-linejoin="round"/>
       <!-- pocket -->
-      <path d="M124 296 C136 320 184 320 196 296"
+      <path d="M122 300 C136 330 184 330 198 300"
         fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="6" stroke-linecap="round"/>
     `
         : `
@@ -193,47 +242,38 @@ export function layerOutfit(recipe: AvatarRecipe) {
         fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="6" stroke-linecap="round"/>
     `
     }
+
+    <!-- sleeve seams -->
+    <path d="M106 252 C94 262 88 278 92 292" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="6" stroke-linecap="round"/>
+    <path d="M214 252 C226 262 232 278 228 292" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="6" stroke-linecap="round"/>
   </g>
   `;
 }
 
+// Better hips + tapered legs (less "rectangle pants")
 export function layerLegsAndShoes(recipe: AvatarRecipe) {
   const c = svgStyleVars(recipe);
 
   return `
   <g id="legs">
-    <!-- pants -->
-    <path d="M120 360 L148 360 L150 470 L118 470 Z"
-      fill="#1F2937" stroke="${c.outline}" stroke-width="4" stroke-linejoin="round"/>
-    <path d="M172 360 L200 360 L202 470 L170 470 Z"
+    <!-- pelvis -->
+    <path d="M120 372 C132 392 188 392 200 372 L200 360 L120 360 Z"
       fill="#1F2937" stroke="${c.outline}" stroke-width="4" stroke-linejoin="round"/>
 
-    <!-- shoes -->
-    <path d="M104 470 C110 486 138 490 154 482 L154 470 Z"
-      fill="${c.shoes}" stroke="${c.outline}" stroke-width="4" stroke-linejoin="round"/>
-    <path d="M166 470 C170 486 198 490 214 482 L214 470 Z"
-      fill="${c.shoes}" stroke="${c.outline}" stroke-width="4" stroke-linejoin="round"/>
+    <!-- left leg -->
+    <path d="M122 392
+      C126 412 128 440 126 470
+      C125 488 142 490 154 482
+      L154 470
+      C150 438 150 414 150 392 Z"
+      fill="#1F2937" stroke="${c.outline}" stroke-width="4" stroke-linejoin="round"/>
 
-    <!-- shoe highlight -->
-    <path d="M114 476 C122 482 134 482 144 476" fill="none" stroke="rgba(0,0,0,0.12)" stroke-width="5" stroke-linecap="round"/>
-    <path d="M176 476 C184 482 196 482 206 476" fill="none" stroke="rgba(0,0,0,0.12)" stroke-width="5" stroke-linecap="round"/>
-  </g>
-  `;
-}
-
-export function layerAccessory(recipe: AvatarRecipe) {
-  const c = svgStyleVars(recipe);
-
-  if (recipe.accessory === "a0") return "";
-
-  // simple glasses as a1
-  return `
-  <g id="accessory">
-    <rect x="116" y="116" width="44" height="28" rx="10"
-      fill="rgba(255,255,255,0.15)" stroke="${c.outline}" stroke-width="4"/>
-    <rect x="160" y="116" width="44" height="28" rx="10"
-      fill="rgba(255,255,255,0.15)" stroke="${c.outline}" stroke-width="4"/>
-    <path d="M160 128 L160 128" stroke="${c.outline}" stroke-width="6" stroke-linecap="round"/>
-  </g>
-  `;
-}
+    <!-- right leg -->
+    <path d="M198 392z
+      " fill="none"/>
+    <path d="M198 392
+      C194 412 192 440 194 470
+      C195 488 178 490 166 482
+      L166 470
+      C170 438 170 414 170 392 Z"
+      fill="#1F2937" stroke="${c.o
