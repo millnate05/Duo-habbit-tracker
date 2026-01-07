@@ -7,7 +7,7 @@ import { AvatarPreview } from "./AvatarPreview";
 
 type Option<T extends string> = { id: T; label: string };
 
-const SKIN: Option<AvatarRecipe["skin"]>[] = [
+const SKIN: Option<AvatarRecipe["skinTone"]>[] = [
   { id: "s1", label: "Porcelain" },
   { id: "s2", label: "Light" },
   { id: "s3", label: "Medium" },
