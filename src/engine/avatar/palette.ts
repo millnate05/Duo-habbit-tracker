@@ -40,9 +40,9 @@ export function recipeToCssVars(recipe: AvatarRecipe) {
     "--outline": PALETTE.outline,
     "--shadow": PALETTE.shadow,
     "--highlight": PALETTE.highlight,
-    "--skin": PALETTE.skin[recipe.skin],
+    "--skin": PALETTE.skin[recipe.skinTone],
     "--hair": PALETTE.hair[recipe.hairColor],
-    "--outfit": PALETTE.outfit[recipe.outfitColor],
+    "--outfit": PALETTE.outfit[recipe.outfitTop],
     "--iris": PALETTE.iris.i3,
   } as const;
 }
