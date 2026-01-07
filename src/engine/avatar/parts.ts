@@ -1,10 +1,9 @@
 import type { AvatarRecipe } from "./types";
 
 export const palette = {
-  outline: "#151515",
-  shadow: "rgba(0,0,0,0.14)",
+  outline: "#141414",
+  shadow: "rgba(0,0,0,0.12)",
   highlight: "rgba(255,255,255,0.22)",
-  skinShadow: "rgba(0,0,0,0.08)",
   skin: {
     s1: "#F7D7C4",
     s2: "#EFC3A4",
@@ -20,97 +19,94 @@ export const palette = {
     hc4: "#C9A26A",
   },
   outfit: {
-    o1: "#2E5BFF", // tee
-    o2: "#111827", // hoodie
+    o1: "#2E5BFF",
+    o2: "#111827",
   },
-  shirtShadow: "rgba(0,0,0,0.10)",
+  // "Bitmoji-ish" eye colors (we can make this selectable later)
+  iris: {
+    i1: "#2F80ED", // blue
+    i2: "#27AE60", // green
+    i3: "#8E5A2B", // brown
+    i4: "#111827", // dark
+  },
 } as const;
 
-/**
- * Bust/half-body viewBox (Bitmoji-like card framing)
- */
 export const viewBoxBust = "0 0 320 380";
 
 /**
- * Rounder head, slightly taller than wide.
- * This reads much closer to Bitmoji Deluxe than the old head.
+ * Softer head (not perfect circle), slightly narrower jaw.
  */
 export const headPathD =
-  "M160 44 C124 44 98 72 98 116 C98 164 128 200 160 200 C192 200 222 164 222 116 C222 72 196 44 160 44 Z";
+  "M160 46 C126 46 100 74 100 116 C100 164 128 200 160 200 C192 200 220 164 220 116 C220 74 194 46 160 46 Z";
 
 export function svgStyleVars(recipe: AvatarRecipe) {
   return {
     outline: palette.outline,
     shadow: palette.shadow,
     highlight: palette.highlight,
-    skinShadow: palette.skinShadow,
     skin: palette.skin[recipe.skin],
     hair: palette.hair[recipe.hairColor],
     outfit: palette.outfit[recipe.outfit],
-    shirtShadow: palette.shirtShadow,
+    // default iris (until we add to recipe)
+    iris: palette.iris.i3,
   };
 }
 
-/**
- * BUST BODY:
- * - background disc behind head (subtle)
- * - ears + head + neck + under-chin shadow
- */
 export function layerBodyBust(recipe: AvatarRecipe) {
   const c = svgStyleVars(recipe);
 
   return `
   <g id="bodyBust">
-    <!-- subtle backdrop circle (helps the avatar read like Bitmoji cards) -->
-    <circle cx="160" cy="140" r="128" fill="rgba(255,255,255,0.04)"/>
+    <!-- soft backdrop ring -->
+    <circle cx="160" cy="138" r="128" fill="rgba(255,255,255,0.04)"/>
+    <circle cx="160" cy="138" r="92" fill="rgba(255,255,255,0.03)"/>
 
-    <!-- ears -->
-    <path d="M94 126 C80 130 80 154 94 160 C108 166 114 152 112 142 C110 132 104 124 94 126 Z"
+    <!-- ears (smaller + more natural) -->
+    <path d="M102 132 C90 134 88 154 102 160 C114 166 120 154 118 144 C116 136 110 130 102 132 Z"
       fill="${c.skin}" stroke="${c.outline}" stroke-width="4"/>
-    <path d="M226 126 C240 130 240 154 226 160 C212 166 206 152 208 142 C210 132 216 124 226 126 Z"
+    <path d="M218 132 C230 134 232 154 218 160 C206 166 200 154 202 144 C204 136 210 130 218 132 Z"
       fill="${c.skin}" stroke="${c.outline}" stroke-width="4"/>
 
     <!-- head -->
-    <path d="${headPathD}" fill="${c.skin}" stroke="${c.outline}" stroke-width="4"/>
+    <path d="${headPathD}"
+      fill="${c.skin}" stroke="${c.outline}" stroke-width="4"/>
 
     <!-- under-chin shadow -->
-    <path d="M130 188 C144 204 176 204 190 188"
-      fill="none" stroke="${c.skinShadow}" stroke-width="12" stroke-linecap="round"/>
+    <path d="M132 190 C146 206 174 206 188 190"
+      fill="none" stroke="${c.shadow}" stroke-width="12" stroke-linecap="round"/>
 
     <!-- neck -->
-    <path d="M144 188 C144 212 176 212 176 188 L176 168 C176 160 144 160 144 168 Z"
+    <path d="M144 190 C144 214 176 214 176 190 L176 170 C176 162 144 162 144 170 Z"
       fill="${c.skin}" stroke="${c.outline}" stroke-width="4"/>
   </g>
   `;
 }
 
 /**
- * Hair BACK layer (behind head) — this is the #1 trick to avoid helmet hair.
- * Clip not required here; it sits behind the head.
+ * Hair BACK: creates depth so it stops looking like a helmet.
  */
 export function layerHairBack(recipe: AvatarRecipe) {
   const c = svgStyleVars(recipe);
   if (recipe.hair === "h0") return "";
 
-  // a soft “back mass” that peeks around the head edges
   return `
   <g id="hairBack">
-    <path d="M108 94
-      C118 60 138 46 160 46
-      C182 46 202 60 212 94
-      C206 84 194 78 160 78
-      C126 78 114 84 108 94 Z"
+    <path d="M112 100
+      C120 64 140 50 160 50
+      C180 50 200 64 208 100
+      C200 88 188 82 160 82
+      C132 82 120 88 112 100 Z"
       fill="${c.hair}" stroke="${c.outline}" stroke-width="4"/>
   </g>
   `;
 }
 
 /**
- * Deluxe Face:
- * - bigger eyes with whites + iris + pupil + sparkle
- * - brows calmer and higher
- * - nose smaller
- * - mouth smoother
+ * Face V2 (Deluxe feel):
+ * - layered eyes (white -> iris -> pupil -> highlight)
+ * - upper eyelid line to reduce "staring"
+ * - brows lighter
+ * - nose = small nostrils (no long outline)
  */
 export function layerFaceDeluxe(recipe: AvatarRecipe) {
   const c = svgStyleVars(recipe);
@@ -118,53 +114,60 @@ export function layerFaceDeluxe(recipe: AvatarRecipe) {
   const brows =
     recipe.brows === "b1"
       ? `
-      <path d="M118 108 C134 98 148 98 160 108" fill="none" stroke="${c.outline}" stroke-width="5" stroke-linecap="round"/>
-      <path d="M160 108 C172 98 186 98 202 108" fill="none" stroke="${c.outline}" stroke-width="5" stroke-linecap="round"/>
+      <path d="M120 110 C134 102 146 102 156 110" fill="none" stroke="${c.outline}" stroke-width="4.5" stroke-linecap="round"/>
+      <path d="M164 110 C174 102 186 102 200 110" fill="none" stroke="${c.outline}" stroke-width="4.5" stroke-linecap="round"/>
       `
       : `
-      <path d="M118 112 C134 120 148 120 160 112" fill="none" stroke="${c.outline}" stroke-width="5" stroke-linecap="round"/>
-      <path d="M160 112 C172 120 186 120 202 112" fill="none" stroke="${c.outline}" stroke-width="5" stroke-linecap="round"/>
+      <path d="M120 114 C134 120 146 120 156 114" fill="none" stroke="${c.outline}" stroke-width="4.5" stroke-linecap="round"/>
+      <path d="M164 114 C174 120 186 120 200 114" fill="none" stroke="${c.outline}" stroke-width="4.5" stroke-linecap="round"/>
       `;
 
   const eyes =
     recipe.eyes === "e1"
       ? `
-      <!-- left eye -->
-      <ellipse cx="138" cy="132" rx="16" ry="12" fill="#fff" stroke="${c.outline}" stroke-width="4"/>
-      <circle cx="142" cy="134" r="7" fill="${c.outline}"/>
-      <circle cx="144" cy="132" r="2.2" fill="#fff"/>
+      <!-- eye whites -->
+      <ellipse cx="140" cy="134" rx="16" ry="12" fill="#fff" stroke="${c.outline}" stroke-width="4"/>
+      <ellipse cx="180" cy="134" rx="16" ry="12" fill="#fff" stroke="${c.outline}" stroke-width="4"/>
 
-      <!-- right eye -->
-      <ellipse cx="182" cy="132" rx="16" ry="12" fill="#fff" stroke="${c.outline}" stroke-width="4"/>
-      <circle cx="178" cy="134" r="7" fill="${c.outline}"/>
-      <circle cx="180" cy="132" r="2.2" fill="#fff"/>
+      <!-- iris -->
+      <circle cx="144" cy="136" r="6.8" fill="${c.iris}"/>
+      <circle cx="176" cy="136" r="6.8" fill="${c.iris}"/>
+
+      <!-- pupil -->
+      <circle cx="145.5" cy="137" r="4.2" fill="${c.outline}"/>
+      <circle cx="174.5" cy="137" r="4.2" fill="${c.outline}"/>
+
+      <!-- sparkle -->
+      <circle cx="147.2" cy="135.6" r="1.7" fill="#fff"/>
+      <circle cx="176.2" cy="135.6" r="1.7" fill="#fff"/>
+
+      <!-- upper eyelid line (key bitmoji trick) -->
+      <path d="M126 132 C134 124 146 124 154 132" fill="none" stroke="${c.outline}" stroke-width="4" stroke-linecap="round"/>
+      <path d="M166 132 C174 124 186 124 194 132" fill="none" stroke="${c.outline}" stroke-width="4" stroke-linecap="round"/>
       `
       : `
-      <!-- e2: slightly relaxed eyes -->
-      <path d="M120 134 C128 120 148 120 156 134" fill="#fff" stroke="${c.outline}" stroke-width="4" stroke-linecap="round"/>
-      <circle cx="140" cy="136" r="6" fill="${c.outline}"/>
-      <circle cx="142" cy="134" r="2" fill="#fff"/>
-
-      <path d="M164 134 C172 120 192 120 200 134" fill="#fff" stroke="${c.outline}" stroke-width="4" stroke-linecap="round"/>
-      <circle cx="180" cy="136" r="6" fill="${c.outline}"/>
-      <circle cx="182" cy="134" r="2" fill="#fff"/>
+      <!-- relaxed eyes -->
+      <ellipse cx="140" cy="136" rx="15" ry="11" fill="#fff" stroke="${c.outline}" stroke-width="4"/>
+      <ellipse cx="180" cy="136" rx="15" ry="11" fill="#fff" stroke="${c.outline}" stroke-width="4"/>
+      <circle cx="144" cy="138" r="6.2" fill="${c.iris}"/>
+      <circle cx="176" cy="138" r="6.2" fill="${c.iris}"/>
+      <circle cx="145.5" cy="139" r="4" fill="${c.outline}"/>
+      <circle cx="174.5" cy="139" r="4" fill="${c.outline}"/>
+      <circle cx="147.2" cy="137.6" r="1.6" fill="#fff"/>
+      <circle cx="176.2" cy="137.6" r="1.6" fill="#fff"/>
+      <path d="M126 134 C134 126 146 126 154 134" fill="none" stroke="${c.outline}" stroke-width="4" stroke-linecap="round"/>
+      <path d="M166 134 C174 126 186 126 194 134" fill="none" stroke="${c.outline}" stroke-width="4" stroke-linecap="round"/>
       `;
 
+  // tiny nostrils instead of big outlined nose
   const nose = `
-    <path d="M160 142 C156 150 156 156 164 160"
-      fill="none" stroke="${c.outline}" stroke-width="4" stroke-linecap="round"/>
+    <path d="M156 154 C158 158 162 158 164 154" fill="none" stroke="${c.outline}" stroke-width="4" stroke-linecap="round"/>
   `;
 
   const mouth =
     recipe.mouth === "m1"
-      ? `<path d="M140 174 C150 186 170 186 180 174" fill="none" stroke="${c.outline}" stroke-width="4" stroke-linecap="round"/>`
-      : `<path d="M140 176 C150 170 170 170 180 176" fill="none" stroke="${c.outline}" stroke-width="4" stroke-linecap="round"/>`;
-
-  // tiny blush hint (very subtle)
-  const blush = `
-    <circle cx="120" cy="160" r="10" fill="rgba(255,105,135,0.06)"/>
-    <circle cx="200" cy="160" r="10" fill="rgba(255,105,135,0.06)"/>
-  `;
+      ? `<path d="M142 178 C150 186 170 186 178 178" fill="none" stroke="${c.outline}" stroke-width="4" stroke-linecap="round"/>`
+      : `<path d="M142 180 C150 176 170 176 178 180" fill="none" stroke="${c.outline}" stroke-width="4" stroke-linecap="round"/>`;
 
   return `
   <g id="faceDeluxe">
@@ -172,14 +175,13 @@ export function layerFaceDeluxe(recipe: AvatarRecipe) {
     ${eyes}
     ${nose}
     ${mouth}
-    ${blush}
   </g>
   `;
 }
 
 /**
- * Hair FRONT layer: hairline + top mass + optional bangs.
- * Uses headClip so hair sits naturally on the head.
+ * Hair FRONT: includes temples/sideburns + hairline.
+ * This is what kills helmet hair.
  */
 export function layerHairFront(recipe: AvatarRecipe) {
   const c = svgStyleVars(recipe);
@@ -187,79 +189,86 @@ export function layerHairFront(recipe: AvatarRecipe) {
 
   const common = `fill="${c.hair}" stroke="${c.outline}" stroke-width="4" clip-path="url(#headClip)"`;
 
+  const temples = `
+    <path d="M112 128 C112 112 120 104 132 104 C124 114 122 126 124 138 C118 138 114 134 112 128 Z"
+      ${common}/>
+    <path d="M208 128 C208 112 200 104 188 104 C196 114 198 126 196 138 C202 138 206 134 208 128 Z"
+      ${common}/>
+  `;
+
   if (recipe.hair === "h1") {
-    // clean short
     return `
     <g id="hairFront">
-      <path d="M112 104 C120 74 140 62 160 62 C180 62 200 74 208 104
-               C196 92 184 88 160 88 C136 88 124 92 112 104 Z"
+      ${temples}
+      <path d="M114 110 C124 78 144 64 160 64 C176 64 196 78 206 110
+               C194 96 182 90 160 90 C138 90 126 96 114 110 Z"
         ${common}/>
-      <path d="M128 86 C140 76 152 74 160 74 C174 74 188 80 196 86"
+      <path d="M130 88 C140 78 152 76 160 76 C174 76 188 82 196 88"
         fill="none" stroke="${c.highlight}" stroke-width="6" stroke-linecap="round" clip-path="url(#headClip)"/>
     </g>
     `;
   }
 
   if (recipe.hair === "h2") {
-    // messy
     return `
     <g id="hairFront">
-      <path d="M110 106
-        C112 76 138 60 160 60
-        C182 60 208 76 210 106
-        C198 94 186 92 170 94
-        C154 96 146 110 132 108
-        C120 106 114 110 110 106 Z"
+      ${temples}
+      <path d="M114 112
+        C116 82 140 64 160 64
+        C180 64 204 82 206 112
+        C194 98 184 96 170 98
+        C154 100 146 112 132 110
+        C120 108 116 114 114 112 Z"
         ${common}/>
     </g>
     `;
   }
 
   if (recipe.hair === "h3") {
-    // curls front
     return `
     <g id="hairFront">
-      <circle cx="126" cy="86" r="12" ${common}/>
-      <circle cx="150" cy="76" r="13" ${common}/>
-      <circle cx="176" cy="76" r="13" ${common}/>
-      <circle cx="196" cy="86" r="12" ${common}/>
-      <path d="M114 110 C126 94 142 90 160 90 C178 90 194 94 206 110" ${common}/>
+      ${temples}
+      <circle cx="130" cy="88" r="12" ${common}/>
+      <circle cx="150" cy="78" r="13" ${common}/>
+      <circle cx="176" cy="78" r="13" ${common}/>
+      <circle cx="194" cy="88" r="12" ${common}/>
+      <path d="M118 114 C130 98 144 94 160 94 C176 94 190 98 202 114" ${common}/>
     </g>
     `;
   }
 
   if (recipe.hair === "h4") {
-    // side part
     return `
     <g id="hairFront">
-      <path d="M110 106 C120 72 144 58 160 58 C188 58 206 72 210 106
-               C198 88 178 82 164 84 C146 88 136 102 120 108
-               C114 110 112 110 110 106 Z"
+      ${temples}
+      <path d="M114 112 C124 78 146 62 160 62 C186 62 202 80 206 112
+               C194 92 176 86 164 88 C146 92 136 108 122 114
+               C118 116 116 116 114 112 Z"
         ${common}/>
-      <path d="M136 80 C150 70 170 70 190 78"
+      <path d="M138 84 C150 74 170 74 190 82"
         fill="none" stroke="${c.highlight}" stroke-width="6" stroke-linecap="round" clip-path="url(#headClip)"/>
     </g>
     `;
   }
 
-  // h5: bangs
   return `
   <g id="hairFront">
-    <path d="M110 106 C120 70 140 56 160 56 C188 56 206 70 210 106
-             C202 94 190 88 176 88
-             C160 88 150 100 140 106
-             C128 114 118 114 110 106 Z"
+    ${temples}
+    <path d="M114 112 C124 76 144 60 160 60 C186 60 202 76 206 112
+             C198 98 188 92 176 92
+             C160 92 150 104 142 110
+             C132 118 122 118 114 112 Z"
       ${common}/>
-    <path d="M128 112 C140 126 150 130 160 130 C170 130 186 124 196 112"
+    <path d="M132 116 C144 128 152 132 160 132 C168 132 182 126 190 116"
       fill="none" stroke="${c.outline}" stroke-width="4" stroke-linecap="round" clip-path="url(#headClip)"/>
   </g>
   `;
 }
 
 /**
- * Outfit BUST:
- * Shoulders + sleeves + chest shape.
- * A tiny hint of arms so it reads like the Bitmoji base (without full-body complexity).
+ * Outfit BUST v2:
+ * - No circle. Real shoulders + taper.
+ * - Adds sleeve definition so it reads like a torso, not a balloon.
  */
 export function layerOutfitBust(recipe: AvatarRecipe) {
   const c = svgStyleVars(recipe);
@@ -267,30 +276,30 @@ export function layerOutfitBust(recipe: AvatarRecipe) {
 
   return `
   <g id="outfitBust">
-    <!-- shoulders + sleeves -->
-    <path d="M92 220
-      C112 202 134 196 160 196
-      C186 196 208 202 228 220
-      C246 236 254 260 254 292
-      C254 328 230 352 194 352
-      L126 352
-      C90 352 66 328 66 292
-      C66 260 74 236 92 220 Z"
+    <!-- main torso (tapered) -->
+    <path d="M88 226
+      C112 202 136 194 160 194
+      C184 194 208 202 232 226
+      C248 244 256 268 256 298
+      C256 332 234 356 196 360
+      L124 360
+      C86 356 64 332 64 298
+      C64 268 72 244 88 226 Z"
       fill="${c.outfit}" stroke="${c.outline}" stroke-width="4"/>
 
-    <!-- subtle chest shading -->
-    <path d="M96 246 C118 228 142 222 160 222 C178 222 202 228 224 246"
-      fill="none" stroke="${c.shirtShadow}" stroke-width="10" stroke-linecap="round"/>
+    <!-- sleeve edges -->
+    <path d="M86 240 C72 258 68 280 70 300" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="7" stroke-linecap="round"/>
+    <path d="M234 240 C248 258 252 280 250 300" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="7" stroke-linecap="round"/>
 
     ${
       hoodie
         ? `
       <!-- hood -->
-      <path d="M120 220 C120 196 140 178 160 178 C180 178 200 196 200 220
-               C186 212 176 210 160 210 C144 210 134 212 120 220 Z"
+      <path d="M122 222 C122 198 140 180 160 180 C180 180 198 198 198 222
+               C186 214 176 212 160 212 C144 212 134 214 122 222 Z"
         fill="${c.outfit}" stroke="${c.outline}" stroke-width="4"/>
       <!-- hoodie pocket hint -->
-      <path d="M128 300 C140 324 180 324 192 300"
+      <path d="M128 308 C140 330 180 330 192 308"
         fill="none" stroke="${c.highlight}" stroke-width="6" stroke-linecap="round"/>
         `
         : `
@@ -309,11 +318,11 @@ export function layerAccessory(recipe: AvatarRecipe) {
 
   return `
   <g id="accessory">
-    <rect x="118" y="122" width="44" height="28" rx="12"
+    <rect x="118" y="124" width="44" height="28" rx="12"
       fill="rgba(255,255,255,0.12)" stroke="${c.outline}" stroke-width="4"/>
-    <rect x="158" y="122" width="44" height="28" rx="12"
+    <rect x="158" y="124" width="44" height="28" rx="12"
       fill="rgba(255,255,255,0.12)" stroke="${c.outline}" stroke-width="4"/>
-    <path d="M162 136 L162 136" stroke="${c.outline}" stroke-width="6" stroke-linecap="round"/>
+    <path d="M162 138 L162 138" stroke="${c.outline}" stroke-width="6" stroke-linecap="round"/>
   </g>
   `;
 }
