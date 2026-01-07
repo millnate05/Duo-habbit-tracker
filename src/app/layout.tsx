@@ -1,11 +1,9 @@
-import type { Metadata } from "next";
-import Link from "next/link";
-import "./globals.css";
+"use client";
 
-export const metadata: Metadata = {
-  title: "Duo-Habbit-Tracker",
-  description: "Accountability app",
-};
+import React, { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import "./globals.css";
 
 export default function RootLayout({
   children,
@@ -14,15 +12,41 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <head>
+        <title>Duo-Habbit-Tracker</title>
+        <meta name="description" content="Accountability app" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+      </head>
+
       <body style={{ margin: 0 }}>
         <Header />
         <div style={{ paddingTop: 64 }}>{children}</div>
+
+        {/* Make summary triangle disappear */}
+        <style>{`
+          summary::-webkit-details-marker { display: none; }
+        `}</style>
       </body>
     </html>
   );
 }
 
 function Header() {
+  const pathname = usePathname();
+  const detailsRef = useRef<HTMLDetailsElement | null>(null);
+  const [open, setOpen] = useState(false);
+
+  // Close menu after navigation (works even if a link is clicked, back/forward, etc.)
+  useEffect(() => {
+    setOpen(false);
+    if (detailsRef.current) detailsRef.current.open = false;
+  }, [pathname]);
+
+  function closeMenu() {
+    setOpen(false);
+    if (detailsRef.current) detailsRef.current.open = false;
+  }
+
   return (
     <header
       style={{
@@ -41,8 +65,13 @@ function Header() {
         zIndex: 50,
       }}
     >
- {/* Hamburger + dropdown */}
-      <details style={{ position: "relative" }}>
+      {/* Hamburger + dropdown */}
+      <details
+        ref={detailsRef}
+        open={open}
+        onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
+        style={{ position: "relative" }}
+      >
         <summary
           aria-label="Open menu"
           style={{
@@ -75,36 +104,38 @@ function Header() {
             boxShadow: "0 12px 30px rgba(0,0,0,0.35)",
           }}
         >
-          <MenuItem href="/" label="Home" />
-          <MenuItem href="/tasks" label="Tasks" />
-          <MenuItem href="/completed" label="Completed" />
-          <MenuItem href="/stats" label="Stats" />
-          <MenuItem href="/avatar" label="Avatar" />
-          <MenuItem href="/profile" label="Profile" />
+          <MenuItem href="/" label="Home" onSelect={closeMenu} />
+          <MenuItem href="/tasks" label="Tasks" onSelect={closeMenu} />
+          <MenuItem href="/completed" label="Completed" onSelect={closeMenu} />
+          <MenuItem href="/stats" label="Stats" onSelect={closeMenu} />
+          <MenuItem href="/avatar" label="Avatar" onSelect={closeMenu} />
+          <MenuItem href="/profile" label="Profile" onSelect={closeMenu} />
         </nav>
       </details>
 
-
-
-      
       <div style={{ fontWeight: 900, letterSpacing: 0.5 }}>
         Duo-Habbit-Tracker
       </div>
 
-     
-
-      {/* Make summary triangle disappear */}
-      <style>{`
-        summary::-webkit-details-marker { display: none; }
-      `}</style>
+      {/* Spacer so title stays centered-ish */}
+      <div style={{ width: 44 }} />
     </header>
   );
 }
 
-function MenuItem({ href, label }: { href: string; label: string }) {
+function MenuItem({
+  href,
+  label,
+  onSelect,
+}: {
+  href: string;
+  label: string;
+  onSelect: () => void;
+}) {
   return (
     <Link
       href={href}
+      onClick={onSelect}
       style={{
         display: "block",
         padding: "12px 14px",
