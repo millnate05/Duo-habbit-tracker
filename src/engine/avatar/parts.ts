@@ -25,7 +25,7 @@ export const palette = {
     sh1: "#FFFFFF",
     sh2: "#111827",
   },
-};
+} as const;
 
 // All parts are authored to the SAME pose.
 // ViewBox chosen so it's easy to scale everywhere.
@@ -35,6 +35,7 @@ export const viewBox = "0 0 320 520";
 export function svgStyleVars(recipe: AvatarRecipe) {
   return {
     outline: palette.outline,
+    shadow: palette.shadow, // ✅ FIX: include shadow so c.shadow exists
     skin: palette.skin[recipe.skin],
     hair: palette.hair[recipe.hairColor],
     outfit: palette.outfit[recipe.outfit],
@@ -43,7 +44,6 @@ export function svgStyleVars(recipe: AvatarRecipe) {
 }
 
 // --- Layers (base → top) ---
-// You’ll grow these into proper paths. For now, they’re clean shapes that prove the system.
 export function layerBody(recipe: AvatarRecipe) {
   const c = svgStyleVars(recipe);
 
@@ -159,7 +159,6 @@ export function layerHair(recipe: AvatarRecipe) {
 
 export function layerOutfit(recipe: AvatarRecipe) {
   const c = svgStyleVars(recipe);
-
   const hoodie = recipe.outfit === "o2";
 
   return `
@@ -174,7 +173,9 @@ export function layerOutfit(recipe: AvatarRecipe) {
       C90 360 70 340 70 310 Z"
       fill="${c.outfit}" stroke="${c.outline}" stroke-width="4" stroke-linejoin="round"/>
 
-    ${hoodie ? `
+    ${
+      hoodie
+        ? `
       <!-- hood -->
       <path d="M104 214
         C104 188 128 166 160 166
@@ -185,11 +186,13 @@ export function layerOutfit(recipe: AvatarRecipe) {
       <!-- pocket -->
       <path d="M124 296 C136 320 184 320 196 296"
         fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="6" stroke-linecap="round"/>
-    ` : `
+    `
+        : `
       <!-- tee collar -->
       <path d="M132 206 C146 220 174 220 188 206"
         fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="6" stroke-linecap="round"/>
-    `}
+    `
+    }
   </g>
   `;
 }
@@ -234,4 +237,3 @@ export function layerAccessory(recipe: AvatarRecipe) {
   </g>
   `;
 }
-
