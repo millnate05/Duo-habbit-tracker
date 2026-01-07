@@ -64,8 +64,10 @@ export function layerBody(recipe: AvatarRecipe) {
       fill="${c.skin}" stroke="${c.outline}" stroke-width="4" stroke-linejoin="round"/>
 
     <!-- subtle cheek shadow -->
-    <path d="M112 132 C120 165 135 178 152 186" fill="none" stroke="${c.shadow}" stroke-width="10" stroke-linecap="round"/>
-    <path d="M208 132 C200 165 185 178 168 186" fill="none" stroke="${c.shadow}" stroke-width="10" stroke-linecap="round"/>
+    <path d="M112 132 C120 165 135 178 152 186"
+      fill="none" stroke="${c.shadow}" stroke-width="10" stroke-linecap="round"/>
+    <path d="M208 132 C200 165 185 178 168 186"
+      fill="none" stroke="${c.shadow}" stroke-width="10" stroke-linecap="round"/>
   </g>
   `;
 }
@@ -269,11 +271,38 @@ export function layerLegsAndShoes(recipe: AvatarRecipe) {
       fill="#1F2937" stroke="${c.outline}" stroke-width="4" stroke-linejoin="round"/>
 
     <!-- right leg -->
-    <path d="M198 392z
-      " fill="none"/>
     <path d="M198 392
       C194 412 192 440 194 470
       C195 488 178 490 166 482
       L166 470
       C170 438 170 414 170 392 Z"
-      fill="#1F2937" stroke="${c.o
+      fill="#1F2937" stroke="${c.outline}" stroke-width="4" stroke-linejoin="round"/>
+
+    <!-- shoes -->
+    <path d="M106 470 C110 490 142 494 158 482 L158 470 Z"
+      fill="${c.shoes}" stroke="${c.outline}" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M162 470 C178 494 210 490 214 470 L162 470 Z"
+      fill="${c.shoes}" stroke="${c.outline}" stroke-width="4" stroke-linejoin="round"/>
+
+    <!-- shoe crease -->
+    <path d="M118 478 C128 486 140 486 150 478" fill="none" stroke="rgba(0,0,0,0.12)" stroke-width="5" stroke-linecap="round"/>
+    <path d="M170 478 C180 486 192 486 202 478" fill="none" stroke="rgba(0,0,0,0.12)" stroke-width="5" stroke-linecap="round"/>
+  </g>
+  `;
+}
+
+export function layerAccessory(recipe: AvatarRecipe) {
+  const c = svgStyleVars(recipe);
+
+  if (recipe.accessory === "a0") return "";
+
+  return `
+  <g id="accessory">
+    <rect x="116" y="116" width="44" height="28" rx="10"
+      fill="rgba(255,255,255,0.15)" stroke="${c.outline}" stroke-width="4"/>
+    <rect x="160" y="116" width="44" height="28" rx="10"
+      fill="rgba(255,255,255,0.15)" stroke="${c.outline}" stroke-width="4"/>
+    <path d="M160 128 L160 128" stroke="${c.outline}" stroke-width="6" stroke-linecap="round"/>
+  </g>
+  `;
+}
