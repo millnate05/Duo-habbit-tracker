@@ -3,7 +3,7 @@
 import React from "react";
 import { AvatarEditor } from "@/UI/avatar/AvatarEditor";
 import type { AvatarRecipe } from "@/engine/avatar/types";
-import { createClient } from "@/engine/supabase/client"; // <-- adjust to your actual path
+import { createClient } from "@/engine/supabase/Client"; // <-- adjust to your actual path
 
 export default function AvatarPageClient() {
   const supabase = React.useMemo(() => createClient(), []);
