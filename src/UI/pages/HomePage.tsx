@@ -1,6 +1,6 @@
 // FORCE NEW COMMIT: 2026-01-06-REWRITE-HOME
 "use client";
-
+ 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { theme } from "@/UI/theme";
