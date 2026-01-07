@@ -1,5 +1,5 @@
 import type { AvatarRecipe } from "./types";
-
+ 
 export const palette = {
   outline: "#141414",
   shadow: "rgba(0,0,0,0.12)",
