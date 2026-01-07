@@ -1,7 +1,7 @@
 "use client";
  
 import React from "react";
-import { AvatarEditor } from "@/UI/Avatar/AvatarEditor";
+import { AvatarEditor } from "@/UI/avatar/AvatarEditor";
 import type { AvatarRecipe } from "@/engine/avatar/types";
 import { createClient } from "@/engine/supabase/Client"; // <-- adjust to your actual path
 
