@@ -1,18 +1,18 @@
 import type { AvatarRecipe } from "./types";
 import {
-  viewBox,
+  viewBoxBust,
   headPathD,
-  layerBody,
-  layerFace,
-  layerHair,
+  layerBodyBust,
+  layerHairBack,
+  layerHairFront,
+  layerFaceDeluxe,
   layerAccessory,
-  layerOutfit,
-  layerLegsAndShoes,
+  layerOutfitBust,
 } from "./parts";
 
 export function renderAvatarSvg(recipe: AvatarRecipe) {
   return `
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" role="img" aria-label="Avatar">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBoxBust}" role="img" aria-label="Avatar">
     <defs>
       <clipPath id="headClip">
         <path d="${headPathD}" />
@@ -20,12 +20,12 @@ export function renderAvatarSvg(recipe: AvatarRecipe) {
     </defs>
 
     <g stroke-linecap="round" stroke-linejoin="round">
-      ${layerBody(recipe)}
-      ${layerHair(recipe)}
-      ${layerFace(recipe)}
+      ${layerBodyBust(recipe)}
+      ${layerHairBack(recipe)}
+      ${layerFaceDeluxe(recipe)}
       ${layerAccessory(recipe)}
-      ${layerOutfit(recipe)}
-      ${layerLegsAndShoes(recipe)}
+      ${layerHairFront(recipe)}
+      ${layerOutfitBust(recipe)}
     </g>
   </svg>
   `.trim();
