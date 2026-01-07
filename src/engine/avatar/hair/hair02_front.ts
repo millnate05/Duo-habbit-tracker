@@ -1,18 +1,79 @@
 export const hair02_front = `
-<g id="hair02_front">
-  <!-- temples -->
-  <path class="ol" d="M178 242 C174 218 186 198 206 194 C198 214 198 232 204 252 C192 256 182 252 178 242 Z" fill="var(--hair)"/>
-  <path class="ol" d="M334 242 C338 218 326 198 306 194 C314 214 314 232 308 252 C320 256 330 252 334 242 Z" fill="var(--hair)"/>
+<g id="hair02_front" clip-path="url(#clip-scalp01)">
+  <!-- Main sweep cap -->
+  <path
+    d="
+      M164 192
+      C170 130 212 94 258 94
+      C312 94 350 134 350 198
+      C350 232 334 260 308 276
+      C290 286 270 288 256 278
+      C246 270 244 254 250 238
+      C220 260 196 266 180 256
+      C166 248 160 226 164 192
+      Z
+    "
+    fill="var(--hair)"
+  />
 
-  <!-- bangs -->
-  <path class="ol" d="M176 190
-    C190 130 222 108 256 108
-    C290 108 322 130 336 190
-    C324 172 306 166 290 170
-    C270 176 266 194 256 198
-    C246 194 242 176 222 170
-    C206 166 188 172 176 190 Z"
-    fill="var(--hair)"/>
+  <!-- Sweep highlight band -->
+  <path
+    d="
+      M206 120
+      C240 136 270 156 292 184
+      C310 206 318 230 316 252
+    "
+    fill="none"
+    stroke="rgba(255,255,255,0.20)"
+    stroke-width="12"
+    stroke-linecap="round"
+    opacity="0.55"
+  />
+
+  <!-- Sweep strand lines -->
+  <path
+    d="M196 162 C230 170 260 188 280 214"
+    fill="none"
+    stroke="rgba(0,0,0,0.22)"
+    stroke-width="8"
+    stroke-linecap="round"
+    opacity="0.30"
+  />
+  <path
+    d="M186 196 C222 200 258 220 282 246"
+    fill="none"
+    stroke="rgba(0,0,0,0.22)"
+    stroke-width="8"
+    stroke-linecap="round"
+    opacity="0.28"
+  />
+
+  <!-- Side lock (heavier on swept side) -->
+  <path
+    d="
+      M178 228
+      C156 252 156 296 182 318
+      C200 334 224 334 234 326
+      C212 304 210 266 222 238
+      C206 240 190 236 178 228
+      Z
+    "
+    fill="var(--hair)"
+    opacity="0.95"
+  />
+
+  <!-- Small opposite side lock -->
+  <path
+    d="
+      M328 232
+      C344 252 344 288 326 306
+      C314 320 300 324 292 318
+      C306 300 308 272 300 246
+      C312 244 322 240 328 232
+      Z
+    "
+    fill="var(--hair)"
+    opacity="0.92"
+  />
 </g>
 `;
-
