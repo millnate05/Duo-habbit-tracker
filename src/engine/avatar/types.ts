@@ -1,6 +1,6 @@
 export type AvatarRecipe = {
   skin: "s1" | "s2" | "s3" | "s4" | "s5" | "s6";
-  hair: "h0" | "h1" | "h2";
+  hair: "h0" | "h1" | "h2" | "h3" | "h4" | "h5";
   hairColor: "hc1" | "hc2" | "hc3" | "hc4";
   eyes: "e1" | "e2";
   brows: "b1" | "b2";
@@ -21,4 +21,3 @@ export const DEFAULT_AVATAR: AvatarRecipe = {
   shoes: "sh1",
   accessory: "a0",
 };
-
