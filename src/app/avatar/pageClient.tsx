@@ -1,5 +1,5 @@
 "use client";
-
+ 
 import React from "react";
 import { AvatarEditor } from "@/UI/avatar/AvatarEditor.tsx";
 import type { AvatarRecipe } from "@/engine/avatar/types";
