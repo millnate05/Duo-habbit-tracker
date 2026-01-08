@@ -1,13 +1,13 @@
 // src/engine/avatar/avatar.ts
-// Single-file avatar engine (v3.3)
+// Single-file avatar engine (v3.4)
 // - Preserves the "perfect" default head path exactly at 1/1/1
 // - Sliders morph that SAME path (no silhouette change at default)
 // - Cheek influence shifted ~10% lower (0.45 -> 0.55)
-// - Hair updated to match reference: side-swept red with chunked sections
-//   - Back layer for volume (not clipped)
-//   - Front chunks (clipped) that create real segmentation
-//   - Head outline is clipped so you don't see harsh outline under hair
-// - Draw order: head fill -> hair back -> hair front -> outline (face only)
+// - Hair: side-swept red with real definition
+//   - Back silhouette redesigned (less helmet, more flow)
+//   - Front hair uses a MASK to "cut" separation grooves (true chunking)
+//   - Outline is masked out wherever hair covers the head (no harsh head outline under hair)
+// - Draw order: head fill -> hair back -> hair front -> outline (masked)
 
 export type AvatarRecipe = {
   skinTone: "olive";
@@ -152,104 +152,128 @@ function faceTy(recipe: AvatarRecipe) {
 function sweptRedHair(recipe: AvatarRecipe) {
   const ty = faceTy(recipe);
 
-  const outlineCutY = ty(172);
+  // A "cover" region: anything above this is hair-covered, so outline should disappear there.
+  const coverTopY = ty(205);
 
+  // BACK hair silhouette: add peaks/valleys so it stops reading as a helmet.
+  // Less round on right, more "lift" at top, small indentation near left.
   const back = `
-    M 132 ${ty(150)}
-    C 140 ${ty(108)} 178 ${ty(78)} 232 ${ty(70)}
-    C 288 ${ty(62)} 360 ${ty(88)} 398 ${ty(132)}
-    C 420 ${ty(158)} 430 ${ty(206)} 404 ${ty(234)}
-    C 382 ${ty(258)} 344 ${ty(250)} 316 ${ty(238)}
-    C 290 ${ty(226)} 266 ${ty(230)} 242 ${ty(244)}
-    C 214 ${ty(260)} 176 ${ty(250)} 152 ${ty(228)}
-    C 128 ${ty(206)} 118 ${ty(176)} 132 ${ty(150)}
+    M 138 ${ty(168)}
+    C 134 ${ty(132)} 152 ${ty(96)} 198 ${ty(78)}
+    C 232 ${ty(64)} 278 ${ty(62)} 314 ${ty(72)}
+    C 358 ${ty(84)} 392 ${ty(112)} 410 ${ty(142)}
+    C 426 ${ty(170)} 424 ${ty(214)} 398 ${ty(236)}
+    C 374 ${ty(256)} 344 ${ty(252)} 316 ${ty(238)}
+    C 290 ${ty(224)} 262 ${ty(224)} 238 ${ty(242)}
+    C 214 ${ty(262)} 180 ${ty(256)} 158 ${ty(236)}
+    C 136 ${ty(216)} 126 ${ty(194)} 138 ${ty(168)}
     Z
   `.replace(/\s+/g, " ").trim();
 
-  const chunkL = `
-    M 150 ${ty(162)}
-    C 170 ${ty(134)} 210 ${ty(112)} 246 ${ty(118)}
-    C 214 ${ty(130)} 190 ${ty(148)} 186 ${ty(170)}
-    C 182 ${ty(192)} 156 ${ty(194)} 150 ${ty(178)}
-    C 146 ${ty(170)} 146 ${ty(168)} 150 ${ty(162)}
+  // FRONT base mass (this will be cut by a mask into chunks)
+  // More hair "flow": deeper S-curve and a more natural hairline dip.
+  const frontBase = `
+    M 148 ${ty(176)}
+    C 170 ${ty(132)} 240 ${ty(104)} 308 ${ty(114)}
+    C 362 ${ty(122)} 402 ${ty(154)} 396 ${ty(190)}
+    C 392 ${ty(214)} 372 ${ty(232)} 344 ${ty(224)}
+    C 328 ${ty(220)} 318 ${ty(206)} 312 ${ty(192)}
+    C 296 ${ty(212)} 276 ${ty(224)} 252 ${ty(214)}
+    C 228 ${ty(202)} 202 ${ty(206)} 184 ${ty(220)}
+    C 162 ${ty(236)} 142 ${ty(218)} 146 ${ty(196)}
+    C 148 ${ty(188)} 148 ${ty(182)} 148 ${ty(176)}
+    Z
+
+    M 360 ${ty(156)}
+    C 404 ${ty(146)} 426 ${ty(176)} 414 ${ty(212)}
+    C 402 ${ty(248)} 348 ${ty(244)} 350 ${ty(206)}
+    C 352 ${ty(184)} 356 ${ty(168)} 360 ${ty(156)}
     Z
   `.replace(/\s+/g, " ").trim();
 
-  const chunkM = `
-    M 186 ${ty(156)}
-    C 220 ${ty(118)} 286 ${ty(98)} 334 ${ty(112)}
-    C 300 ${ty(116)} 272 ${ty(132)} 258 ${ty(152)}
-    C 246 ${ty(170)} 214 ${ty(188)} 190 ${ty(186)}
-    C 176 ${ty(184)} 176 ${ty(168)} 186 ${ty(156)}
+  // CUT GROOVES (black in mask) — these are literal "cuts" in the hair shape.
+  // Think of them as thin wedges/valleys between clumps.
+  const cut1 = `
+    M 210 ${ty(206)}
+    C 228 ${ty(176)} 252 ${ty(160)} 280 ${ty(160)}
+    C 258 ${ty(178)} 240 ${ty(198)} 230 ${ty(224)}
+    C 224 ${ty(240)} 206 ${ty(232)} 210 ${ty(206)}
     Z
   `.replace(/\s+/g, " ").trim();
 
-  const chunkR = `
-    M 270 ${ty(150)}
-    C 306 ${ty(118)} 360 ${ty(124)} 382 ${ty(152)}
-    C 394 ${ty(168)} 390 ${ty(190)} 370 ${ty(190)}
-    C 350 ${ty(190)} 336 ${ty(176)} 326 ${ty(164)}
-    C 314 ${ty(178)} 292 ${ty(188)} 270 ${ty(178)}
-    C 258 ${ty(172)} 258 ${ty(160)} 270 ${ty(150)}
+  const cut2 = `
+    M 288 ${ty(200)}
+    C 306 ${ty(176)} 334 ${ty(170)} 356 ${ty(184)}
+    C 334 ${ty(186)} 316 ${ty(200)} 306 ${ty(220)}
+    C 298 ${ty(236)} 280 ${ty(226)} 288 ${ty(200)}
     Z
   `.replace(/\s+/g, " ").trim();
 
-  const tuft = `
-    M 360 ${ty(152)}
-    C 404 ${ty(144)} 424 ${ty(170)} 414 ${ty(206)}
-    C 404 ${ty(242)} 354 ${ty(238)} 350 ${ty(202)}
-    C 348 ${ty(182)} 354 ${ty(166)} 360 ${ty(152)}
+  // A smaller cut near the right tuft so it separates from the main swoop
+  const cut3 = `
+    M 346 ${ty(188)}
+    C 368 ${ty(176)} 386 ${ty(186)} 394 ${ty(204)}
+    C 382 ${ty(204)} 366 ${ty(210)} 358 ${ty(222)}
+    C 350 ${ty(234)} 338 ${ty(214)} 346 ${ty(188)}
     Z
   `.replace(/\s+/g, " ").trim();
 
-  const seam1 = `
-    M 210 ${ty(154)}
-    C 236 ${ty(134)} 264 ${ty(128)} 290 ${ty(132)}
-    C 268 ${ty(140)} 244 ${ty(152)} 226 ${ty(172)}
-    C 218 ${ty(180)} 206 ${ty(170)} 210 ${ty(154)}
+  // Seam shadows (painted on top to deepen the valleys, even where the mask cut is small)
+  const seamShade1 = `
+    M 206 ${ty(206)}
+    C 230 ${ty(174)} 260 ${ty(160)} 294 ${ty(166)}
+    C 270 ${ty(176)} 244 ${ty(196)} 232 ${ty(226)}
+    C 226 ${ty(240)} 202 ${ty(232)} 206 ${ty(206)}
     Z
   `.replace(/\s+/g, " ").trim();
 
-  // ✅ FIXED: complete + closed seam2 path
-  const seam2 = `
-    M 300 ${ty(148)}
-    C 326 ${ty(140)} 350 ${ty(144)} 360 ${ty(162)}
-    C 344 ${ty(160)} 324 ${ty(166)} 314 ${ty(178)}
-    C 306 ${ty(186)} 292 ${ty(172)} 300 ${ty(148)}
+  const seamShade2 = `
+    M 284 ${ty(198)}
+    C 310 ${ty(176)} 340 ${ty(176)} 364 ${ty(190)}
+    C 340 ${ty(190)} 318 ${ty(204)} 308 ${ty(224)}
+    C 300 ${ty(238)} 278 ${ty(228)} 284 ${ty(198)}
     Z
   `.replace(/\s+/g, " ").trim();
 
+  // Highlights shaped like the reference (chunky glossy arcs)
   const hi1 = `
-    M 178 ${ty(160)}
-    C 204 ${ty(132)} 236 ${ty(122)} 264 ${ty(126)}
-    C 238 ${ty(136)} 214 ${ty(150)} 196 ${ty(168)}
-    C 188 ${ty(176)} 172 ${ty(172)} 178 ${ty(160)}
+    M 180 ${ty(184)}
+    C 206 ${ty(150)} 244 ${ty(134)} 278 ${ty(140)}
+    C 250 ${ty(154)} 224 ${ty(170)} 206 ${ty(192)}
+    C 198 ${ty(202)} 172 ${ty(198)} 180 ${ty(184)}
     Z
   `.replace(/\s+/g, " ").trim();
 
   const hi2 = `
-    M 274 ${ty(132)}
-    C 302 ${ty(122)} 334 ${ty(126)} 350 ${ty(144)}
-    C 328 ${ty(144)} 306 ${ty(152)} 292 ${ty(166)}
-    C 282 ${ty(172)} 268 ${ty(160)} 274 ${ty(132)}
+    M 280 ${ty(144)}
+    C 310 ${ty(132)} 344 ${ty(138)} 362 ${ty(160)}
+    C 338 ${ty(160)} 314 ${ty(170)} 296 ${ty(186)}
+    C 286 ${ty(194)} 270 ${ty(178)} 280 ${ty(144)}
     Z
   `.replace(/\s+/g, " ").trim();
 
-  const faceOutlineClipRect = { x: 0, y: outlineCutY, w: 512, h: 512 - outlineCutY };
+  // Outline mask cover (covers top + sides where hair overlaps)
+  const outlineCover = `
+    M 100 ${ty(86)}
+    C 170 ${ty(44)} 342 ${ty(44)} 412 ${ty(86)}
+    C 450 ${ty(126)} 448 ${coverTopY} 256 ${coverTopY}
+    C 64 ${coverTopY} 62 ${ty(126)} 100 ${ty(86)}
+    Z
+  `.replace(/\s+/g, " ").trim();
 
   return {
-    faceOutlineClipRect,
     back,
-    chunks: { chunkL, chunkM, chunkR, tuft },
-    seams: { seam1, seam2 },
+    frontBase,
+    cuts: { cut1, cut2, cut3 },
+    seamShades: { seamShade1, seamShade2 },
     his: { hi1, hi2 },
+    outlineCover,
   };
 }
 
 export function renderAvatarSvg(recipe: AvatarRecipe, size = 512): string {
   const headD = morphedHeadPath(recipe);
   const hair = sweptRedHair(recipe);
-  const ty = faceTy(recipe);
 
   return `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="${size}" height="${size}" preserveAspectRatio="xMidYMid meet">
@@ -262,38 +286,59 @@ export function renderAvatarSvg(recipe: AvatarRecipe, size = 512): string {
       <path d="${headD}" />
     </clipPath>
 
-    <clipPath id="clipFaceOutline">
-      <rect x="${hair.faceOutlineClipRect.x}" y="${hair.faceOutlineClipRect.y}" width="${hair.faceOutlineClipRect.w}" height="${hair.faceOutlineClipRect.h}" />
-    </clipPath>
+    <!-- Mask to "cut" grooves out of the front hair (true separation) -->
+    <mask id="maskHairCuts">
+      <!-- start: hair visible -->
+      <rect x="0" y="0" width="512" height="512" fill="white" />
+      <!-- cuts: remove thin wedges (black) -->
+      <path d="${hair.cuts.cut1}" fill="black" />
+      <path d="${hair.cuts.cut2}" fill="black" />
+      <path d="${hair.cuts.cut3}" fill="black" />
+    </mask>
+
+    <!-- Mask the outline so it doesn't show where hair covers the head -->
+    <mask id="maskOutlineUnderHair">
+      <!-- outline visible by default -->
+      <rect x="0" y="0" width="512" height="512" fill="white" />
+      <!-- hair cover region hides outline (black) -->
+      <path d="${hair.outlineCover}" fill="black" />
+    </mask>
   </defs>
 
+  <!-- 1) Head fill -->
   <g id="head-fill">
     <path fill="var(--skin)" d="${headD}" />
   </g>
 
+  <!-- 2) Back hair (not clipped) -->
   <g id="hair-back">
     <path fill="var(--hair)" d="${hair.back}" />
+    <!-- subtle back shadow for depth -->
+    <path fill="${PALETTE.hair.redShadow}" opacity="0.35" d="${hair.back}" />
   </g>
 
+  <!-- 3) Front hair (clipped to head, then cut by mask into chunks) -->
   <g id="hair-front" clip-path="url(#clipHead)">
-    <path fill="var(--hair)" d="${hair.chunks.chunkL}" />
-    <path fill="var(--hair)" d="${hair.chunks.chunkM}" />
-    <path fill="var(--hair)" d="${hair.chunks.chunkR}" />
-    <path fill="var(--hair)" d="${hair.chunks.tuft}" />
+    <!-- base mass -->
+    <path fill="var(--hair)" d="${hair.frontBase}" mask="url(#maskHairCuts)" />
 
-    <path fill="${PALETTE.hair.redDeep}" opacity="0.22" d="${hair.seams.seam1}" />
-    <path fill="${PALETTE.hair.redDeep}" opacity="0.20" d="${hair.seams.seam2}" />
+    <!-- deepen valleys so the cuts read as separations -->
+    <path fill="${PALETTE.hair.redDeep}" opacity="0.22" d="${hair.seamShades.seamShade1}" />
+    <path fill="${PALETTE.hair.redDeep}" opacity="0.20" d="${hair.seamShades.seamShade2}" />
 
-    <g opacity="0.28" stroke="${PALETTE.hair.redDeep}" stroke-width="3" fill="none" stroke-linecap="round">
-      <path d="M 186 ${ty(154)} C 230 ${ty(124)} 270 ${ty(118)} 318 ${ty(130)}" />
-      <path d="M 262 ${ty(150)} C 300 ${ty(140)} 332 ${ty(144)} 356 ${ty(160)}" />
+    <!-- optional thin seam lines (helps the “chunk” look a LOT) -->
+    <g opacity="0.22" stroke="${PALETTE.hair.redDeep}" stroke-width="3" fill="none" stroke-linecap="round">
+      <path d="M 196 ${faceTy(recipe)(206)} C 232 ${faceTy(recipe)(172)} 262 ${faceTy(recipe)(160)} 304 ${faceTy(recipe)(172)}" />
+      <path d="M 276 ${faceTy(recipe)(204)} C 312 ${faceTy(recipe)(178)} 344 ${faceTy(recipe)(180)} 372 ${faceTy(recipe)(198)}" />
     </g>
 
+    <!-- highlights -->
     <path fill="${PALETTE.hair.redHi}" d="${hair.his.hi1}" />
     <path fill="${PALETTE.hair.redHi2}" d="${hair.his.hi2}" />
   </g>
 
-  <g id="head-outline" clip-path="url(#clipFaceOutline)">
+  <!-- 4) Head outline (masked so it vanishes under hair) -->
+  <g id="head-outline" mask="url(#maskOutlineUnderHair)">
     <path class="ol" fill="none" d="${headD}" />
   </g>
 </svg>
