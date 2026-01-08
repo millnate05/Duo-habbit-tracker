@@ -1,9 +1,10 @@
 // src/engine/avatar/avatar.ts
-// Single-file avatar engine (v3)
+// Single-file avatar engine (v3.1)
 // - Preserves the "perfect" default head path exactly at 1/1/1
 // - Sliders morph that SAME path (no silhouette change at default)
 // - Cheek influence shifted ~10% lower (0.45 -> 0.55)
-// - Adds a crew cut hair cap clipped to the head so it hugs perfectly
+// - Crew cut hair cap clipped to the head so it hugs perfectly
+// - Improved crew cut look: grain texture + side fade + soft sheen + subtle separation lines
 // - Correct draw order so hair is visible (head fill -> hair -> outline)
 
 export type AvatarRecipe = {
@@ -184,6 +185,13 @@ export function renderAvatarSvg(recipe: AvatarRecipe, size = 512): string {
   const headD = morphedHeadPath(recipe);
   const hairD = crewCutHairPath(recipe);
 
+  // Keep highlights/separation aligned when face length changes
+  const faceLength = clamp(recipe.faceLength, 0.5, 1.5);
+  const yTop = 84;
+  const yBottom = 372;
+  const cy = (yTop + yBottom) / 2;
+  const ty = (y: number) => cy + (y - cy) * faceLength;
+
   return `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="${size}" height="${size}" preserveAspectRatio="xMidYMid meet">
   <style>
@@ -194,6 +202,27 @@ export function renderAvatarSvg(recipe: AvatarRecipe, size = 512): string {
     <clipPath id="clipHead">
       <path d="${headD}" />
     </clipPath>
+
+    <!-- Crew cut texture: subtle speckle (reads like short hair) -->
+    <pattern id="hairGrain" patternUnits="userSpaceOnUse" width="6" height="6">
+      <circle cx="1" cy="1" r="0.65" fill="rgba(255,255,255,0.08)" />
+      <circle cx="4" cy="2" r="0.55" fill="rgba(0,0,0,0.12)" />
+      <circle cx="2" cy="5" r="0.45" fill="rgba(255,255,255,0.05)" />
+    </pattern>
+
+    <!-- Side fade: darker near edges so it doesn't look like a flat cap -->
+    <radialGradient id="hairFade" cx="50%" cy="48%" r="70%">
+      <stop offset="52%" stop-color="rgba(0,0,0,0)" />
+      <stop offset="80%" stop-color="rgba(0,0,0,0.18)" />
+      <stop offset="100%" stop-color="rgba(0,0,0,0.30)" />
+    </radialGradient>
+
+    <!-- Soft top sheen (very subtle) -->
+    <linearGradient id="hairSheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.10)" />
+      <stop offset="38%" stop-color="rgba(255,255,255,0.02)" />
+      <stop offset="100%" stop-color="rgba(0,0,0,0.10)" />
+    </linearGradient>
   </defs>
 
   <!-- 1) Head fill FIRST -->
@@ -203,17 +232,40 @@ export function renderAvatarSvg(recipe: AvatarRecipe, size = 512): string {
 
   <!-- 2) Hair (clipped to head so it hugs perfectly) -->
   <g id="hair" clip-path="url(#clipHead)">
+    <!-- Base cap -->
     <path fill="var(--hair)" d="${hairD}" />
-    <!-- Subtle highlight band to make it read like hair (still clipped) -->
+
+    <!-- Grain texture -->
+    <path fill="url(#hairGrain)" opacity="0.60" d="${hairD}" />
+
+    <!-- Side fade -->
+    <path fill="url(#hairFade)" opacity="0.95" d="${hairD}" />
+
+    <!-- Soft sheen -->
+    <path fill="url(#hairSheen)" opacity="0.95" d="${hairD}" />
+
+    <!-- Subtle separation strokes (gives "hair direction" without looking combed) -->
+    <g opacity="0.18" stroke="rgba(0,0,0,0.45)" stroke-width="2" fill="none" stroke-linecap="round">
+      <path d="M 168 ${ty(132)} C 222 ${ty(112)} 290 ${ty(112)} 344 ${ty(132)}" />
+      <path d="M 158 ${ty(154)} C 220 ${ty(136)} 292 ${ty(136)} 354 ${ty(154)}" />
+      <path d="M 154 ${ty(178)} C 222 ${ty(162)} 290 ${ty(162)} 358 ${ty(178)}" />
+    </g>
+
+    <g opacity="0.14" stroke="rgba(255,255,255,0.35)" stroke-width="2" fill="none" stroke-linecap="round">
+      <path d="M 178 ${ty(142)} C 226 ${ty(124)} 286 ${ty(124)} 334 ${ty(142)}" />
+      <path d="M 170 ${ty(170)} C 228 ${ty(154)} 284 ${ty(154)} 342 ${ty(170)}" />
+    </g>
+
+    <!-- Keep your subtle highlight band (still clipped) -->
     <path
       fill="${PALETTE.hair.crewHi}"
+      opacity="0.70"
       d="
-        M 144 120
-        C 214 88 298 88 368 120
-        C 314 110 198 110 144 120
+        M 144 ${ty(120)}
+        C 214 ${ty(88)} 298 ${ty(88)} 368 ${ty(120)}
+        C 314 ${ty(110)} 198 ${ty(110)} 144 ${ty(120)}
         Z
       "
-      clip-path="url(#clipHead)"
     />
   </g>
 
