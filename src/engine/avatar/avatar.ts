@@ -1,14 +1,17 @@
 // src/engine/avatar/avatar.ts
-// Single-file avatar engine (v3): preserve default head path,
-// sliders morph that path, cheek influence shifted lower,
-// add crew cut hair clipped to head so it hugs perfectly.
+// Single-file avatar engine (v3)
+// - Preserves the "perfect" default head path exactly at 1/1/1
+// - Sliders morph that SAME path (no silhouette change at default)
+// - Cheek influence shifted ~10% lower (0.45 -> 0.55)
+// - Adds a crew cut hair cap clipped to the head so it hugs perfectly
+// - Correct draw order so hair is visible (head fill -> hair -> outline)
 
 export type AvatarRecipe = {
   skinTone: "olive";
   faceLength: number; // 0.5–1.5
   cheekWidth: number; // 0.5–1.5
   jawWidth: number; // 0.5–1.5
-  hair: "crewcut"; // single style for now
+  hair: "crewcut";
 };
 
 export const DEFAULT_AVATAR: AvatarRecipe = {
@@ -23,9 +26,9 @@ const PALETTE = {
   outline: "#1a1a1a",
   skin: { olive: "#C8A07A" } as const,
   hair: {
-    crew: "#2B201A", // dark brown/near-black
+    crew: "#2B201A",
     crewHi: "rgba(255,255,255,0.08)",
-  },
+  } as const,
 } as const;
 
 export function cssVars(recipe: AvatarRecipe): Record<string, string> {
@@ -40,7 +43,8 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-// ✅ Paste your exact “perfect default” head d here if it differs.
+// ✅ Put your exact “perfect” default head path here if it differs.
+// This is the one that should render when sliders are all 1.0.
 const PERFECT_DEFAULT_D = `
 M 256 84
 C 214 84 182 108 170 144
@@ -56,26 +60,35 @@ function fmt(n: number) {
   return Number(n.toFixed(2)).toString();
 }
 
+/**
+ * Morph the PERFECT_DEFAULT_D by scaling:
+ * - Y around face center (faceLength)
+ * - X around centerline using cheek/jaw weights based on Y position
+ *
+ * If recipe is default (1/1/1), returns PERFECT_DEFAULT_D exactly.
+ */
 function morphedHeadPath(recipe: AvatarRecipe): string {
   const faceLength = clamp(recipe.faceLength, 0.5, 1.5);
   const cheekWidth = clamp(recipe.cheekWidth, 0.5, 1.5);
   const jawWidth = clamp(recipe.jawWidth, 0.5, 1.5);
 
   if (faceLength === 1 && cheekWidth === 1 && jawWidth === 1) {
-    return PERFECT_DEFAULT_D; // EXACT string
+    return PERFECT_DEFAULT_D;
   }
 
   const cx = 256;
+
   const yTop = 84;
   const yBottom = 372;
   const cy = (yTop + yBottom) / 2;
 
-  // ✅ Shift cheek “hot zone” ~10% LOWER: 0.45 -> 0.55
+  // Cheek influence moved ~10% lower: peak 0.45 -> 0.55
   const weightAtY = (y: number) => {
     const t = clamp((y - yTop) / (yBottom - yTop), 0, 1);
 
-    // Cheek influence peak moved down (0.55)
+    // Cheek peak lower
     const cheekW = Math.exp(-Math.pow((t - 0.55) / 0.22, 2));
+    // Jaw increases toward bottom
     const jawW = Math.pow(t, 2.4);
 
     const sum = cheekW + jawW || 1;
@@ -90,11 +103,12 @@ function morphedHeadPath(recipe: AvatarRecipe): string {
 
   const ty = (y: number) => cy + (y - cy) * faceLength;
 
+  // Tokenize the path and transform coordinate pairs
   const tokens = PERFECT_DEFAULT_D.split(/(\s+|,)/).filter((t) => t !== "" && t !== " ");
   const isNum = (s: string) => /^-?\d+(\.\d+)?$/.test(s);
 
   let expectingCoord = false;
-  let coordIndex = 0;
+  let coordIndex = 0; // 0 => x, 1 => y
   let lastX = 0;
   let lastY = 0;
 
@@ -103,7 +117,7 @@ function morphedHeadPath(recipe: AvatarRecipe): string {
   for (const t of tokens) {
     if (!isNum(t)) {
       if (/^[A-Za-z]$/.test(t)) {
-        expectingCoord = /[MC]/.test(t);
+        expectingCoord = /[MC]/.test(t); // this path uses M and C
         coordIndex = 0;
       }
       out.push(t);
@@ -137,32 +151,33 @@ function morphedHeadPath(recipe: AvatarRecipe): string {
 }
 
 /**
- * Crew cut hair:
- * - Draw a “cap” over the top of the head
- * - Clip it to the head silhouette so it hugs perfectly
- * - Hairline position moves with faceLength (so it stays natural)
+ * Crew cut hair “cap”:
+ * - clipped to head, so it will always hug the silhouette
+ * - hairline moves with faceLength so it stays natural as face gets taller/shorter
+ *
+ * IMPORTANT: We intentionally don't try to “match” cheeks/jaw here;
+ * the clipPath takes care of perfect fit.
  */
 function crewCutHairPath(recipe: AvatarRecipe) {
   const faceLength = clamp(recipe.faceLength, 0.5, 1.5);
 
-  // Reference face vertical bounds used by head morphing
   const yTop = 84;
   const yBottom = 372;
   const cy = (yTop + yBottom) / 2;
   const ty = (y: number) => cy + (y - cy) * faceLength;
 
-  // Hairline sits ~33% down from top by default; tweakable later
-  const hairlineY = ty(84 + (372 - 84) * 0.33);
+  // Hairline ~33% down from top
+  const hairlineY = ty(yTop + (yBottom - yTop) * 0.33);
 
-  // A simple cap shape spanning the top; clipping ensures it matches head outline.
-  // This is intentionally slightly larger than the head; clip will trim it perfectly.
-  return `
-    M 96 ${ty(40)}
-    C 160 ${ty(20)} 352 ${ty(20)} 416 ${ty(40)}
-    C 440 ${ty(90)} 418 ${hairlineY} 256 ${hairlineY}
-    C 94 ${hairlineY} 72 ${ty(90)} 96 ${ty(40)}
+  // Oversized cap; clip trims it to head
+  const d = `
+    M 88 ${ty(44)}
+    C 160 ${ty(18)} 352 ${ty(18)} 424 ${ty(44)}
+    C 452 ${ty(98)} 430 ${hairlineY} 256 ${hairlineY}
+    C 82 ${hairlineY} 60 ${ty(98)} 88 ${ty(44)}
     Z
-  `.replace(/\s+/g, " ").trim();
+  `;
+  return d.replace(/\s+/g, " ").trim();
 }
 
 export function renderAvatarSvg(recipe: AvatarRecipe, size = 512): string {
@@ -181,21 +196,30 @@ export function renderAvatarSvg(recipe: AvatarRecipe, size = 512): string {
     </clipPath>
   </defs>
 
-  <!-- Hair (clipped to head so it hugs perfectly) -->
-  <g id="hair" clip-path="url(#clipHead)">
-    <path class="ol" fill="var(--hair)" d="${hairD}" />
-    <!-- subtle highlight band -->
-    <path fill="${PALETTE.hair.crewHi}" d="
-      M 140 118
-      C 210 86 302 86 372 118
-      C 322 110 190 110 140 118
-      Z
-    " clip-path="url(#clipHead)"/>
+  <!-- 1) Head fill FIRST -->
+  <g id="head-fill">
+    <path fill="var(--skin)" d="${headD}" />
   </g>
 
-  <!-- Head on top so outline stays crisp -->
-  <g id="base-head">
-    <path class="ol" fill="var(--skin)" d="${headD}" />
+  <!-- 2) Hair (clipped to head so it hugs perfectly) -->
+  <g id="hair" clip-path="url(#clipHead)">
+    <path fill="var(--hair)" d="${hairD}" />
+    <!-- Subtle highlight band to make it read like hair (still clipped) -->
+    <path
+      fill="${PALETTE.hair.crewHi}"
+      d="
+        M 144 120
+        C 214 88 298 88 368 120
+        C 314 110 198 110 144 120
+        Z
+      "
+      clip-path="url(#clipHead)"
+    />
+  </g>
+
+  <!-- 3) Outline LAST (stroke only) -->
+  <g id="head-outline">
+    <path class="ol" fill="none" d="${headD}" />
   </g>
 </svg>
 `.trim();
