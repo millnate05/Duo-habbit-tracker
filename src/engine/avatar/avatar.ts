@@ -1,17 +1,18 @@
 // src/engine/avatar/avatar.ts
-// v6.3 — Eyes + Brows iteration (NO HAIR)
-// Changes requested (from your screenshot feedback):
-// - Improve eye shape (more “target” almond: slightly wider, cleaner taper)
-// - Add eyebrows (darker), positioned ~6% higher
-// - Constrain iris/pupil so they ALWAYS sit fully inside the eye white (clipPath per eye)
-// - Move iris higher + more inward (toward center) like the target
-// - Increase pupil size
+// v6.4 — Clean build + Eyes/Brows iteration (NO HAIR)
+// - Fixes all prior "undefined var / wrong property" type errors
+// - Almond eye whites + per-eye clipPaths so iris/pupil never leave the whites
+// - Iris sits higher + more inward (toward center) like target
+// - Larger pupils
+// - Darker brows placed ~6% higher (of face height)
+// - Nose remains small "button" style
+// - Facial features remain lowered by 15% (your earlier request)
 
 export type AvatarRecipe = {
   skinTone: "olive";
-  faceLength: number;
-  cheekWidth: number;
-  jawWidth: number;
+  faceLength: number; // 0.5–1.5
+  cheekWidth: number; // 0.5–1.5
+  jawWidth: number; // 0.5–1.5
   hair: "none";
 };
 
@@ -32,7 +33,7 @@ const PALETTE = {
     irisDark: "#1F5F86",
     pupil: "#0D0D0D",
     lid: "rgba(0,0,0,0.18)",
-    brow: "#241812", // darker brows
+    brow: "#241812",
   } as const,
 } as const;
 
@@ -45,6 +46,10 @@ export function cssVars(recipe: AvatarRecipe): Record<string, string> {
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
+}
+
+function fmt(n: number) {
+  return Number(n.toFixed(2)).toString();
 }
 
 /* =========================
@@ -62,6 +67,13 @@ C 330 108 298 84 256 84
 Z
 `.replace(/\s+/g, " ").trim();
 
+/**
+ * Morph the PERFECT_DEFAULT_D by scaling:
+ * - Y around face center (faceLength)
+ * - X around centerline using cheek/jaw weights based on Y position
+ *
+ * If recipe is default (1/1/1), returns PERFECT_DEFAULT_D exactly.
+ */
 function morphedHeadPath(recipe: AvatarRecipe): string {
   const faceLength = clamp(recipe.faceLength, 0.5, 1.5);
   const cheekWidth = clamp(recipe.cheekWidth, 0.5, 1.5);
@@ -72,6 +84,7 @@ function morphedHeadPath(recipe: AvatarRecipe): string {
   }
 
   const cx = 256;
+
   const yTop = 84;
   const yBottom = 372;
   const cy = (yTop + yBottom) / 2;
@@ -86,37 +99,49 @@ function morphedHeadPath(recipe: AvatarRecipe): string {
 
   const tx = (x: number, y: number) => {
     const { cheekW, jawW } = weightAtY(y);
-    return cx + (x - cx) * (cheekW * cheekWidth + jawW * jawWidth);
+    const scaleX = cheekW * cheekWidth + jawW * jawWidth;
+    return cx + (x - cx) * scaleX;
   };
 
   const ty = (y: number) => cy + (y - cy) * faceLength;
 
-  const tokens = PERFECT_DEFAULT_D.split(/(\s+|,)/).filter(Boolean);
+  const tokens = PERFECT_DEFAULT_D.split(/(\s+|,)/).filter((t) => t !== "" && t !== " ");
+  const isNum = (s: string) => /^-?\d+(\.\d+)?$/.test(s);
+
+  let expectingCoord = false;
+  let coordIndex = 0; // 0 => x, 1 => y
+  let lastX = 0;
+  let lastY = 0;
+
   const out: string[] = [];
 
-  let expect = false;
-  let lastX = 0;
-
   for (const t of tokens) {
-    if (/^[A-Za-z]$/.test(t)) {
-      expect = /[MC]/.test(t);
+    if (!isNum(t)) {
+      if (/^[A-Za-z]$/.test(t)) {
+        expectingCoord = /[MC]/.test(t);
+        coordIndex = 0;
+      }
       out.push(t);
       continue;
     }
 
     const n = Number(t);
-    if (!Number.isFinite(n)) {
-      out.push(t);
-      continue;
-    }
 
-    if (expect) {
-      if (out.at(-1) === "__X__") {
-        out[out.length - 1] = tx(lastX, n).toFixed(2);
-        out.push(ty(n).toFixed(2));
-      } else {
+    if (expectingCoord) {
+      if (coordIndex === 0) {
         lastX = n;
+        coordIndex = 1;
         out.push("__X__");
+      } else {
+        lastY = n;
+        coordIndex = 0;
+
+        const newX = tx(lastX, lastY);
+        const newY = ty(lastY);
+
+        const xi = out.lastIndexOf("__X__");
+        if (xi >= 0) out[xi] = fmt(newX);
+        out.push(fmt(newY));
       }
     } else {
       out.push(t);
@@ -139,15 +164,14 @@ function faceTy(recipe: AvatarRecipe) {
 }
 
 function almondEyePath(cx: number, cy: number, w: number, h: number, outerLift: number) {
-  // Cleaner, more target-like almond:
-  // - Slightly flatter bottom, stronger top arc
-  // - Corners taper a bit more
+  // Cleaner almond: stronger top arc, flatter bottom, tapered corners
   const xL = cx - w / 2;
   const xR = cx + w / 2;
 
   const yT = cy - h / 2;
   const yB = cy + h / 2;
 
+  // subtle tilt: lift outer corner slightly
   const yL = cy + (outerLift < 0 ? outerLift : 0);
   const yR = cy + (outerLift > 0 ? -outerLift : 0);
 
@@ -176,8 +200,7 @@ function lidArcPath(cx: number, cy: number, w: number, outerLift: number) {
 }
 
 function browPath(cx: number, cy: number, side: "L" | "R") {
-  // Simple strong brow: thicker, slightly angled, rounded ends
-  // side affects the tilt direction.
+  // simple strong brow arc
   const tilt = side === "L" ? -1 : 1;
   const w = 54;
   const h = 14;
@@ -196,34 +219,32 @@ function browPath(cx: number, cy: number, side: "L" | "R") {
 
 function faceFeatures(recipe: AvatarRecipe) {
   const ty = faceTy(recipe);
-
-  // Base face height and shifts
   const FACE_H = 372 - 84;
 
-  // Keep your earlier "lowered 15%" behavior
+  // You asked earlier: lower all facial features by 15%
   const featureShift = FACE_H * 0.15;
 
-  // Brows: "6% higher" (interpreted as 6% of face height)
+  // You asked now: brows ~6% higher
   const browLift = FACE_H * 0.06;
 
   const shiftY = (y: number) => ty(y + featureShift);
 
   const cx = 256;
 
-  // Eyes (target-like)
+  // Eyes
   const yEyes = shiftY(184);
+
   const eyeSep = 46;
-  const eyeW = 48; // slightly wider
-  const eyeH = 18; // slightly shorter (calmer)
+  const eyeW = 48;
+  const eyeH = 18;
   const cornerLift = 2.4;
 
-  // Iris/pupil must stay inside eye: we'll clip them to the eye white path.
-  // Move iris higher + inward (toward center) like target
+  // Iris/pupil: higher + inward, pupil bigger
   const irisR = 9.2;
-  const pupilR = 5.2; // bigger pupil (requested)
+  const pupilR = 5.2;
 
-  const irisUp = -2.4; // higher
-  const irisIn = 3.0;  // inward toward center
+  const irisUp = -2.4;
+  const irisIn = 3.0;
 
   const leftEyeCx = cx - eyeSep;
   const rightEyeCx = cx + eyeSep;
@@ -234,7 +255,7 @@ function faceFeatures(recipe: AvatarRecipe) {
   const leftIrisCy = yEyes + irisUp;
   const rightIrisCy = yEyes + irisUp;
 
-  // Nose (keep our button nose for now)
+  // Nose (button-ish)
   const yNose = shiftY(224);
   const nose = `
     M ${cx} ${yNose - 14}
@@ -266,7 +287,7 @@ function faceFeatures(recipe: AvatarRecipe) {
   const leftEarCx = 160;
   const rightEarCx = 352;
 
-  // Brows: place above eyes, then lift by 6%
+  // Brows
   const browBaseY = yEyes - 22;
   const browY = browBaseY - browLift;
 
@@ -292,7 +313,6 @@ function faceFeatures(recipe: AvatarRecipe) {
     nose,
     nostrilL,
     nostrilR,
-
     smile,
   };
 }
@@ -308,9 +328,8 @@ export function renderAvatarSvg(recipe: AvatarRecipe, size = 512): string {
   const leftEyeD = almondEyePath(f.leftEye.cx, f.leftEye.cy, f.leftEye.w, f.leftEye.h, f.leftEye.lift);
   const rightEyeD = almondEyePath(f.rightEye.cx, f.rightEye.cy, f.rightEye.w, f.rightEye.h, f.rightEye.lift);
 
- const leftLidD = lidArcPath(f.leftLid.cx, f.leftLid.cy, f.leftLid.w, f.leftLid.lift);
-const rightLidD = lidArcPath(f.rightLid.cx, f.rightLid.cy, f.rightLid.w, f.rightLid.lift);
-
+  const leftLidD = lidArcPath(f.leftLid.cx, f.leftLid.cy, f.leftLid.w, f.leftLid.lift);
+  const rightLidD = lidArcPath(f.rightLid.cx, f.rightLid.cy, f.rightLid.w, f.rightLid.lift);
 
   const leftBrowD = browPath(f.leftBrow.cx, f.leftBrow.cy, "L");
   const rightBrowD = browPath(f.rightBrow.cx, f.rightBrow.cy, "R");
@@ -350,7 +369,7 @@ const rightLidD = lidArcPath(f.rightLid.cx, f.rightLid.cy, f.rightLid.w, f.right
   <!-- Face features -->
   <g id="face" clip-path="url(#clipHead)">
 
-    <!-- Brows (darker + higher) -->
+    <!-- Brows -->
     <path d="${leftBrowD}" stroke="${PALETTE.features.brow}" stroke-width="10" stroke-linecap="round" fill="none" />
     <path d="${rightBrowD}" stroke="${PALETTE.features.brow}" stroke-width="10" stroke-linecap="round" fill="none" />
 
@@ -375,7 +394,7 @@ const rightLidD = lidArcPath(f.rightLid.cx, f.rightLid.cy, f.rightLid.w, f.right
 
     <!-- Subtle upper lids -->
     <path d="${leftLidD}" stroke="${PALETTE.features.lid}" stroke-width="5" stroke-linecap="round" fill="none" />
-    <path d="${rightLidD2}" stroke="${PALETTE.features.lid}" stroke-width="5" stroke-linecap="round" fill="none" />
+    <path d="${rightLidD}" stroke="${PALETTE.features.lid}" stroke-width="5" stroke-linecap="round" fill="none" />
 
     <!-- Nose -->
     <path d="${f.nose}" class="ln" />
