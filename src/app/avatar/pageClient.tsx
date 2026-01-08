@@ -1,9 +1,9 @@
 "use client";
- 
+
 import React from "react";
 import { AvatarEditor } from "@/UI/avatar/AvatarEditor";
-import type { AvatarRecipe } from "@/engine/avatar/types";
-import { createClient } from "@/engine/supabase/Client"; // <-- adjust to your actual path
+import type { AvatarRecipe } from "@/engine/avatar/avatar";
+import { createClient } from "@/engine/supabase/Client";
 
 export default function AvatarPageClient() {
   const supabase = React.useMemo(() => createClient(), []);
@@ -35,10 +35,14 @@ export default function AvatarPageClient() {
     const user = auth.user;
     if (!user) throw new Error("Not signed in");
 
-    const { error } = await supabase
-      .from("profiles")
-      .update({ avatar: recipe })
-      .eq("user_id", user.id);
+    // Use upsert so first-time users don’t fail if the profile row isn’t there yet.
+    const { error } = await supabase.from("profiles").upsert(
+      {
+        user_id: user.id,
+        avatar: recipe,
+      },
+      { onConflict: "user_id" }
+    );
 
     if (error) throw error;
   }
@@ -49,7 +53,7 @@ export default function AvatarPageClient() {
     <div style={{ padding: 16, maxWidth: 1100, margin: "0 auto" }}>
       <h1 style={{ margin: "12px 0 16px" }}>Avatar</h1>
       <p style={{ opacity: 0.8, marginTop: 0 }}>
-        Customize your full-body avatar. Clean, consistent, Bitmoji-inspired style.
+        Customize your avatar. We’re rebuilding this from the ground up—starting with the face shape.
       </p>
       <AvatarEditor initial={initial} onSave={onSave} />
     </div>
