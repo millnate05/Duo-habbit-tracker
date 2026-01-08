@@ -1,16 +1,12 @@
 // src/engine/avatar/avatar.ts
-// v6 — Face features iteration (NO HAIR)
-// - Keeps your head morphing exactly (perfect default path at 1/1/1)
-// - Removes all hair code
-// - Adds: ears, eyes, nose, simple smile (single line)
-// - Proportions tuned toward a clean “avatar” look similar to your target reference
+// v6.1 — Face features, lowered 15%, no blush
 
 export type AvatarRecipe = {
   skinTone: "olive";
-  faceLength: number; // 0.5–1.5
-  cheekWidth: number; // 0.5–1.5
-  jawWidth: number; // 0.5–1.5
-  hair: "none"; // kept for compatibility with your editor, but unused
+  faceLength: number;
+  cheekWidth: number;
+  jawWidth: number;
+  hair: "none";
 };
 
 export const DEFAULT_AVATAR: AvatarRecipe = {
@@ -27,7 +23,6 @@ const PALETTE = {
   features: {
     white: "#ffffff",
     pupil: "#1a1a1a",
-    blush: "rgba(0,0,0,0.06)",
   } as const,
 } as const;
 
@@ -42,7 +37,10 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-// ✅ Your “perfect” default head path
+/* =========================
+   HEAD (unchanged)
+========================= */
+
 const PERFECT_DEFAULT_D = `
 M 256 84
 C 214 84 182 108 170 144
@@ -54,17 +52,6 @@ C 330 108 298 84 256 84
 Z
 `.replace(/\s+/g, " ").trim();
 
-function fmt(n: number) {
-  return Number(n.toFixed(2)).toString();
-}
-
-/**
- * Morph the PERFECT_DEFAULT_D by scaling:
- * - Y around face center (faceLength)
- * - X around centerline using cheek/jaw weights based on Y position
- *
- * If recipe is default (1/1/1), returns PERFECT_DEFAULT_D exactly.
- */
 function morphedHeadPath(recipe: AvatarRecipe): string {
   const faceLength = clamp(recipe.faceLength, 0.5, 1.5);
   const cheekWidth = clamp(recipe.cheekWidth, 0.5, 1.5);
@@ -79,7 +66,6 @@ function morphedHeadPath(recipe: AvatarRecipe): string {
   const yBottom = 372;
   const cy = (yTop + yBottom) / 2;
 
-  // Cheek influence peak at ~0.55 (slightly lower)
   const weightAtY = (y: number) => {
     const t = clamp((y - yTop) / (yBottom - yTop), 0, 1);
     const cheekW = Math.exp(-Math.pow((t - 0.55) / 0.22, 2));
@@ -90,49 +76,37 @@ function morphedHeadPath(recipe: AvatarRecipe): string {
 
   const tx = (x: number, y: number) => {
     const { cheekW, jawW } = weightAtY(y);
-    const scaleX = cheekW * cheekWidth + jawW * jawWidth;
-    return cx + (x - cx) * scaleX;
+    return cx + (x - cx) * (cheekW * cheekWidth + jawW * jawWidth);
   };
 
   const ty = (y: number) => cy + (y - cy) * faceLength;
 
-  const tokens = PERFECT_DEFAULT_D.split(/(\s+|,)/).filter((t) => t !== "" && t !== " ");
-  const isNum = (s: string) => /^-?\d+(\.\d+)?$/.test(s);
-
-  let expectingCoord = false;
-  let coordIndex = 0; // 0 => x, 1 => y
-  let lastX = 0;
-  let lastY = 0;
-
+  const tokens = PERFECT_DEFAULT_D.split(/(\s+|,)/).filter(Boolean);
   const out: string[] = [];
 
+  let expect = false;
+  let lastX = 0;
+
   for (const t of tokens) {
-    if (!isNum(t)) {
-      if (/^[A-Za-z]$/.test(t)) {
-        expectingCoord = /[MC]/.test(t); // this path uses M and C
-        coordIndex = 0;
-      }
+    if (/^[A-Za-z]$/.test(t)) {
+      expect = /[MC]/.test(t);
       out.push(t);
       continue;
     }
 
     const n = Number(t);
+    if (!Number.isFinite(n)) {
+      out.push(t);
+      continue;
+    }
 
-    if (expectingCoord) {
-      if (coordIndex === 0) {
-        lastX = n;
-        coordIndex = 1;
-        out.push("__X__");
+    if (expect) {
+      if (out.at(-1) === "__X__") {
+        out[out.length - 1] = tx(lastX, n).toFixed(2);
+        out.push(ty(n).toFixed(2));
       } else {
-        lastY = n;
-        coordIndex = 0;
-
-        const newX = tx(lastX, lastY);
-        const newY = ty(lastY);
-
-        const xi = out.lastIndexOf("__X__");
-        if (xi >= 0) out[xi] = fmt(newX);
-        out.push(fmt(newY));
+        lastX = n;
+        out.push("__X__");
       }
     } else {
       out.push(t);
@@ -142,7 +116,10 @@ function morphedHeadPath(recipe: AvatarRecipe): string {
   return out.join(" ").replace(/\s+/g, " ").trim();
 }
 
-/** Keep Y placements stable as faceLength changes */
+/* =========================
+   FACE FEATURES (lowered)
+========================= */
+
 function faceTy(recipe: AvatarRecipe) {
   const faceLength = clamp(recipe.faceLength, 0.5, 1.5);
   const yTop = 84;
@@ -151,79 +128,73 @@ function faceTy(recipe: AvatarRecipe) {
   return (y: number) => cy + (y - cy) * faceLength;
 }
 
-/**
- * Facial feature geometry tuned for a clean avatar look.
- * All features are rendered inside the head clip (except ears).
- */
 function faceFeatures(recipe: AvatarRecipe) {
   const ty = faceTy(recipe);
 
-  // Core y anchors (based on your head template)
-  const yEyes = ty(188);
-  const yNoseTop = ty(205);
-  const yNoseBot = ty(232);
-  const yMouth = ty(258);
+  // 15% vertical shift of face height
+  const featureShift = (372 - 84) * 0.15; // ≈ 43px
 
-  // Horizontal anchors
+  const shiftY = (y: number) => ty(y + featureShift);
+
   const cx = 256;
-  const eyeSep = 44; // half distance between eye centers
+
+  // Eyes
+  const yEyes = shiftY(188);
+  const eyeSep = 44;
   const eyeRx = 16;
   const eyeRy = 12;
   const pupilR = 5.5;
 
-  // Ears (outside head clip): simple rounded shape
-  const earY = ty(208);
+  // Nose
+  const yNoseTop = shiftY(205);
+  const yNoseBot = shiftY(232);
+
+  // Mouth
+  const yMouth = shiftY(258);
+
+  // Ears
+  const earY = shiftY(208);
   const earW = 22;
   const earH = 34;
 
-  const leftEarCx = 170 - 10; // just outside the left head side
-  const rightEarCx = 342 + 10;
-
-  // Nose: small soft triangle-ish linework
-  const nose = `
-    M ${cx} ${yNoseTop}
-    C ${cx - 6} ${ty(214)} ${cx - 6} ${ty(224)} ${cx} ${yNoseBot}
-    C ${cx + 6} ${ty(224)} ${cx + 10} ${ty(226)} ${cx + 12} ${ty(230)}
-  `.replace(/\s+/g, " ").trim();
-
-  // Smile: single line curve
-  const smile = `
-    M ${cx - 26} ${yMouth}
-    C ${cx - 10} ${ty(272)} ${cx + 10} ${ty(272)} ${cx + 26} ${yMouth}
-  `.replace(/\s+/g, " ").trim();
-
-  // Optional subtle cheek shadow (very light, helps “target” vibe)
-  const cheekL = { x: cx - 52, y: ty(236) };
-  const cheekR = { x: cx + 52, y: ty(236) };
+  const leftEarCx = 160;
+  const rightEarCx = 352;
 
   return {
-    // Eyes
     leftEye: { cx: cx - eyeSep, cy: yEyes, rx: eyeRx, ry: eyeRy },
     rightEye: { cx: cx + eyeSep, cy: yEyes, rx: eyeRx, ry: eyeRy },
     leftPupil: { cx: cx - eyeSep + 4, cy: yEyes + 2, r: pupilR },
     rightPupil: { cx: cx + eyeSep + 4, cy: yEyes + 2, r: pupilR },
 
-    // Ears
     leftEar: { cx: leftEarCx, cy: earY, w: earW, h: earH },
     rightEar: { cx: rightEarCx, cy: earY, w: earW, h: earH },
 
-    nose,
-    smile,
+    nose: `
+      M ${cx} ${yNoseTop}
+      C ${cx - 6} ${shiftY(214)} ${cx - 6} ${shiftY(224)} ${cx} ${yNoseBot}
+      C ${cx + 6} ${shiftY(224)} ${cx + 10} ${shiftY(226)} ${cx + 12} ${shiftY(230)}
+    `.trim(),
 
-    cheekL,
-    cheekR,
+    smile: `
+      M ${cx - 26} ${yMouth}
+      C ${cx - 10} ${shiftY(272)} ${cx + 10} ${shiftY(272)} ${cx + 26} ${yMouth}
+    `.trim(),
   };
 }
+
+/* =========================
+   RENDER
+========================= */
 
 export function renderAvatarSvg(recipe: AvatarRecipe, size = 512): string {
   const headD = morphedHeadPath(recipe);
   const f = faceFeatures(recipe);
 
   return `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="${size}" height="${size}" preserveAspectRatio="xMidYMid meet">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="${size}">
   <style>
-    .ol { stroke: var(--outline); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
-    .ln { stroke: var(--outline); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+    .ol { stroke: var(--outline); stroke-width: 4; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+    .ln { stroke: var(--outline); stroke-width: 4; fill: none; stroke-linecap: round; }
   </style>
 
   <defs>
@@ -232,52 +203,27 @@ export function renderAvatarSvg(recipe: AvatarRecipe, size = 512): string {
     </clipPath>
   </defs>
 
-  <!-- EARS (behind head slightly) -->
-  <g id="ears">
-    <ellipse cx="${f.leftEar.cx}" cy="${f.leftEar.cy}" rx="${f.leftEar.w}" ry="${f.leftEar.h}" fill="var(--skin)" />
-    <ellipse cx="${f.rightEar.cx}" cy="${f.rightEar.cy}" rx="${f.rightEar.w}" ry="${f.rightEar.h}" fill="var(--skin)" />
-    <!-- ear inner -->
-    <ellipse cx="${f.leftEar.cx + 5}" cy="${f.leftEar.cy + 4}" rx="${f.leftEar.w - 10}" ry="${f.leftEar.h - 12}" fill="rgba(0,0,0,0.05)" />
-    <ellipse cx="${f.rightEar.cx - 5}" cy="${f.rightEar.cy + 4}" rx="${f.rightEar.w - 10}" ry="${f.rightEar.h - 12}" fill="rgba(0,0,0,0.05)" />
-  </g>
+  <!-- Ears -->
+  <ellipse cx="${f.leftEar.cx}" cy="${f.leftEar.cy}" rx="${f.leftEar.w}" ry="${f.leftEar.h}" fill="var(--skin)" />
+  <ellipse cx="${f.rightEar.cx}" cy="${f.rightEar.cy}" rx="${f.rightEar.w}" ry="${f.rightEar.h}" fill="var(--skin)" />
 
-  <!-- HEAD FILL -->
-  <g id="head-fill">
-    <path fill="var(--skin)" d="${headD}" />
-  </g>
+  <!-- Head -->
+  <path d="${headD}" fill="var(--skin)" />
 
-  <!-- FACE FEATURES (clipped to head) -->
-  <g id="face" clip-path="url(#clipHead)">
-    <!-- subtle cheek tone -->
-    <ellipse cx="${f.cheekL.x}" cy="${f.cheekL.y}" rx="24" ry="16" fill="${PALETTE.features.blush}" />
-    <ellipse cx="${f.cheekR.x}" cy="${f.cheekR.y}" rx="24" ry="16" fill="${PALETTE.features.blush}" />
-
-    <!-- eyes whites -->
+  <!-- Face -->
+  <g clip-path="url(#clipHead)">
     <ellipse cx="${f.leftEye.cx}" cy="${f.leftEye.cy}" rx="${f.leftEye.rx}" ry="${f.leftEye.ry}" fill="${PALETTE.features.white}" />
     <ellipse cx="${f.rightEye.cx}" cy="${f.rightEye.cy}" rx="${f.rightEye.rx}" ry="${f.rightEye.ry}" fill="${PALETTE.features.white}" />
 
-    <!-- pupils -->
     <circle cx="${f.leftPupil.cx}" cy="${f.leftPupil.cy}" r="${f.leftPupil.r}" fill="${PALETTE.features.pupil}" />
     <circle cx="${f.rightPupil.cx}" cy="${f.rightPupil.cy}" r="${f.rightPupil.r}" fill="${PALETTE.features.pupil}" />
 
-    <!-- tiny eye shine -->
-    <circle cx="${f.leftPupil.cx - 2.2}" cy="${f.leftPupil.cy - 2.2}" r="1.6" fill="rgba(255,255,255,0.85)" />
-    <circle cx="${f.rightPupil.cx - 2.2}" cy="${f.rightPupil.cy - 2.2}" r="1.6" fill="rgba(255,255,255,0.85)" />
-
-    <!-- nose -->
     <path d="${f.nose}" class="ln" />
-
-    <!-- mouth: single smile line -->
     <path d="${f.smile}" class="ln" />
   </g>
 
-  <!-- HEAD OUTLINE LAST -->
-  <g id="head-outline">
-    <path class="ol" fill="none" d="${headD}" />
-    <!-- ear outline accents (optional, subtle) -->
-    <path class="ol" fill="none" d="M ${f.leftEar.cx - 10} ${f.leftEar.cy - 6} C ${f.leftEar.cx - 18} ${f.leftEar.cy + 6} ${f.leftEar.cx - 12} ${f.leftEar.cy + 18} ${f.leftEar.cx - 2} ${f.leftEar.cy + 22}" opacity="0.35"/>
-    <path class="ol" fill="none" d="M ${f.rightEar.cx + 10} ${f.rightEar.cy - 6} C ${f.rightEar.cx + 18} ${f.rightEar.cy + 6} ${f.rightEar.cx + 12} ${f.rightEar.cy + 18} ${f.rightEar.cx + 2} ${f.rightEar.cy + 22}" opacity="0.35"/>
-  </g>
+  <!-- Outline -->
+  <path d="${headD}" class="ol" />
 </svg>
 `.trim();
 }
