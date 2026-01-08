@@ -1,18 +1,20 @@
 // src/engine/avatar/avatar.ts
-// Single-file avatar engine (v3.1)
+// Single-file avatar engine (v3.2)
 // - Preserves the "perfect" default head path exactly at 1/1/1
 // - Sliders morph that SAME path (no silhouette change at default)
 // - Cheek influence shifted ~10% lower (0.45 -> 0.55)
-// - Crew cut hair cap clipped to the head so it hugs perfectly
-// - Improved crew cut look: grain texture + side fade + soft sheen + subtle separation lines
-// - Correct draw order so hair is visible (head fill -> hair -> outline)
+// - NEW hair: side-swept red style (reference-matching)
+//   - back layer (not clipped) for volume
+//   - front layer (clipped) for clean hairline/fringe
+//   - warm red palette + shadow + highlight streaks
+// - Correct draw order: head fill -> back hair -> front hair -> outline
 
 export type AvatarRecipe = {
   skinTone: "olive";
   faceLength: number; // 0.5–1.5
   cheekWidth: number; // 0.5–1.5
   jawWidth: number; // 0.5–1.5
-  hair: "crewcut";
+  hair: "sweptRed";
 };
 
 export const DEFAULT_AVATAR: AvatarRecipe = {
@@ -20,15 +22,18 @@ export const DEFAULT_AVATAR: AvatarRecipe = {
   faceLength: 1,
   cheekWidth: 1,
   jawWidth: 1,
-  hair: "crewcut",
+  hair: "sweptRed",
 };
 
 const PALETTE = {
   outline: "#1a1a1a",
   skin: { olive: "#C8A07A" } as const,
   hair: {
-    crew: "#2B201A",
-    crewHi: "rgba(255,255,255,0.08)",
+    // Target-ish warm red (base + shadow + highlight)
+    redBase: "#D44A2A",
+    redShadow: "#B5381F",
+    redHi: "rgba(255,255,255,0.18)",
+    redHi2: "rgba(255,255,255,0.10)",
   } as const,
 } as const;
 
@@ -36,7 +41,7 @@ export function cssVars(recipe: AvatarRecipe): Record<string, string> {
   return {
     "--outline": PALETTE.outline,
     "--skin": PALETTE.skin[recipe.skinTone],
-    "--hair": PALETTE.hair.crew,
+    "--hair": PALETTE.hair.redBase,
   };
 }
 
@@ -44,8 +49,6 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-// ✅ Put your exact “perfect” default head path here if it differs.
-// This is the one that should render when sliders are all 1.0.
 const PERFECT_DEFAULT_D = `
 M 256 84
 C 214 84 182 108 170 144
@@ -86,12 +89,8 @@ function morphedHeadPath(recipe: AvatarRecipe): string {
   // Cheek influence moved ~10% lower: peak 0.45 -> 0.55
   const weightAtY = (y: number) => {
     const t = clamp((y - yTop) / (yBottom - yTop), 0, 1);
-
-    // Cheek peak lower
     const cheekW = Math.exp(-Math.pow((t - 0.55) / 0.22, 2));
-    // Jaw increases toward bottom
     const jawW = Math.pow(t, 2.4);
-
     const sum = cheekW + jawW || 1;
     return { cheekW: cheekW / sum, jawW: jawW / sum };
   };
@@ -104,12 +103,11 @@ function morphedHeadPath(recipe: AvatarRecipe): string {
 
   const ty = (y: number) => cy + (y - cy) * faceLength;
 
-  // Tokenize the path and transform coordinate pairs
   const tokens = PERFECT_DEFAULT_D.split(/(\s+|,)/).filter((t) => t !== "" && t !== " ");
   const isNum = (s: string) => /^-?\d+(\.\d+)?$/.test(s);
 
   let expectingCoord = false;
-  let coordIndex = 0; // 0 => x, 1 => y
+  let coordIndex = 0;
   let lastX = 0;
   let lastY = 0;
 
@@ -118,7 +116,7 @@ function morphedHeadPath(recipe: AvatarRecipe): string {
   for (const t of tokens) {
     if (!isNum(t)) {
       if (/^[A-Za-z]$/.test(t)) {
-        expectingCoord = /[MC]/.test(t); // this path uses M and C
+        expectingCoord = /[MC]/.test(t);
         coordIndex = 0;
       }
       out.push(t);
@@ -152,45 +150,101 @@ function morphedHeadPath(recipe: AvatarRecipe): string {
 }
 
 /**
- * Crew cut hair “cap”:
- * - clipped to head, so it will always hug the silhouette
- * - hairline moves with faceLength so it stays natural as face gets taller/shorter
- *
- * IMPORTANT: We intentionally don't try to “match” cheeks/jaw here;
- * the clipPath takes care of perfect fit.
+ * Hair helper: lets us shift key Y coordinates with faceLength,
+ * so hair stays in the right place as head gets taller/shorter.
  */
-function crewCutHairPath(recipe: AvatarRecipe) {
+function faceTy(recipe: AvatarRecipe) {
   const faceLength = clamp(recipe.faceLength, 0.5, 1.5);
-
   const yTop = 84;
   const yBottom = 372;
   const cy = (yTop + yBottom) / 2;
-  const ty = (y: number) => cy + (y - cy) * faceLength;
+  return (y: number) => cy + (y - cy) * faceLength;
+}
 
-  // Hairline ~33% down from top
-  const hairlineY = ty(yTop + (yBottom - yTop) * 0.33);
+/**
+ * SIDE-SWEPT RED HAIR (reference-like):
+ * - Back mass: provides the “big red shape” behind top/side (NOT clipped)
+ * - Front mass: fringe + swoop (CLIPPED) so it sits cleanly on forehead/head
+ * - Shadow wedge: adds separation/depth near the part
+ * - Highlight streaks: gives that “cartoon hair strands” look
+ */
+function sweptRedHairPaths(recipe: AvatarRecipe) {
+  const ty = faceTy(recipe);
 
-  // Oversized cap; clip trims it to head
-  const d = `
-    M 88 ${ty(44)}
-    C 160 ${ty(18)} 352 ${ty(18)} 424 ${ty(44)}
-    C 452 ${ty(98)} 430 ${hairlineY} 256 ${hairlineY}
-    C 82 ${hairlineY} 60 ${ty(98)} 88 ${ty(44)}
+  // Hairline region (roughly where forehead begins)
+  const hairlineY = ty(140);
+
+  // Back hair (volume behind head)
+  // This is intentionally oversized; it will read like the reference “cap with lift”.
+  const back = `
+    M 138 ${ty(132)}
+    C 150 ${ty(96)} 206 ${ty(70)} 270 ${ty(78)}
+    C 334 ${ty(86)} 390 ${ty(112)} 408 ${ty(150)}
+    C 418 ${ty(176)} 416 ${ty(212)} 394 ${ty(232)}
+    C 372 ${ty(252)} 338 ${ty(236)} 300 ${ty(224)}
+    C 262 ${ty(212)} 226 ${ty(212)} 194 ${ty(226)}
+    C 154 ${ty(244)} 126 ${ty(214)} 122 ${ty(182)}
+    C 118 ${ty(160)} 126 ${ty(146)} 138 ${ty(132)}
     Z
-  `;
-  return d.replace(/\s+/g, " ").trim();
+  `.replace(/\s+/g, " ").trim();
+
+  // Front swoop/fringe (clipped)
+  // Key features:
+  // - big swoop from left -> right
+  // - small “tuft” on the right side
+  // - soft dip hairline in the middle
+  const front = `
+    M 150 ${ty(150)}
+    C 178 ${ty(112)} 242 ${ty(92)} 300 ${ty(104)}
+    C 350 ${ty(114)} 384 ${ty(140)} 386 ${ty(166)}
+    C 388 ${ty(190)} 368 ${ty(206)} 346 ${ty(202)}
+    C 330 ${ty(200)} 320 ${ty(188)} 312 ${ty(176)}
+    C 300 ${ty(194)} 278 ${ty(204)} 252 ${hairlineY}
+    C 222 ${ty(192)} 192 ${ty(194)} 174 ${ty(206)}
+    C 156 ${ty(216)} 142 ${ty(198)} 146 ${ty(178)}
+    C 148 ${ty(166)} 148 ${ty(158)} 150 ${ty(150)}
+    Z
+
+    M 356 ${ty(156)}
+    C 388 ${ty(154)} 404 ${ty(172)} 396 ${ty(198)}
+    C 388 ${ty(228)} 350 ${ty(222)} 346 ${ty(202)}
+    C 360 ${ty(202)} 372 ${ty(190)} 374 ${ty(176)}
+    C 376 ${ty(164)} 368 ${ty(158)} 356 ${ty(156)}
+    Z
+  `.replace(/\s+/g, " ").trim();
+
+  // Shadow wedge near “part” area (adds depth like reference’s darker arc)
+  const shadow = `
+    M 190 ${ty(144)}
+    C 220 ${ty(116)} 286 ${ty(110)} 332 ${ty(132)}
+    C 306 ${ty(132)} 252 ${ty(144)} 216 ${ty(166)}
+    C 202 ${ty(174)} 188 ${ty(164)} 190 ${ty(144)}
+    Z
+  `.replace(/\s+/g, " ").trim();
+
+  // Two highlight streak shapes (cartoony strand separation)
+  const hi1 = `
+    M 176 ${ty(140)}
+    C 210 ${ty(110)} 260 ${ty(104)} 302 ${ty(118)}
+    C 266 ${ty(118)} 224 ${ty(130)} 196 ${ty(152)}
+    C 184 ${ty(160)} 170 ${ty(154)} 176 ${ty(140)}
+    Z
+  `.replace(/\s+/g, " ").trim();
+
+  const hi2 = `
+    M 276 ${ty(120)}
+    C 306 ${ty(106)} 346 ${ty(114)} 364 ${ty(134)}
+    C 340 ${ty(132)} 312 ${ty(140)} 292 ${ty(154)}
+    C 280 ${ty(162)} 266 ${ty(148)} 276 ${ty(120)}
+    Z
+  `.replace(/\s+/g, " ").trim();
+
+  return { back, front, shadow, hi1, hi2 };
 }
 
 export function renderAvatarSvg(recipe: AvatarRecipe, size = 512): string {
   const headD = morphedHeadPath(recipe);
-  const hairD = crewCutHairPath(recipe);
-
-  // Keep highlights/separation aligned when face length changes
-  const faceLength = clamp(recipe.faceLength, 0.5, 1.5);
-  const yTop = 84;
-  const yBottom = 372;
-  const cy = (yTop + yBottom) / 2;
-  const ty = (y: number) => cy + (y - cy) * faceLength;
+  const { back, front, shadow, hi1, hi2 } = sweptRedHairPaths(recipe);
 
   return `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="${size}" height="${size}" preserveAspectRatio="xMidYMid meet">
@@ -202,27 +256,6 @@ export function renderAvatarSvg(recipe: AvatarRecipe, size = 512): string {
     <clipPath id="clipHead">
       <path d="${headD}" />
     </clipPath>
-
-    <!-- Crew cut texture: subtle speckle (reads like short hair) -->
-    <pattern id="hairGrain" patternUnits="userSpaceOnUse" width="6" height="6">
-      <circle cx="1" cy="1" r="0.65" fill="rgba(255,255,255,0.08)" />
-      <circle cx="4" cy="2" r="0.55" fill="rgba(0,0,0,0.12)" />
-      <circle cx="2" cy="5" r="0.45" fill="rgba(255,255,255,0.05)" />
-    </pattern>
-
-    <!-- Side fade: darker near edges so it doesn't look like a flat cap -->
-    <radialGradient id="hairFade" cx="50%" cy="48%" r="70%">
-      <stop offset="52%" stop-color="rgba(0,0,0,0)" />
-      <stop offset="80%" stop-color="rgba(0,0,0,0.18)" />
-      <stop offset="100%" stop-color="rgba(0,0,0,0.30)" />
-    </radialGradient>
-
-    <!-- Soft top sheen (very subtle) -->
-    <linearGradient id="hairSheen" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="rgba(255,255,255,0.10)" />
-      <stop offset="38%" stop-color="rgba(255,255,255,0.02)" />
-      <stop offset="100%" stop-color="rgba(0,0,0,0.10)" />
-    </linearGradient>
   </defs>
 
   <!-- 1) Head fill FIRST -->
@@ -230,46 +263,24 @@ export function renderAvatarSvg(recipe: AvatarRecipe, size = 512): string {
     <path fill="var(--skin)" d="${headD}" />
   </g>
 
-  <!-- 2) Hair (clipped to head so it hugs perfectly) -->
-  <g id="hair" clip-path="url(#clipHead)">
-    <!-- Base cap -->
-    <path fill="var(--hair)" d="${hairD}" />
-
-    <!-- Grain texture -->
-    <path fill="url(#hairGrain)" opacity="0.60" d="${hairD}" />
-
-    <!-- Side fade -->
-    <path fill="url(#hairFade)" opacity="0.95" d="${hairD}" />
-
-    <!-- Soft sheen -->
-    <path fill="url(#hairSheen)" opacity="0.95" d="${hairD}" />
-
-    <!-- Subtle separation strokes (gives "hair direction" without looking combed) -->
-    <g opacity="0.18" stroke="rgba(0,0,0,0.45)" stroke-width="2" fill="none" stroke-linecap="round">
-      <path d="M 168 ${ty(132)} C 222 ${ty(112)} 290 ${ty(112)} 344 ${ty(132)}" />
-      <path d="M 158 ${ty(154)} C 220 ${ty(136)} 292 ${ty(136)} 354 ${ty(154)}" />
-      <path d="M 154 ${ty(178)} C 222 ${ty(162)} 290 ${ty(162)} 358 ${ty(178)}" />
-    </g>
-
-    <g opacity="0.14" stroke="rgba(255,255,255,0.35)" stroke-width="2" fill="none" stroke-linecap="round">
-      <path d="M 178 ${ty(142)} C 226 ${ty(124)} 286 ${ty(124)} 334 ${ty(142)}" />
-      <path d="M 170 ${ty(170)} C 228 ${ty(154)} 284 ${ty(154)} 342 ${ty(170)}" />
-    </g>
-
-    <!-- Keep your subtle highlight band (still clipped) -->
-    <path
-      fill="${PALETTE.hair.crewHi}"
-      opacity="0.70"
-      d="
-        M 144 ${ty(120)}
-        C 214 ${ty(88)} 298 ${ty(88)} 368 ${ty(120)}
-        C 314 ${ty(110)} 198 ${ty(110)} 144 ${ty(120)}
-        Z
-      "
-    />
+  <!-- 2) Hair back layer (NOT clipped) for volume like the reference -->
+  <g id="hair-back">
+    <path fill="var(--hair)" d="${back}" />
   </g>
 
-  <!-- 3) Outline LAST (stroke only) -->
+  <!-- 3) Hair front layer (CLIPPED) so hairline/fringe sits cleanly -->
+  <g id="hair-front" clip-path="url(#clipHead)">
+    <path fill="var(--hair)" d="${front}" />
+
+    <!-- Depth/shadow near the part -->
+    <path fill="${PALETTE.hair.redShadow}" opacity="0.55" d="${shadow}" />
+
+    <!-- Highlights / strand separation -->
+    <path fill="${PALETTE.hair.redHi}" d="${hi1}" />
+    <path fill="${PALETTE.hair.redHi2}" d="${hi2}" />
+  </g>
+
+  <!-- 4) Outline LAST (stroke only) -->
   <g id="head-outline">
     <path class="ol" fill="none" d="${headD}" />
   </g>
