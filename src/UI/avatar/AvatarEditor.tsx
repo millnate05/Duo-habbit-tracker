@@ -1,54 +1,13 @@
 "use client";
 
 import React from "react";
-import type { AvatarRecipe } from "@/engine/avatar/types";
-import { DEFAULT_AVATAR } from "@/engine/avatar/types";
+import type { AvatarRecipe } from "@/engine/avatar/avatar";
+import { DEFAULT_AVATAR } from "@/engine/avatar/avatar";
 import { AvatarPreview } from "./AvatarPreview";
 
 type Option<T extends string> = { id: T; label: string };
 
-function Row<T extends string>({
-  title,
-  options,
-  value,
-  onChange,
-}: {
-  title: string;
-  options: Option<T>[];
-  value: T;
-  onChange: (v: T) => void;
-}) {
-  return (
-    <div style={{ display: "grid", gap: 8 }}>
-      <div style={{ fontWeight: 800 }}>{title}</div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {options.map((o) => {
-          const active = o.id === value;
-          return (
-            <button
-              key={o.id}
-              type="button"
-              onClick={() => onChange(o.id)}
-              style={{
-                padding: "8px 10px",
-                borderRadius: 10,
-                border: "1px solid var(--border)",
-                background: active ? "rgba(255,255,255,0.10)" : "transparent",
-                color: "var(--text)",
-                cursor: "pointer",
-                fontWeight: active ? 800 : 600,
-              }}
-            >
-              {o.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/** OPTIONS (must match AvatarRecipe unions exactly) */
+// IDs MUST match the union types in avatar.ts
 const SKIN: Option<AvatarRecipe["skinTone"]>[] = [
   { id: "s1", label: "Porcelain" },
   { id: "s2", label: "Light" },
@@ -58,6 +17,11 @@ const SKIN: Option<AvatarRecipe["skinTone"]>[] = [
   { id: "s6", label: "Deep" },
 ];
 
+const HAIR: Option<AvatarRecipe["hair"]>[] = [
+  { id: "hair01", label: "Classic" },
+  { id: "hair02", label: "Sweep" },
+];
+
 const HAIR_COLOR: Option<AvatarRecipe["hairColor"]>[] = [
   { id: "hc1", label: "Black" },
   { id: "hc2", label: "Brown" },
@@ -65,31 +29,22 @@ const HAIR_COLOR: Option<AvatarRecipe["hairColor"]>[] = [
   { id: "hc4", label: "Blonde" },
 ];
 
-const HEAD: Option<AvatarRecipe["head"]>[] = [{ id: "head01", label: "Head 01" }];
-
 const EYES: Option<AvatarRecipe["eyes"]>[] = [
-  { id: "eyes01", label: "Eyes 01" },
-  { id: "eyes02", label: "Eyes 02" },
+  { id: "eyes01", label: "Open" },
+  { id: "eyes02", label: "Soft" },
 ];
 
 const BROWS: Option<AvatarRecipe["brows"]>[] = [
-  { id: "brows01", label: "Brows 01" },
-  { id: "brows02", label: "Brows 02" },
+  { id: "brows01", label: "Neutral" },
+  { id: "brows02", label: "Straight" },
 ];
-
-const NOSE: Option<AvatarRecipe["nose"]>[] = [{ id: "nose01", label: "Nose 01" }];
 
 const MOUTH: Option<AvatarRecipe["mouth"]>[] = [
-  { id: "mouth01", label: "Mouth 01" },
-  { id: "mouth02", label: "Mouth 02" },
+  { id: "mouth01", label: "Smile" },
+  { id: "mouth02", label: "Frown" },
 ];
 
-const HAIR: Option<AvatarRecipe["hair"]>[] = [
-  { id: "hair01", label: "Classic" },
-  { id: "hair02", label: "Sweep" },
-];
-
-const OUTFIT_TOP: Option<AvatarRecipe["outfitTop"]>[] = [
+const OUTFIT: Option<AvatarRecipe["outfitTop"]>[] = [
   { id: "top01", label: "Tee" },
   { id: "top02", label: "Hoodie" },
 ];
@@ -99,8 +54,38 @@ const ACCESSORY: Option<AvatarRecipe["accessory"]>[] = [
   { id: "glasses01", label: "Glasses" },
 ];
 
-const pick = <T extends string,>(arr: Option<T>[]) =>
-  arr[Math.floor(Math.random() * arr.length)].id;
+function Row<T extends string>(props: {
+  title: string;
+  options: Option<T>[];
+  value: T;
+  onChange: (v: T) => void;
+}) {
+  const { title, options, value, onChange } = props;
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      <div style={{ fontWeight: 800 }}>{title}</div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {options.map((o) => (
+          <button
+            key={o.id}
+            onClick={() => onChange(o.id)}
+            style={{
+              padding: "8px 10px",
+              borderRadius: 12,
+              border: "1px solid var(--border)",
+              background: o.id === value ? "rgba(255,255,255,0.08)" : "transparent",
+              color: "var(--text)",
+              cursor: "pointer",
+              fontWeight: 700,
+            }}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export function AvatarEditor({
   initial,
@@ -111,33 +96,28 @@ export function AvatarEditor({
 }) {
   const [recipe, setRecipe] = React.useState<AvatarRecipe>(initial ?? DEFAULT_AVATAR);
   const [saving, setSaving] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
 
   async function save() {
     setSaving(true);
-    setError(null);
     try {
       await onSave(recipe);
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to save.");
     } finally {
       setSaving(false);
     }
   }
 
   function randomize() {
-    // Keep required pieces valid according to AvatarRecipe unions
+    const pick = <T extends string,>(arr: Option<T>[]) => arr[Math.floor(Math.random() * arr.length)].id;
+
     setRecipe((r) => ({
       ...r,
       skinTone: pick(SKIN),
+      hair: pick(HAIR),
       hairColor: pick(HAIR_COLOR),
-      head: pick(HEAD),
       eyes: pick(EYES),
       brows: pick(BROWS),
-      nose: pick(NOSE),
       mouth: pick(MOUTH),
-      hair: pick(HAIR),
-      outfitTop: pick(OUTFIT_TOP),
+      outfitTop: pick(OUTFIT),
       accessory: pick(ACCESSORY),
     }));
   }
@@ -145,11 +125,9 @@ export function AvatarEditor({
   return (
     <div style={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 20, alignItems: "start" }}>
       <div style={{ position: "sticky", top: 80 }}>
-        <AvatarPreview recipe={recipe} size={300} />
-
+        <AvatarPreview recipe={recipe} size={320} />
         <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
           <button
-            type="button"
             onClick={randomize}
             style={{
               flex: 1,
@@ -164,9 +142,7 @@ export function AvatarEditor({
           >
             Randomize
           </button>
-
           <button
-            type="button"
             onClick={save}
             disabled={saving}
             style={{
@@ -174,7 +150,7 @@ export function AvatarEditor({
               padding: "10px 12px",
               borderRadius: 12,
               border: "1px solid var(--border)",
-              background: "rgba(255,255,255,0.10)",
+              background: "rgba(255,255,255,0.08)",
               color: "var(--text)",
               cursor: saving ? "not-allowed" : "pointer",
               fontWeight: 900,
@@ -183,12 +159,6 @@ export function AvatarEditor({
             {saving ? "Saving..." : "Save"}
           </button>
         </div>
-
-        {error ? (
-          <div style={{ marginTop: 10, fontSize: 13, color: "var(--text)", opacity: 0.9 }}>
-            <span style={{ fontWeight: 900 }}>Error:</span> {error}
-          </div>
-        ) : null}
       </div>
 
       <div style={{ display: "grid", gap: 18 }}>
@@ -200,21 +170,15 @@ export function AvatarEditor({
           value={recipe.hairColor}
           onChange={(v) => setRecipe((r) => ({ ...r, hairColor: v }))}
         />
-
-        <Row title="Head" options={HEAD} value={recipe.head} onChange={(v) => setRecipe((r) => ({ ...r, head: v }))} />
-
-        <Row title="Brows" options={BROWS} value={recipe.brows} onChange={(v) => setRecipe((r) => ({ ...r, brows: v }))} />
         <Row title="Eyes" options={EYES} value={recipe.eyes} onChange={(v) => setRecipe((r) => ({ ...r, eyes: v }))} />
-        <Row title="Nose" options={NOSE} value={recipe.nose} onChange={(v) => setRecipe((r) => ({ ...r, nose: v }))} />
+        <Row title="Brows" options={BROWS} value={recipe.brows} onChange={(v) => setRecipe((r) => ({ ...r, brows: v }))} />
         <Row title="Mouth" options={MOUTH} value={recipe.mouth} onChange={(v) => setRecipe((r) => ({ ...r, mouth: v }))} />
-
         <Row
           title="Outfit"
-          options={OUTFIT_TOP}
+          options={OUTFIT}
           value={recipe.outfitTop}
           onChange={(v) => setRecipe((r) => ({ ...r, outfitTop: v }))}
         />
-
         <Row
           title="Accessory"
           options={ACCESSORY}
