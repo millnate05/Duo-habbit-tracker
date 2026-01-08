@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { AvatarEditor } from "@/UI/avatar/AvatarEditor";
+import AvatarEditor from "@/UI/avatar/AvatarEditor";
 import type { AvatarRecipe } from "@/engine/avatar/avatar";
 import { createClient } from "@/engine/supabase/Client";
 
@@ -35,12 +35,8 @@ export default function AvatarPageClient() {
     const user = auth.user;
     if (!user) throw new Error("Not signed in");
 
-    // Use upsert so first-time users don’t fail if the profile row isn’t there yet.
     const { error } = await supabase.from("profiles").upsert(
-      {
-        user_id: user.id,
-        avatar: recipe,
-      },
+      { user_id: user.id, avatar: recipe },
       { onConflict: "user_id" }
     );
 
@@ -53,7 +49,8 @@ export default function AvatarPageClient() {
     <div style={{ padding: 16, maxWidth: 1100, margin: "0 auto" }}>
       <h1 style={{ margin: "12px 0 16px" }}>Avatar</h1>
       <p style={{ opacity: 0.8, marginTop: 0 }}>
-        Customize your avatar. We’re rebuilding this from the ground up—starting with the face shape.
+        Customize your avatar. We’re rebuilding this from the ground up—starting with the face
+        shape.
       </p>
       <AvatarEditor initial={initial} onSave={onSave} />
     </div>
