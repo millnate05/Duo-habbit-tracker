@@ -16,7 +16,9 @@ function SliderRow(props: {
     <div style={{ display: "grid", gap: 8 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
         <div style={{ fontWeight: 800 }}>{title}</div>
-        <div style={{ opacity: 0.8, fontVariantNumeric: "tabular-nums" }}>{value.toFixed(2)}×</div>
+        <div style={{ opacity: 0.8, fontVariantNumeric: "tabular-nums" }}>
+          {value.toFixed(2)}×
+        </div>
       </div>
 
       <input
@@ -28,7 +30,7 @@ function SliderRow(props: {
         onChange={(e) => onChange(Number(e.target.value))}
         style={{
           width: "100%",
-          accentColor: "#f59e0b", // orange
+          accentColor: "#f59e0b", // orange sliders
         }}
       />
 
@@ -62,18 +64,32 @@ export function AvatarEditor({
 
   function randomize() {
     const rand = () => Number((0.5 + Math.random() * 1.0).toFixed(2)); // 0.50–1.50
+
     setRecipe((r) => ({
       ...r,
+      // keep hair fixed for now (crewcut), randomize only proportions
       faceLength: rand(),
       cheekWidth: rand(),
       jawWidth: rand(),
     }));
   }
 
+  function reset() {
+    setRecipe(DEFAULT_AVATAR);
+  }
+
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 20, alignItems: "start" }}>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "360px 1fr",
+        gap: 20,
+        alignItems: "start",
+      }}
+    >
       <div style={{ position: "sticky", top: 80 }}>
         <AvatarPreview recipe={recipe} size={320} />
+
         <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
           <button
             onClick={randomize}
@@ -92,6 +108,22 @@ export function AvatarEditor({
           </button>
 
           <button
+            onClick={reset}
+            style={{
+              flex: 1,
+              padding: "10px 12px",
+              borderRadius: 12,
+              border: "1px solid var(--border)",
+              background: "transparent",
+              color: "var(--text)",
+              cursor: "pointer",
+              fontWeight: 800,
+            }}
+          >
+            Reset
+          </button>
+
+          <button
             onClick={save}
             disabled={saving}
             style={{
@@ -99,7 +131,7 @@ export function AvatarEditor({
               padding: "10px 12px",
               borderRadius: 12,
               border: "1px solid var(--border)",
-              background: "rgba(245,158,11,0.18)", // orange-y
+              background: "rgba(245,158,11,0.18)", // orange tint
               color: "var(--text)",
               cursor: saving ? "not-allowed" : "pointer",
               fontWeight: 900,
@@ -127,8 +159,15 @@ export function AvatarEditor({
           onChange={(v) => setRecipe((r) => ({ ...r, jawWidth: v }))}
         />
 
-        <div style={{ opacity: 0.75, fontSize: 13, lineHeight: 1.4 }}>
-          Next: we’ll add neck + shoulders (so it stops feeling like a floating head), then ears, then facial features.
+        <div style={{ opacity: 0.8, fontSize: 13, lineHeight: 1.5 }}>
+          <div style={{ fontWeight: 800, marginBottom: 6 }}>Hair</div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ opacity: 0.8 }}>Style</span>
+            <span style={{ fontWeight: 700 }}>{recipe.hair}</span>
+          </div>
+          <div style={{ marginTop: 8, opacity: 0.75 }}>
+            More hair styles + colors come next.
+          </div>
         </div>
       </div>
     </div>
