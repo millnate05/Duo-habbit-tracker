@@ -308,10 +308,9 @@ export function renderAvatarSvg(recipe: AvatarRecipe, size = 512): string {
   const leftEyeD = almondEyePath(f.leftEye.cx, f.leftEye.cy, f.leftEye.w, f.leftEye.h, f.leftEye.lift);
   const rightEyeD = almondEyePath(f.rightEye.cx, f.rightEye.cy, f.rightEye.w, f.rightEye.h, f.rightEye.lift);
 
-  const leftLidD = lidArcPath(f.leftLid.cx, f.leftLid.cy, f.leftLid.w, f.leftLid.lift);
-  const rightLidD = lidArcPath(f.rightLid.cx, f.rightLid.cy, f.rightLid.w, f.rightLid.h ? 0 : f.rightLid.lift); // (kept harmless)
-  // ^ the above line is a safe no-op; right lid lift comes from f.rightLid.lift below.
-  const rightLidD2 = lidArcPath(f.rightLid.cx, f.rightLid.cy, f.rightLid.w, f.rightLid.lift);
+ const leftLidD = lidArcPath(f.leftLid.cx, f.leftLid.cy, f.leftLid.w, f.leftLid.lift);
+const rightLidD = lidArcPath(f.rightLid.cx, f.rightLid.cy, f.rightLid.w, f.rightLid.lift);
+
 
   const leftBrowD = browPath(f.leftBrow.cx, f.leftBrow.cy, "L");
   const rightBrowD = browPath(f.rightBrow.cx, f.rightBrow.cy, "R");
