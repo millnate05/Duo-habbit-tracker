@@ -235,8 +235,11 @@ function sweptRedHair(recipe: AvatarRecipe) {
     Z
   `.replace(/\s+/g, " ").trim();
 
-  const seam2 = `
+    const seam2 = `
     M 300 ${ty(148)}
     C 326 ${ty(140)} 350 ${ty(144)} 360 ${ty(162)}
     C 344 ${ty(160)} 324 ${ty(166)} 314 ${ty(178)}
-    C 306 ${ty(186)} 292 ${ty(172)}
+    C 306 ${ty(186)} 292 ${ty(172)} 300 ${ty(148)}
+    Z
+  `.replace(/\s+/g, " ").trim();
+
