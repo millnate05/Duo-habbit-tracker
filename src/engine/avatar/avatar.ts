@@ -85,46 +85,26 @@ function buildHeadPath(recipe: AvatarRecipe) {
   const xJawR = cx + wJaw;
   const xChinR = cx + wChin;
 
-  /**
-   * Curve strategy:
-   * - Use "vertical" control points (same x as anchor) so we don’t kink inward/outward.
-   * - Keep each segment bulging smoothly without dents.
-   */
+  // Curvature tuning (prevents “hair tufts”)
+  const topBulge = 24;
+  const cheekBulge = 30;
+  const jawBulge = 22;
+  const chinBulge = 18;
 
-  const topBulge = 24;     // roundness at top
-  const cheekBulge = 30;   // cheek fullness
-  const jawBulge = 22;     // jaw corner softness
-  const chinBulge = 18;    // chin roundness
-
-  return `
+  const d = `
     M ${cx} ${YT}
-
-    /* Top -> Right temple */
     C ${cx + topBulge} ${YT} ${xTempleR} ${YTe - 28} ${xTempleR} ${YTe}
-
-    /* Right temple -> Right cheek */
     C ${xTempleR} ${YTe + 46} ${xCheekR} ${YC - cheekBulge} ${xCheekR} ${YC}
-
-    /* Right cheek -> Right jaw */
     C ${xCheekR} ${YC + cheekBulge} ${xJawR} ${YJ - jawBulge} ${xJawR} ${YJ}
-
-    /* Right jaw -> Chin */
     C ${xJawR} ${YJ + 46} ${xChinR} ${YCh - chinBulge} ${cx} ${YCh}
-
-    /* Chin -> Left jaw */
     C ${xChinL} ${YCh - chinBulge} ${xJawL} ${YJ + 46} ${xJawL} ${YJ}
-
-    /* Left jaw -> Left cheek */
     C ${xJawL} ${YJ - jawBulge} ${xCheekL} ${YC + cheekBulge} ${xCheekL} ${YC}
-
-    /* Left cheek -> Left temple */
     C ${xCheekL} ${YC - cheekBulge} ${xTempleL} ${YTe + 46} ${xTempleL} ${YTe}
-
-    /* Left temple -> Top */
     C ${xTempleL} ${YTe - 28} ${cx - topBulge} ${YT} ${cx} ${YT}
-
     Z
-  `.replace(/\s+/g, " ").trim();
+  `;
+
+  return d.replace(/\s+/g, " ").trim();
 }
 
 
