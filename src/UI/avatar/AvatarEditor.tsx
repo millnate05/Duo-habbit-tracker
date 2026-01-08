@@ -7,52 +7,7 @@ import { AvatarPreview } from "./AvatarPreview";
 
 type Option<T extends string> = { id: T; label: string };
 
-// IDs MUST match the union types in avatar.ts
-const SKIN: Option<AvatarRecipe["skinTone"]>[] = [
-  { id: "s1", label: "Porcelain" },
-  { id: "s2", label: "Light" },
-  { id: "s3", label: "Medium" },
-  { id: "s4", label: "Tan" },
-  { id: "s5", label: "Brown" },
-  { id: "s6", label: "Deep" },
-];
-
-const HAIR: Option<AvatarRecipe["hair"]>[] = [
-  { id: "hair01", label: "Classic" },
-  { id: "hair02", label: "Sweep" },
-];
-
-const HAIR_COLOR: Option<AvatarRecipe["hairColor"]>[] = [
-  { id: "hc1", label: "Black" },
-  { id: "hc2", label: "Brown" },
-  { id: "hc3", label: "Auburn" },
-  { id: "hc4", label: "Blonde" },
-];
-
-const EYES: Option<AvatarRecipe["eyes"]>[] = [
-  { id: "eyes01", label: "Open" },
-  { id: "eyes02", label: "Soft" },
-];
-
-const BROWS: Option<AvatarRecipe["brows"]>[] = [
-  { id: "brows01", label: "Neutral" },
-  { id: "brows02", label: "Straight" },
-];
-
-const MOUTH: Option<AvatarRecipe["mouth"]>[] = [
-  { id: "mouth01", label: "Smile" },
-  { id: "mouth02", label: "Frown" },
-];
-
-const OUTFIT: Option<AvatarRecipe["outfitTop"]>[] = [
-  { id: "top01", label: "Tee" },
-  { id: "top02", label: "Hoodie" },
-];
-
-const ACCESSORY: Option<AvatarRecipe["accessory"]>[] = [
-  { id: "none", label: "None" },
-  { id: "glasses01", label: "Glasses" },
-];
+const SKIN: Option<AvatarRecipe["skinTone"]>[] = [{ id: "olive", label: "Olive" }];
 
 function Row<T extends string>(props: {
   title: string;
@@ -107,19 +62,8 @@ export function AvatarEditor({
   }
 
   function randomize() {
-    const pick = <T extends string,>(arr: Option<T>[]) => arr[Math.floor(Math.random() * arr.length)].id;
-
-    setRecipe((r) => ({
-      ...r,
-      skinTone: pick(SKIN),
-      hair: pick(HAIR),
-      hairColor: pick(HAIR_COLOR),
-      eyes: pick(EYES),
-      brows: pick(BROWS),
-      mouth: pick(MOUTH),
-      outfitTop: pick(OUTFIT),
-      accessory: pick(ACCESSORY),
-    }));
+    // Only one option for now—this keeps the button functional without breaking types
+    setRecipe((r) => ({ ...r, skinTone: "olive" }));
   }
 
   return (
@@ -142,6 +86,7 @@ export function AvatarEditor({
           >
             Randomize
           </button>
+
           <button
             onClick={save}
             disabled={saving}
@@ -162,29 +107,15 @@ export function AvatarEditor({
       </div>
 
       <div style={{ display: "grid", gap: 18 }}>
-        <Row title="Skin" options={SKIN} value={recipe.skinTone} onChange={(v) => setRecipe((r) => ({ ...r, skinTone: v }))} />
-        <Row title="Hair" options={HAIR} value={recipe.hair} onChange={(v) => setRecipe((r) => ({ ...r, hair: v }))} />
         <Row
-          title="Hair Color"
-          options={HAIR_COLOR}
-          value={recipe.hairColor}
-          onChange={(v) => setRecipe((r) => ({ ...r, hairColor: v }))}
+          title="Skin Tone"
+          options={SKIN}
+          value={recipe.skinTone}
+          onChange={(v) => setRecipe((r) => ({ ...r, skinTone: v }))}
         />
-        <Row title="Eyes" options={EYES} value={recipe.eyes} onChange={(v) => setRecipe((r) => ({ ...r, eyes: v }))} />
-        <Row title="Brows" options={BROWS} value={recipe.brows} onChange={(v) => setRecipe((r) => ({ ...r, brows: v }))} />
-        <Row title="Mouth" options={MOUTH} value={recipe.mouth} onChange={(v) => setRecipe((r) => ({ ...r, mouth: v }))} />
-        <Row
-          title="Outfit"
-          options={OUTFIT}
-          value={recipe.outfitTop}
-          onChange={(v) => setRecipe((r) => ({ ...r, outfitTop: v }))}
-        />
-        <Row
-          title="Accessory"
-          options={ACCESSORY}
-          value={recipe.accessory}
-          onChange={(v) => setRecipe((r) => ({ ...r, accessory: v }))}
-        />
+        <div style={{ opacity: 0.75, fontSize: 14, lineHeight: 1.4 }}>
+          More options (hair, eyes, etc.) will appear here as we add them back into the engine.
+        </div>
       </div>
     </div>
   );
