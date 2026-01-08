@@ -1,11 +1,13 @@
 // src/engine/avatar/avatar.ts
-// Single-file avatar engine (v3.6)
-// - Keeps head morphing exactly as before
-// - Hair constraints updated per feedback:
-//   1) Clean curved forehead hairline ~25% higher
-//   2) Right side becomes a small uniform "sideburn" (reduce protrusion ~80%)
-//   3) Left side has 3 distinct outward chunks with different lengths
-// - Outline masked under hair so no harsh head outline in hair region
+// Single-file avatar engine (v3.7)
+// Goal: match the TARGET red hairstyle silhouette + structure (NOT just “a blob”)
+// What this version adds vs prior:
+// - Wide, skull-wrapping silhouette (not tall/pointy)
+// - Clearly side-swept flow (left -> right) with a readable “wave ridge”
+// - 4 main clumps (left flicks, main swoop, mid clump, right temple clump) + separate right tuft
+// - Temple/side coverage so hair wraps around the head (no abrupt cutoff)
+// - 3-tone shading system: base + structured shadows (overlaps/under-swoop) + aligned highlights
+// - Outline masked out under hair using a hair-cover mask (not a rectangle)
 
 export type AvatarRecipe = {
   skinTone: "olive";
@@ -27,6 +29,7 @@ const PALETTE = {
   outline: "#1a1a1a",
   skin: { olive: "#C8A07A" } as const,
   hair: {
+    // Target-ish warm red + structured shadows/highlights
     redBase: "#D44A2A",
     redShadow: "#B5381F",
     redDeep: "#8F2A17",
@@ -47,7 +50,7 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-// ✅ Perfect default head
+// ✅ Put your exact “perfect” default head path here if it differs.
 const PERFECT_DEFAULT_D = `
 M 256 84
 C 214 84 182 108 170 144
@@ -63,18 +66,28 @@ function fmt(n: number) {
   return Number(n.toFixed(2)).toString();
 }
 
+/**
+ * Morph the PERFECT_DEFAULT_D by scaling:
+ * - Y around face center (faceLength)
+ * - X around centerline using cheek/jaw weights based on Y position
+ *
+ * If recipe is default (1/1/1), returns PERFECT_DEFAULT_D exactly.
+ */
 function morphedHeadPath(recipe: AvatarRecipe): string {
   const faceLength = clamp(recipe.faceLength, 0.5, 1.5);
   const cheekWidth = clamp(recipe.cheekWidth, 0.5, 1.5);
   const jawWidth = clamp(recipe.jawWidth, 0.5, 1.5);
 
-  if (faceLength === 1 && cheekWidth === 1 && jawWidth === 1) return PERFECT_DEFAULT_D;
+  if (faceLength === 1 && cheekWidth === 1 && jawWidth === 1) {
+    return PERFECT_DEFAULT_D;
+  }
 
   const cx = 256;
   const yTop = 84;
   const yBottom = 372;
   const cy = (yTop + yBottom) / 2;
 
+  // Cheek influence moved ~10% lower: peak 0.45 -> 0.55
   const weightAtY = (y: number) => {
     const t = clamp((y - yTop) / (yBottom - yTop), 0, 1);
     const cheekW = Math.exp(-Math.pow((t - 0.55) / 0.22, 2));
@@ -91,11 +104,12 @@ function morphedHeadPath(recipe: AvatarRecipe): string {
 
   const ty = (y: number) => cy + (y - cy) * faceLength;
 
+  // Tokenize the path and transform coordinate pairs
   const tokens = PERFECT_DEFAULT_D.split(/(\s+|,)/).filter((t) => t !== "" && t !== " ");
   const isNum = (s: string) => /^-?\d+(\.\d+)?$/.test(s);
 
   let expectingCoord = false;
-  let coordIndex = 0;
+  let coordIndex = 0; // 0 => x, 1 => y
   let lastX = 0;
   let lastY = 0;
 
@@ -137,6 +151,7 @@ function morphedHeadPath(recipe: AvatarRecipe): string {
   return out.join(" ").replace(/\s+/g, " ").trim();
 }
 
+/** Keep Y placements stable as faceLength changes */
 function faceTy(recipe: AvatarRecipe) {
   const faceLength = clamp(recipe.faceLength, 0.5, 1.5);
   const yTop = 84;
@@ -146,158 +161,207 @@ function faceTy(recipe: AvatarRecipe) {
 }
 
 /**
- * NEW constrained hair:
- * - Forehead line is a clean arc (higher than before)
- * - Right side is a small uniform sideburn (minimal protrusion)
- * - Left side has 3 outward chunks (distinct lengths)
+ * Target-style hair:
+ * - wide + skull-wrapping
+ * - side-swept (left->right) with a visible wave ridge
+ * - multiple clumps with overlap + structured shading
  */
-function constrainedHair(recipe: AvatarRecipe) {
+function targetSweptRedHair(recipe: AvatarRecipe) {
   const ty = faceTy(recipe);
 
+  // Head bounds (for ratio-y anchors)
   const yTop = 84;
   const yBottom = 372;
-  const H = yBottom - yTop;
+  const H = yBottom - yTop; // 288
+  const yr = (r: number) => ty(yTop + H * r);
 
-  // Forehead hairline: set higher (smaller ratio = higher up on face)
-  // Old-ish feel was ~0.25. Now we go ~0.19 (~25% higher).
-  const yHairline = ty(yTop + H * 0.19);
+  // Key Y levels (tuned to avoid tall/pointy blob)
+  const yCrown = ty(yTop - H * 0.08); // slightly above head top, not spiky
+  const yCapTop = yr(0.05); // near top of skull
+  const yCapMid = yr(0.14);
+  const yHairlineL = yr(0.22);
+  const yHairlineC = yr(0.25);
+  const yHairlineR = yr(0.21);
 
-  // Crown/top lift
-  const yCrown = ty(yTop - H * 0.10);
+  // Temple / side coverage depth
+  const yTemple = yr(0.36);
+  const ySideEnd = yr(0.48);
 
-  // Head-ish bounds for hair placement (designer constants)
-  const cx = 256;
+  // Width: intentionally wider than your current, closer to the target
+  const xL = 150;
+  const xR = 362;
+  const xPuff = 398; // right-side lobe (not too huge)
 
-  // LEFT chunk lengths (sticking out)
-  const xLeftBase = 166; // near where head would be
-  const xLeft1 = xLeftBase - 44; // longest
-  const xLeft2 = xLeftBase - 30; // medium
-  const xLeft3 = xLeftBase - 18; // shortest
-
-  // RIGHT sideburn: reduce protrusion by ~80%
-  // Previously we were out around ~420–440. Now keep it close to head (~372–380).
-  const xRightInner = 344;
-  const xRightOuter = 372; // small protrusion, "straight" edge feel
-
-  // ------------------------
-  // BACK mass (kept subtle so it doesn't blob)
-  // ------------------------
+  // -----------------------------
+  // BACK MASS (NOT clipped)
+  // Wraps skull + supports right lobe. Rounded / slightly flattened top.
+  // -----------------------------
   const back = `
-    M 170 ${ty(160)}
-    C 176 ${ty(118)} 210 ${ty(84)} ${cx - 16} ${yCrown}
-    C ${cx + 50} ${yCrown} 350 ${ty(112)} 366 ${ty(148)}
-    C 378 ${ty(174)} 374 ${ty(206)} 354 ${ty(222)}
-    C 334 ${ty(236)} 306 ${ty(232)} 284 ${ty(224)}
-    C 260 ${ty(216)} 236 ${ty(220)} 216 ${ty(232)}
-    C 194 ${ty(246)} 170 ${ty(232)} 164 ${ty(206)}
-    C 156 ${ty(182)} 162 ${ty(170)} 170 ${ty(160)}
+    M ${xL} ${yr(0.22)}
+    C ${xL + 6} ${yr(0.12)} 198 ${yCrown} 252 ${yCrown}
+    C 312 ${yCrown} 360 ${yr(0.10)} ${xR + 10} ${yr(0.18)}
+    C ${xPuff + 8} ${yr(0.22)} ${xPuff + 10} ${yr(0.36)} ${xPuff - 8} ${yr(0.44)}
+    C ${xR + 4} ${yr(0.54)} 322 ${yr(0.52)} 296 ${yr(0.48)}
+    C 272 ${yr(0.44)} 250 ${yr(0.46)} 230 ${yr(0.52)}
+    C 208 ${yr(0.58)} 176 ${yr(0.56)} ${xL - 6} ${yr(0.44)}
+    C ${xL - 14} ${yr(0.34)} ${xL - 6} ${yr(0.28)} ${xL} ${yr(0.22)}
     Z
   `.replace(/\s+/g, " ").trim();
 
-  // ------------------------
-  // FRONT: clean curved forehead line + right sideburn + left 3 chunks
-  // We build this as ONE main shape + 3 left chunk overlays for clean silhouette.
-  // ------------------------
+  // -----------------------------
+  // FRONT CLUMPS (CLIPPED)
+  // Build the sweep direction: left flicks -> main swoop -> mid clump -> right temple clump.
+  // These overlaps are what stop the “blob” read.
+  // -----------------------------
 
-  // Main front (includes the clean arc hairline + right sideburn edge)
-  const frontMain = `
-    M ${xLeftBase} ${ty(150)}
-    C 200 ${ty(116)} 288 ${ty(112)} 332 ${ty(128)}
-    C 352 ${ty(136)} ${xRightOuter} ${ty(150)} ${xRightOuter} ${ty(176)}
-    C ${xRightOuter} ${ty(198)} ${xRightOuter} ${ty(222)} ${xRightInner} ${ty(230)}
-    C 336 ${ty(236)} 326 ${ty(224)} 318 ${ty(210)}
-    C 300 ${ty(228)} 276 ${ty(240)} 252 ${ty(236)}
-    C 224 ${ty(230)} 204 ${ty(234)} 190 ${ty(244)}
-    C 172 ${ty(258)} 158 ${ty(244)} 160 ${ty(222)}
-    C 162 ${ty(204)} 162 ${ty(186)} ${xLeftBase} ${ty(172)}
+  // Left flick 1 (short)
+  const flick1 = `
+    M 166 ${yHairlineL}
+    C 138 ${yHairlineL - 10} 142 ${yTemple - 6} 170 ${yTemple - 10}
+    C 176 ${yTemple - 12} 176 ${yHairlineL + 6} 166 ${yHairlineL}
     Z
   `.replace(/\s+/g, " ").trim();
 
-  // Hairline “cut” arc guide (we’ll use it for seams/highlights placement)
-  // This is the clean slightly-curved line across the forehead.
-  const hairlineArc = `
-    M 168 ${yHairline}
-    C 214 ${yHairline + 10} 298 ${yHairline + 10} 348 ${yHairline}
-  `.replace(/\s+/g, " ").trim();
-
-  // Left chunks: three distinct outward clumps at different lengths.
-  // These are designed to overlap the main front and create a jagged silhouette.
-  const chunk1 = `
-    M ${xLeftBase} ${ty(160)}
-    C ${xLeft1} ${ty(150)} ${xLeft1} ${ty(182)} ${xLeftBase} ${ty(176)}
-    C ${xLeftBase - 6} ${ty(172)} ${xLeftBase - 6} ${ty(166)} ${xLeftBase} ${ty(160)}
+  // Left flick 2 (medium)
+  const flick2 = `
+    M 178 ${yHairlineC - 4}
+    C 148 ${yHairlineC - 14} 152 ${yTemple + 4} 186 ${yTemple - 2}
+    C 196 ${yTemple - 4} 196 ${yHairlineC + 8} 178 ${yHairlineC - 4}
     Z
   `.replace(/\s+/g, " ").trim();
 
-  const chunk2 = `
-    M ${xLeftBase + 6} ${ty(178)}
-    C ${xLeft2} ${ty(170)} ${xLeft2} ${ty(198)} ${xLeftBase + 6} ${ty(194)}
-    C ${xLeftBase} ${ty(192)} ${xLeftBase} ${ty(184)} ${xLeftBase + 6} ${ty(178)}
+  // Left flick 3 (longer)
+  const flick3 = `
+    M 194 ${yHairlineC + 4}
+    C 158 ${yHairlineC - 2} 160 ${ySideEnd + 8} 206 ${yTemple + 16}
+    C 220 ${yTemple + 10} 216 ${yHairlineC + 18} 194 ${yHairlineC + 4}
     Z
   `.replace(/\s+/g, " ").trim();
 
-  const chunk3 = `
-    M ${xLeftBase + 14} ${ty(198)}
-    C ${xLeft3} ${ty(192)} ${xLeft3} ${ty(214)} ${xLeftBase + 14} ${ty(212)}
-    C ${xLeftBase + 10} ${ty(210)} ${xLeftBase + 10} ${ty(202)} ${xLeftBase + 14} ${ty(198)}
+  // Main swoop (dominant wave across forehead)
+  const swoop = `
+    M 188 ${yr(0.16)}
+    C 220 ${yCapTop} 292 ${yCapTop + 6} 332 ${yCapMid}
+    C 302 ${yCapMid - 4} 276 ${yr(0.22)} 262 ${yr(0.28)}
+    C 246 ${yr(0.36)} 214 ${yr(0.42)} 192 ${yr(0.40)}
+    C 178 ${yr(0.38)} 176 ${yr(0.26)} 188 ${yr(0.16)}
     Z
   `.replace(/\s+/g, " ").trim();
 
-  // Seam valleys near left chunks (to emphasize 3-piece separation)
-  const seamL1 = `
-    M ${xLeftBase + 6} ${ty(172)}
-    C ${xLeftBase - 14} ${ty(172)} ${xLeftBase - 10} ${ty(186)} ${xLeftBase + 10} ${ty(186)}
-    C ${xLeftBase + 16} ${ty(186)} ${xLeftBase + 16} ${ty(176)} ${xLeftBase + 6} ${ty(172)}
+  // Mid clump (sits under the swoop, adds thickness and overlap)
+  const midClump = `
+    M 238 ${yr(0.26)}
+    C 262 ${yr(0.22)} 304 ${yr(0.22)} 324 ${yr(0.30)}
+    C 304 ${yr(0.30)} 288 ${yr(0.34)} 278 ${yr(0.40)}
+    C 268 ${yr(0.46)} 234 ${yr(0.46)} 224 ${yr(0.40)}
+    C 216 ${yr(0.34)} 220 ${yr(0.28)} 238 ${yr(0.26)}
     Z
   `.replace(/\s+/g, " ").trim();
 
-  const seamL2 = `
-    M ${xLeftBase + 10} ${ty(192)}
-    C ${xLeftBase - 10} ${ty(192)} ${xLeftBase - 8} ${ty(204)} ${xLeftBase + 12} ${ty(206)}
-    C ${xLeftBase + 18} ${ty(206)} ${xLeftBase + 18} ${ty(196)} ${xLeftBase + 10} ${ty(192)}
+  // Right temple clump (wraps around the temple/side of head)
+  const temple = `
+    M 314 ${yHairlineR + 8}
+    C 336 ${yHairlineR - 6} 368 ${yHairlineR + 10} 378 ${yTemple - 6}
+    C 386 ${yTemple + 10} 378 ${ySideEnd} 350 ${ySideEnd - 4}
+    C 334 ${ySideEnd - 6} 326 ${ySideEnd - 20} 324 ${yTemple + 2}
+    C 322 ${yTemple - 10} 306 ${yHairlineR + 18} 314 ${yHairlineR + 8}
     Z
   `.replace(/\s+/g, " ").trim();
 
-  // Highlights: keep them simple so shape reads first
+  // Right tuft (small bump on the far right like the target)
+  const tuft = `
+    M 360 ${yr(0.18)}
+    C ${xPuff} ${yr(0.16)} ${xPuff + 12} ${yr(0.22)} ${xPuff - 2} ${yr(0.28)}
+    C ${xPuff - 16} ${yr(0.34)} 360 ${yr(0.34)} 350 ${yr(0.30)}
+    C 344 ${yr(0.26)} 350 ${yr(0.20)} 360 ${yr(0.18)}
+    Z
+  `.replace(/\s+/g, " ").trim();
+
+  // -----------------------------
+  // SHADOWS: structured (overlaps / under swoop / near part)
+  // These are what make it read like the target rather than “flat”.
+  // -----------------------------
+
+  // Shadow under the main swoop (casts over mid clump)
+  const shadowUnderSwoop = `
+    M 220 ${yr(0.30)}
+    C 252 ${yr(0.26)} 298 ${yr(0.28)} 322 ${yr(0.34)}
+    C 300 ${yr(0.34)} 276 ${yr(0.38)} 262 ${yr(0.44)}
+    C 250 ${yr(0.50)} 220 ${yr(0.48)} 214 ${yr(0.42)}
+    C 210 ${yr(0.38)} 208 ${yr(0.34)} 220 ${yr(0.30)}
+    Z
+  `.replace(/\s+/g, " ").trim();
+
+  // Part / ridge shadow near the crown (subtle arc)
+  const shadowRidge = `
+    M 196 ${yr(0.18)}
+    C 234 ${yr(0.10)} 286 ${yr(0.10)} 332 ${yr(0.18)}
+    C 300 ${yr(0.16)} 252 ${yr(0.18)} 220 ${yr(0.24)}
+    C 208 ${yr(0.26)} 188 ${yr(0.24)} 196 ${yr(0.18)}
+    Z
+  `.replace(/\s+/g, " ").trim();
+
+  // Right temple depth shadow
+  const shadowTemple = `
+    M 328 ${yr(0.28)}
+    C 346 ${yr(0.26)} 366 ${yr(0.32)} 370 ${yr(0.38)}
+    C 372 ${yr(0.44)} 360 ${yr(0.50)} 346 ${yr(0.50)}
+    C 338 ${yr(0.50)} 338 ${yr(0.44)} 340 ${yr(0.40)}
+    C 342 ${yr(0.34)} 320 ${yr(0.34)} 328 ${yr(0.28)}
+    Z
+  `.replace(/\s+/g, " ").trim();
+
+  // -----------------------------
+  // HIGHLIGHTS: aligned with sweep direction (few, strong)
+  // -----------------------------
   const hi1 = `
-    M 198 ${ty(156)}
-    C 224 ${ty(134)} 266 ${ty(126)} 300 ${ty(132)}
-    C 270 ${ty(144)} 238 ${ty(152)} 214 ${ty(170)}
-    C 206 ${ty(178)} 190 ${ty(170)} 198 ${ty(156)}
+    M 190 ${yr(0.22)}
+    C 220 ${yr(0.14)} 264 ${yr(0.12)} 300 ${yr(0.16)}
+    C 270 ${yr(0.20)} 240 ${yr(0.22)} 218 ${yr(0.30)}
+    C 206 ${yr(0.34)} 182 ${yr(0.32)} 190 ${yr(0.22)}
     Z
   `.replace(/\s+/g, " ").trim();
 
   const hi2 = `
-    M 292 ${ty(140)}
-    C 316 ${ty(132)} 342 ${ty(138)} 356 ${ty(154)}
-    C 336 ${ty(154)} 318 ${ty(164)} 304 ${ty(178)}
-    C 296 ${ty(184)} 284 ${ty(168)} 292 ${ty(140)}
+    M 270 ${yr(0.18)}
+    C 296 ${yr(0.14)} 330 ${yr(0.16)} 346 ${yr(0.22)}
+    C 324 ${yr(0.22)} 304 ${yr(0.26)} 292 ${yr(0.32)}
+    C 284 ${yr(0.36)} 262 ${yr(0.32)} 270 ${yr(0.18)}
     Z
   `.replace(/\s+/g, " ").trim();
 
-  // Outline cover mask: covers head outline where hair sits
+  // -----------------------------
+  // OUTLINE COVER MASK: hides head outline where hair sits
+  // Build a cover dome down to around mid-forehead/temple level.
+  // -----------------------------
   const outlineCover = `
-    M 96 ${ty(88)}
-    C 168 ${yCrown} 344 ${yCrown} 416 ${ty(88)}
-    C 456 ${ty(128)} 452 ${ty(220)} 256 ${ty(220)}
-    C 60 ${ty(220)} 56 ${ty(128)} 96 ${ty(88)}
+    M 96 ${yr(0.00)}
+    C 168 ${yCrown} 344 ${yCrown} 416 ${yr(0.00)}
+    C 458 ${yr(0.12)} 456 ${yr(0.42)} 256 ${yr(0.44)}
+    C 56 ${yr(0.44)} 54 ${yr(0.12)} 96 ${yr(0.00)}
     Z
+  `.replace(/\s+/g, " ").trim();
+
+  // Hairline wave (for subtle definition line like the target)
+  const hairlineWave = `
+    M 160 ${yHairlineL}
+    C 210 ${yHairlineL + 18} 240 ${yHairlineC + 10} 256 ${yHairlineC}
+    C 286 ${yHairlineC - 14} 320 ${yHairlineR - 4} 362 ${yHairlineR + 14}
   `.replace(/\s+/g, " ").trim();
 
   return {
     back,
-    frontMain,
-    chunks: { chunk1, chunk2, chunk3 },
-    seams: { seamL1, seamL2 },
-    his: { hi1, hi2 },
+    front: { flick1, flick2, flick3, swoop, midClump, temple, tuft },
+    shadows: { shadowUnderSwoop, shadowRidge, shadowTemple },
+    highlights: { hi1, hi2 },
     outlineCover,
-    hairlineArc,
+    hairlineWave,
   };
 }
 
 export function renderAvatarSvg(recipe: AvatarRecipe, size = 512): string {
   const headD = morphedHeadPath(recipe);
-  const hair = constrainedHair(recipe);
+  const hair = targetSweptRedHair(recipe);
 
   return `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="${size}" height="${size}" preserveAspectRatio="xMidYMid meet">
@@ -310,6 +374,7 @@ export function renderAvatarSvg(recipe: AvatarRecipe, size = 512): string {
       <path d="${headD}" />
     </clipPath>
 
+    <!-- Mask the outline so it doesn't show under hair -->
     <mask id="maskOutlineUnderHair">
       <rect x="0" y="0" width="512" height="512" fill="white" />
       <path d="${hair.outlineCover}" fill="black" />
@@ -321,32 +386,39 @@ export function renderAvatarSvg(recipe: AvatarRecipe, size = 512): string {
     <path fill="var(--skin)" d="${headD}" />
   </g>
 
-  <!-- 2) Back hair (subtle) -->
+  <!-- 2) Hair back layer (NOT clipped) - supports skull wrap + right lobe -->
   <g id="hair-back">
     <path fill="var(--hair)" d="${hair.back}" />
+    <!-- gentle depth so it doesn't read flat -->
     <path fill="${PALETTE.hair.redShadow}" opacity="0.18" d="${hair.back}" />
   </g>
 
-  <!-- 3) Front hair (clipped to head) -->
+  <!-- 3) Hair front (CLIPPED) - clumps + structured shading + aligned highlights -->
   <g id="hair-front" clip-path="url(#clipHead)">
-    <!-- main front mass -->
-    <path fill="var(--hair)" d="${hair.frontMain}" />
+    <!-- clumps (order matters: back-to-front overlap) -->
+    <path fill="var(--hair)" d="${hair.front.midClump}" />
+    <path fill="var(--hair)" d="${hair.front.temple}" />
+    <path fill="var(--hair)" d="${hair.front.swoop}" />
 
-    <!-- left chunks (3 distinct outward bits) -->
-    <path fill="var(--hair)" d="${hair.chunks.chunk1}" />
-    <path fill="var(--hair)" d="${hair.chunks.chunk2}" />
-    <path fill="var(--hair)" d="${hair.chunks.chunk3}" />
+    <!-- left flicks sit on top so they read as individual bits -->
+    <path fill="var(--hair)" d="${hair.front.flick3}" />
+    <path fill="var(--hair)" d="${hair.front.flick2}" />
+    <path fill="var(--hair)" d="${hair.front.flick1}" />
 
-    <!-- seam valleys to emphasize chunk separation -->
-    <path fill="${PALETTE.hair.redDeep}" opacity="0.26" d="${hair.seams.seamL1}" />
-    <path fill="${PALETTE.hair.redDeep}" opacity="0.24" d="${hair.seams.seamL2}" />
+    <!-- right tuft -->
+    <path fill="var(--hair)" d="${hair.front.tuft}" />
 
-    <!-- subtle hairline stroke to enforce the clean curved forehead line -->
-    <path d="${hair.hairlineArc}" stroke="${PALETTE.hair.redDeep}" stroke-width="4" opacity="0.18" fill="none" stroke-linecap="round" />
+    <!-- shadows (placed where overlap would happen in the target) -->
+    <path fill="${PALETTE.hair.redDeep}" opacity="0.18" d="${hair.shadows.shadowRidge}" />
+    <path fill="${PALETTE.hair.redDeep}" opacity="0.22" d="${hair.shadows.shadowUnderSwoop}" />
+    <path fill="${PALETTE.hair.redDeep}" opacity="0.18" d="${hair.shadows.shadowTemple}" />
 
-    <!-- highlights -->
-    <path fill="${PALETTE.hair.redHi}" d="${hair.his.hi1}" />
-    <path fill="${PALETTE.hair.redHi2}" d="${hair.his.hi2}" />
+    <!-- subtle hairline wave definition (like the target’s darker arc) -->
+    <path d="${hair.hairlineWave}" stroke="${PALETTE.hair.redDeep}" stroke-width="5" opacity="0.14" fill="none" stroke-linecap="round" />
+
+    <!-- highlights aligned with sweep direction -->
+    <path fill="${PALETTE.hair.redHi}" d="${hair.highlights.hi1}" />
+    <path fill="${PALETTE.hair.redHi2}" d="${hair.highlights.hi2}" />
   </g>
 
   <!-- 4) Head outline (masked so it vanishes under hair) -->
