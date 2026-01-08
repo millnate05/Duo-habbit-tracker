@@ -1,8 +1,29 @@
 // src/engine/avatar/avatar.ts
-// Single-file avatar engine (v0): base face shape only (no eyes/hair/ears/neck yet)
-// AVATAR HEAD SHAPE AND COLORS
+// Single-file avatar engine (v0): smooth face silhouette only
 
-export function renderAvatarSvg(recipe: AvatarRecipe, size = 512): string {
+export type AvatarRecipe = {
+  skinTone: "olive";
+};
+
+export const DEFAULT_AVATAR: AvatarRecipe = {
+  skinTone: "olive",
+};
+
+const PALETTE = {
+  outline: "#1a1a1a",
+  skin: {
+    olive: "#C8A07A", // olive complexion baseline
+  } as const,
+} as const;
+
+export function cssVars(recipe: AvatarRecipe): Record<string, string> {
+  return {
+    "--outline": PALETTE.outline,
+    "--skin": PALETTE.skin[recipe.skinTone],
+  };
+}
+
+export function renderAvatarSvg(_recipe: AvatarRecipe, size = 512): string {
   return `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="${size}" height="${size}" preserveAspectRatio="xMidYMid meet">
   <style>
