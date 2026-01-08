@@ -1,5 +1,12 @@
 // src/engine/avatar/avatar.ts
-// v6.1 — Face features, lowered 15%, no blush
+// v6.2 — Face features iteration (NO HAIR)
+// Changes in this iteration:
+// - Eyes updated to a soft almond / rounded-almond: wider, shorter, calmer (less “surprised”)
+// - Iris + pupil proportions updated closer to target vibe
+// - Added a subtle upper-lid suggestion (no harsh outline)
+// - Nose updated to a small, soft “button” nose: short bridge + tiny nostril/wing cues
+// - All features remain lowered by 15% (as previously requested)
+// - No blush
 
 export type AvatarRecipe = {
   skinTone: "olive";
@@ -21,8 +28,11 @@ const PALETTE = {
   outline: "#1a1a1a",
   skin: { olive: "#C8A07A" } as const,
   features: {
-    white: "#ffffff",
-    pupil: "#1a1a1a",
+    eyeWhite: "#ffffff",
+    iris: "#2D86B7", // target-like blue (tweak later)
+    irisDark: "#1F5F86",
+    pupil: "#111111",
+    lid: "rgba(0,0,0,0.18)", // subtle upper lid suggestion
   } as const,
 } as const;
 
@@ -117,7 +127,7 @@ function morphedHeadPath(recipe: AvatarRecipe): string {
 }
 
 /* =========================
-   FACE FEATURES (lowered)
+   FACE FEATURES (lowered 15%)
 ========================= */
 
 function faceTy(recipe: AvatarRecipe) {
@@ -132,54 +142,129 @@ function faceFeatures(recipe: AvatarRecipe) {
   const ty = faceTy(recipe);
 
   // 15% vertical shift of face height
-  const featureShift = (372 - 84) * 0.15; // ≈ 43px
-
+  const featureShift = (372 - 84) * 0.15; // ~43px on the base head
   const shiftY = (y: number) => ty(y + featureShift);
 
   const cx = 256;
 
-  // Eyes
-  const yEyes = shiftY(188);
-  const eyeSep = 44;
-  const eyeRx = 16;
-  const eyeRy = 12;
-  const pupilR = 5.5;
+  // -------------------------
+  // EYES — target-like: soft almond
+  // Wider + shorter, slightly upturned outer corner
+  // -------------------------
+  const yEyes = shiftY(184);
 
-  // Nose
-  const yNoseTop = shiftY(205);
-  const yNoseBot = shiftY(232);
+  const eyeSep = 46; // slightly wider set than before
+  const eyeW = 44;   // width of the almond
+  const eyeH = 20;   // height of the almond (shorter => calmer)
+  const cornerLift = 2.2; // subtle upward tilt at outer corner
 
-  // Mouth
-  const yMouth = shiftY(258);
+  // Iris/pupil: larger iris vs white, pupil centered
+  const irisR = 9.3;
+  const pupilR = 4.2;
 
-  // Ears
-  const earY = shiftY(208);
+  // -------------------------
+  // NOSE — target-like: small “button” nose
+  // Short bridge, tiny nostril hints, no long hook
+  // -------------------------
+  const yNose = shiftY(224);
+  const nose = `
+    M ${cx} ${yNose - 14}
+    C ${cx - 4} ${yNose - 6} ${cx - 4} ${yNose + 2} ${cx} ${yNose + 6}
+    C ${cx + 6} ${yNose + 10} ${cx + 12} ${yNose + 10} ${cx + 12} ${yNose + 2}
+  `.replace(/\s+/g, " ").trim();
+
+  // Tiny nostril/wing cues (very subtle, short strokes)
+  const nostrilL = `
+    M ${cx - 6} ${yNose + 6}
+    C ${cx - 10} ${yNose + 10} ${cx - 12} ${yNose + 10} ${cx - 14} ${yNose + 6}
+  `.replace(/\s+/g, " ").trim();
+
+  const nostrilR = `
+    M ${cx + 6} ${yNose + 6}
+    C ${cx + 10} ${yNose + 10} ${cx + 12} ${yNose + 10} ${cx + 14} ${yNose + 6}
+  `.replace(/\s+/g, " ").trim();
+
+  // -------------------------
+  // MOUTH — keep simple smile line
+  // -------------------------
+  const yMouth = shiftY(264);
+  const smile = `
+    M ${cx - 24} ${yMouth}
+    C ${cx - 10} ${yMouth + 10} ${cx + 10} ${yMouth + 10} ${cx + 24} ${yMouth}
+  `.replace(/\s+/g, " ").trim();
+
+  // -------------------------
+  // EARS — keep simple, symmetric, lowered with features
+  // -------------------------
+  const earY = shiftY(210);
   const earW = 22;
   const earH = 34;
-
   const leftEarCx = 160;
   const rightEarCx = 352;
 
   return {
-    leftEye: { cx: cx - eyeSep, cy: yEyes, rx: eyeRx, ry: eyeRy },
-    rightEye: { cx: cx + eyeSep, cy: yEyes, rx: eyeRx, ry: eyeRy },
-    leftPupil: { cx: cx - eyeSep + 4, cy: yEyes + 2, r: pupilR },
-    rightPupil: { cx: cx + eyeSep + 4, cy: yEyes + 2, r: pupilR },
+    // Eyes: store centers + dims, we will draw as path (almond) instead of ellipse
+    leftEye: { cx: cx - eyeSep, cy: yEyes, w: eyeW, h: eyeH, lift: -cornerLift },
+    rightEye: { cx: cx + eyeSep, cy: yEyes, w: eyeW, h: eyeH, lift: cornerLift },
 
+    leftIris: { cx: cx - eyeSep + 2.2, cy: yEyes + 1.2, r: irisR },
+    rightIris: { cx: cx + eyeSep + 2.2, cy: yEyes + 1.2, r: irisR },
+
+    leftPupil: { cx: cx - eyeSep + 2.2, cy: yEyes + 1.2, r: pupilR },
+    rightPupil: { cx: cx + eyeSep + 2.2, cy: yEyes + 1.2, r: pupilR },
+
+    // Upper lid suggestion: short arc
+    leftLid: { cx: cx - eyeSep, cy: yEyes - 5.2, w: eyeW * 0.86, lift: -cornerLift },
+    rightLid: { cx: cx + eyeSep, cy: yEyes - 5.2, w: eyeW * 0.86, lift: cornerLift },
+
+    // Ears
     leftEar: { cx: leftEarCx, cy: earY, w: earW, h: earH },
     rightEar: { cx: rightEarCx, cy: earY, w: earW, h: earH },
 
-    nose: `
-      M ${cx} ${yNoseTop}
-      C ${cx - 6} ${shiftY(214)} ${cx - 6} ${shiftY(224)} ${cx} ${yNoseBot}
-      C ${cx + 6} ${shiftY(224)} ${cx + 10} ${shiftY(226)} ${cx + 12} ${shiftY(230)}
-    `.trim(),
+    // Nose + nostrils
+    nose,
+    nostrilL,
+    nostrilR,
 
-    smile: `
-      M ${cx - 26} ${yMouth}
-      C ${cx - 10} ${shiftY(272)} ${cx + 10} ${shiftY(272)} ${cx + 26} ${yMouth}
-    `.trim(),
+    // Mouth
+    smile,
   };
+}
+
+function almondEyePath(cx: number, cy: number, w: number, h: number, outerLift: number) {
+  // Almond: two curves meeting at corners
+  const xL = cx - w / 2;
+  const xR = cx + w / 2;
+  const yT = cy - h / 2;
+  const yB = cy + h / 2;
+
+  // Outer corner slight lift (positive = raise outer corner, negative = raise inner corner)
+  const yL = cy + (outerLift < 0 ? outerLift : 0);
+  const yR = cy + (outerLift > 0 ? -outerLift : 0);
+
+  // Control points for smoothness
+  const cTop = h * 0.85;
+  const cBot = h * 0.65;
+
+  return `
+    M ${xL} ${yL}
+    C ${xL + w * 0.28} ${yT - cTop * 0.1} ${xR - w * 0.28} ${yT - cTop * 0.1} ${xR} ${yR}
+    C ${xR - w * 0.28} ${yB + cBot * 0.1} ${xL + w * 0.28} ${yB + cBot * 0.1} ${xL} ${yL}
+    Z
+  `.replace(/\s+/g, " ").trim();
+}
+
+function lidArcPath(cx: number, cy: number, w: number, outerLift: number) {
+  const xL = cx - w / 2;
+  const xR = cx + w / 2;
+
+  const yL = cy + (outerLift < 0 ? outerLift * 0.35 : 0);
+  const yR = cy + (outerLift > 0 ? -outerLift * 0.35 : 0);
+
+  return `
+    M ${xL} ${yL}
+    C ${cx - w * 0.18} ${cy - 6} ${cx + w * 0.18} ${cy - 6} ${xR} ${yR}
+  `.replace(/\s+/g, " ").trim();
 }
 
 /* =========================
@@ -190,11 +275,17 @@ export function renderAvatarSvg(recipe: AvatarRecipe, size = 512): string {
   const headD = morphedHeadPath(recipe);
   const f = faceFeatures(recipe);
 
+  const leftEyeD = almondEyePath(f.leftEye.cx, f.leftEye.cy, f.leftEye.w, f.leftEye.h, f.leftEye.lift);
+  const rightEyeD = almondEyePath(f.rightEye.cx, f.rightEye.cy, f.rightEye.w, f.rightEye.h, f.rightEye.lift);
+
+  const leftLidD = lidArcPath(f.leftLid.cx, f.leftLid.cy, f.leftLid.w, f.leftLid.lift);
+  const rightLidD = lidArcPath(f.rightLid.cx, f.rightLid.cy, f.rightLid.w, f.rightLid.lift);
+
   return `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="${size}">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="${size}" height="${size}" preserveAspectRatio="xMidYMid meet">
   <style>
-    .ol { stroke: var(--outline); stroke-width: 4; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-    .ln { stroke: var(--outline); stroke-width: 4; fill: none; stroke-linecap: round; }
+    .ol { stroke: var(--outline); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+    .ln { stroke: var(--outline); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; fill: none; }
   </style>
 
   <defs>
@@ -203,26 +294,52 @@ export function renderAvatarSvg(recipe: AvatarRecipe, size = 512): string {
     </clipPath>
   </defs>
 
-  <!-- Ears -->
-  <ellipse cx="${f.leftEar.cx}" cy="${f.leftEar.cy}" rx="${f.leftEar.w}" ry="${f.leftEar.h}" fill="var(--skin)" />
-  <ellipse cx="${f.rightEar.cx}" cy="${f.rightEar.cy}" rx="${f.rightEar.w}" ry="${f.rightEar.h}" fill="var(--skin)" />
+  <!-- Ears (behind head) -->
+  <g id="ears">
+    <ellipse cx="${f.leftEar.cx}" cy="${f.leftEar.cy}" rx="${f.leftEar.w}" ry="${f.leftEar.h}" fill="var(--skin)" />
+    <ellipse cx="${f.rightEar.cx}" cy="${f.rightEar.cy}" rx="${f.rightEar.w}" ry="${f.rightEar.h}" fill="var(--skin)" />
+    <ellipse cx="${f.leftEar.cx + 5}" cy="${f.leftEar.cy + 4}" rx="${f.leftEar.w - 10}" ry="${f.leftEar.h - 12}" fill="rgba(0,0,0,0.05)" />
+    <ellipse cx="${f.rightEar.cx - 5}" cy="${f.rightEar.cy + 4}" rx="${f.rightEar.w - 10}" ry="${f.rightEar.h - 12}" fill="rgba(0,0,0,0.05)" />
+  </g>
 
-  <!-- Head -->
+  <!-- Head fill -->
   <path d="${headD}" fill="var(--skin)" />
 
-  <!-- Face -->
-  <g clip-path="url(#clipHead)">
-    <ellipse cx="${f.leftEye.cx}" cy="${f.leftEye.cy}" rx="${f.leftEye.rx}" ry="${f.leftEye.ry}" fill="${PALETTE.features.white}" />
-    <ellipse cx="${f.rightEye.cx}" cy="${f.rightEye.cy}" rx="${f.rightEye.rx}" ry="${f.rightEye.ry}" fill="${PALETTE.features.white}" />
+  <!-- Face features -->
+  <g id="face" clip-path="url(#clipHead)">
+    <!-- Eye whites (almond paths) -->
+    <path d="${leftEyeD}" fill="${PALETTE.features.eyeWhite}" />
+    <path d="${rightEyeD}" fill="${PALETTE.features.eyeWhite}" />
 
+    <!-- Iris -->
+    <circle cx="${f.leftIris.cx}" cy="${f.leftIris.cy}" r="${f.leftIris.r}" fill="${PALETTE.features.iris}" />
+    <circle cx="${f.rightIris.cx}" cy="${f.rightIris.cy}" r="${f.rightIris.r}" fill="${PALETTE.features.iris}" />
+    <!-- Iris inner dark ring -->
+    <circle cx="${f.leftIris.cx}" cy="${f.leftIris.cy}" r="${f.leftIris.r - 2.2}" fill="${PALETTE.features.irisDark}" opacity="0.35" />
+    <circle cx="${f.rightIris.cx}" cy="${f.rightIris.cy}" r="${f.rightIris.r - 2.2}" fill="${PALETTE.features.irisDark}" opacity="0.35" />
+
+    <!-- Pupil -->
     <circle cx="${f.leftPupil.cx}" cy="${f.leftPupil.cy}" r="${f.leftPupil.r}" fill="${PALETTE.features.pupil}" />
     <circle cx="${f.rightPupil.cx}" cy="${f.rightPupil.cy}" r="${f.rightPupil.r}" fill="${PALETTE.features.pupil}" />
 
+    <!-- Eye shine -->
+    <circle cx="${f.leftPupil.cx - 2.1}" cy="${f.leftPupil.cy - 2.1}" r="1.6" fill="rgba(255,255,255,0.85)" />
+    <circle cx="${f.rightPupil.cx - 2.1}" cy="${f.rightPupil.cy - 2.1}" r="1.6" fill="rgba(255,255,255,0.85)" />
+
+    <!-- Subtle upper lid -->
+    <path d="${leftLidD}" stroke="${PALETTE.features.lid}" stroke-width="5" stroke-linecap="round" fill="none" />
+    <path d="${rightLidD}" stroke="${PALETTE.features.lid}" stroke-width="5" stroke-linecap="round" fill="none" />
+
+    <!-- Nose (small button nose) -->
     <path d="${f.nose}" class="ln" />
+    <path d="${f.nostrilL}" stroke="rgba(0,0,0,0.22)" stroke-width="4" stroke-linecap="round" fill="none" />
+    <path d="${f.nostrilR}" stroke="rgba(0,0,0,0.22)" stroke-width="4" stroke-linecap="round" fill="none" />
+
+    <!-- Mouth (simple smile line) -->
     <path d="${f.smile}" class="ln" />
   </g>
 
-  <!-- Outline -->
+  <!-- Head outline -->
   <path d="${headD}" class="ol" />
 </svg>
 `.trim();
