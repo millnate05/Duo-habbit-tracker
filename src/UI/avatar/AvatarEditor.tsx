@@ -1,5 +1,6 @@
+// src/UI/avatar/AvatarEditor.tsx
 "use client";
- 
+
 import React from "react";
 import { DEFAULT_AVATAR, cssVars, renderAvatarSvg, type AvatarRecipe } from "@/engine/avatar/avatar";
 
@@ -17,7 +18,7 @@ export default function AvatarEditor({ initial, onSave }: AvatarEditorProps) {
   const [saving, setSaving] = React.useState(false);
   const [saveMsg, setSaveMsg] = React.useState<string | null>(null);
 
-  // When initial loads from Supabase, apply it once.
+  // Apply initial once when it arrives
   const appliedInitialRef = React.useRef(false);
   React.useEffect(() => {
     if (appliedInitialRef.current) return;
@@ -47,14 +48,13 @@ export default function AvatarEditor({ initial, onSave }: AvatarEditorProps) {
   return (
     <div
       style={{
-        // If your page already has padding, this component doesn't need extra margin.
         minHeight: "calc(100vh - 64px)", // adjust/remove if your header differs
         display: "flex",
         flexDirection: "column",
         gap: 12,
       }}
     >
-      {/* TOP: avatar preview ~60% of viewport height */}
+      {/* TOP: Avatar preview (fills top ~60% of screen) */}
       <div
         style={{
           height: "60vh",
@@ -62,35 +62,34 @@ export default function AvatarEditor({ initial, onSave }: AvatarEditorProps) {
           border: "1px solid var(--border)",
           background: "var(--bg)",
           borderRadius: 16,
-          display: "grid",
-          placeItems: "center",
           overflow: "hidden",
           position: "relative",
         }}
       >
+        {/* Centered + scaled avatar (200% increase), proportional */}
         <div
-  style={{
-    // Bigger overall render area (fills the preview box more)
-    width: "min(720px, 98%)",
-    height: "min(720px, 95%)", // allow it to grow vertically too
-    display: "grid",
-    placeItems: "center",
-    ...(vars as any),
-    // Nudge up a bit to leave room above the head for future hair shapes
-    transform: "translateY(-4%)",
-  }}
->
-  <div
-    style={{
-      width: "100%",
-      height: "100%",
-    }}
-    dangerouslySetInnerHTML={{ __html: svg }}
-  />
-</div>
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            pointerEvents: "none",
+          }}
+        >
+          <div
+            style={{
+              width: 512,
+              height: 512,
+              transform: "scale(2)", // ✅ 200% bigger
+              transformOrigin: "center",
+              ...(vars as any),
+            }}
+            dangerouslySetInnerHTML={{ __html: svg }}
+          />
+        </div>
 
-
-        {/* Save button overlay */}
+        {/* Save button */}
         <div style={{ position: "absolute", right: 12, bottom: 12, display: "flex", gap: 10 }}>
           {saveMsg ? (
             <div
@@ -126,7 +125,7 @@ export default function AvatarEditor({ initial, onSave }: AvatarEditorProps) {
         </div>
       </div>
 
-      {/* BOTTOM: controls */}
+      {/* BOTTOM: Sliders */}
       <div
         style={{
           flex: 1,
