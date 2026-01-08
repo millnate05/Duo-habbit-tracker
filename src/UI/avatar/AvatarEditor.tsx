@@ -1,175 +1,130 @@
+// src/UI/avatar/AvatarEditor.tsx
 "use client";
 
-import React from "react";
-import type { AvatarRecipe } from "@/engine/avatar/avatar";
-import { DEFAULT_AVATAR } from "@/engine/avatar/avatar";
-import { AvatarPreview } from "./AvatarPreview";
+import React, { useMemo, useState } from "react";
+import { DEFAULT_AVATAR, cssVars, renderAvatarSvg, type AvatarRecipe } from "@/engine/avatar/avatar";
 
-function SliderRow(props: {
-  title: string;
-  value: number;
-  onChange: (v: number) => void;
-}) {
-  const { title, value, onChange } = props;
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+export default function AvatarEditor() {
+  const [recipe, setRecipe] = useState<AvatarRecipe>(DEFAULT_AVATAR);
+
+  const svg = useMemo(() => renderAvatarSvg(recipe, 512), [recipe]);
+  const vars = useMemo(() => cssVars(recipe), [recipe]);
 
   return (
-    <div style={{ display: "grid", gap: 8 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-        <div style={{ fontWeight: 800 }}>{title}</div>
-        <div style={{ opacity: 0.8, fontVariantNumeric: "tabular-nums" }}>
-          {value.toFixed(2)}×
-        </div>
+    <div
+      style={{
+        // full page content area
+        minHeight: "calc(100vh - 64px)", // if you have a fixed header ~64px; adjust/remove if not
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        padding: 16,
+      }}
+    >
+      {/* TOP: Avatar preview (60% of viewport height) */}
+      <div
+        style={{
+          height: "60vh",
+          minHeight: 360,
+          border: "1px solid var(--border)",
+          background: "var(--bg)",
+          borderRadius: 16,
+          display: "grid",
+          placeItems: "center",
+          overflow: "hidden",
+          position: "relative",
+        }}
+      >
+        {/* Keep avatar nicely sized within the box */}
+        <div
+          style={{
+            width: "min(520px, 90%)",
+            aspectRatio: "1 / 1",
+            display: "grid",
+            placeItems: "center",
+            ...(vars as any),
+          }}
+          // render raw svg
+          dangerouslySetInnerHTML={{ __html: svg }}
+        />
       </div>
 
-      <input
-        type="range"
-        min={0.5}
-        max={1.5}
-        step={0.01}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
+      {/* BOTTOM: Controls */}
+      <div
         style={{
-          width: "100%",
-          accentColor: "#f59e0b", // orange sliders
+          flex: 1,
+          border: "1px solid var(--border)",
+          background: "var(--bg)",
+          borderRadius: 16,
+          padding: 16,
+          overflowY: "auto",
         }}
-      />
+      >
+        <h2 style={{ margin: "0 0 12px 0", fontSize: 18 }}>Customize</h2>
 
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, opacity: 0.7 }}>
-        <span>0.5×</span>
-        <span>1.0×</span>
-        <span>1.5×</span>
+        <SliderRow
+          label="Face Length"
+          value={recipe.faceLength}
+          min={0.5}
+          max={1.5}
+          step={0.01}
+          onChange={(v) => setRecipe((r) => ({ ...r, faceLength: v }))}
+        />
+
+        <SliderRow
+          label="Cheek Width"
+          value={recipe.cheekWidth}
+          min={0.5}
+          max={1.5}
+          step={0.01}
+          onChange={(v) => setRecipe((r) => ({ ...r, cheekWidth: v }))}
+        />
+
+        <SliderRow
+          label="Jaw Width"
+          value={recipe.jawWidth}
+          min={0.5}
+          max={1.5}
+          step={0.01}
+          onChange={(v) => setRecipe((r) => ({ ...r, jawWidth: v }))}
+        />
+
+        {/* Add more controls here as needed */}
       </div>
     </div>
   );
 }
 
-export function AvatarEditor({
-  initial,
-  onSave,
-}: {
-  initial?: AvatarRecipe | null;
-  onSave: (recipe: AvatarRecipe) => Promise<void>;
+function SliderRow(props: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  onChange: (v: number) => void;
 }) {
-  const [recipe, setRecipe] = React.useState<AvatarRecipe>(initial ?? DEFAULT_AVATAR);
-  const [saving, setSaving] = React.useState(false);
-
-  async function save() {
-    setSaving(true);
-    try {
-      await onSave(recipe);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function randomize() {
-    const rand = () => Number((0.5 + Math.random() * 1.0).toFixed(2)); // 0.50–1.50
-
-    setRecipe((r) => ({
-      ...r,
-      // keep hair fixed for now (crewcut), randomize only proportions
-      faceLength: rand(),
-      cheekWidth: rand(),
-      jawWidth: rand(),
-    }));
-  }
-
-  function reset() {
-    setRecipe(DEFAULT_AVATAR);
-  }
+  const { label, value, min, max, step = 0.01, onChange } = props;
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "360px 1fr",
-        gap: 20,
-        alignItems: "start",
-      }}
-    >
-      <div style={{ position: "sticky", top: 80 }}>
-        <AvatarPreview recipe={recipe} size={320} />
-
-        <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-          <button
-            onClick={randomize}
-            style={{
-              flex: 1,
-              padding: "10px 12px",
-              borderRadius: 12,
-              border: "1px solid var(--border)",
-              background: "transparent",
-              color: "var(--text)",
-              cursor: "pointer",
-              fontWeight: 800,
-            }}
-          >
-            Randomize
-          </button>
-
-          <button
-            onClick={reset}
-            style={{
-              flex: 1,
-              padding: "10px 12px",
-              borderRadius: 12,
-              border: "1px solid var(--border)",
-              background: "transparent",
-              color: "var(--text)",
-              cursor: "pointer",
-              fontWeight: 800,
-            }}
-          >
-            Reset
-          </button>
-
-          <button
-            onClick={save}
-            disabled={saving}
-            style={{
-              flex: 1,
-              padding: "10px 12px",
-              borderRadius: 12,
-              border: "1px solid var(--border)",
-              background: "rgba(245,158,11,0.18)", // orange tint
-              color: "var(--text)",
-              cursor: saving ? "not-allowed" : "pointer",
-              fontWeight: 900,
-            }}
-          >
-            {saving ? "Saving..." : "Save"}
-          </button>
-        </div>
+    <div style={{ display: "grid", gap: 8, marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <div style={{ fontWeight: 600 }}>{label}</div>
+        <div style={{ fontVariantNumeric: "tabular-nums", opacity: 0.8 }}>{value.toFixed(2)}</div>
       </div>
 
-      <div style={{ display: "grid", gap: 18 }}>
-        <SliderRow
-          title="Face Length"
-          value={recipe.faceLength}
-          onChange={(v) => setRecipe((r) => ({ ...r, faceLength: v }))}
-        />
-        <SliderRow
-          title="Cheek Width"
-          value={recipe.cheekWidth}
-          onChange={(v) => setRecipe((r) => ({ ...r, cheekWidth: v }))}
-        />
-        <SliderRow
-          title="Jaw Width"
-          value={recipe.jawWidth}
-          onChange={(v) => setRecipe((r) => ({ ...r, jawWidth: v }))}
-        />
-
-        <div style={{ opacity: 0.8, fontSize: 13, lineHeight: 1.5 }}>
-          <div style={{ fontWeight: 800, marginBottom: 6 }}>Hair</div>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ opacity: 0.8 }}>Style</span>
-            <span style={{ fontWeight: 700 }}>{recipe.hair}</span>
-          </div>
-          <div style={{ marginTop: 8, opacity: 0.75 }}>
-            More hair styles + colors come next.
-          </div>
-        </div>
-      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(clamp(Number(e.target.value), min, max))}
+        style={{ width: "100%" }}
+      />
     </div>
   );
 }
