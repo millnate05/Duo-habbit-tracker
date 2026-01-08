@@ -5,7 +5,7 @@
 // - Cheek influence shifted ~10% lower (0.45 -> 0.55)
 // - Hair updated to match reference: side-swept red with chunked sections
 //   - Back layer for volume (not clipped)
-//   - Front layer built from multiple chunk paths (clipped) for segmentation
+//   - Front chunks (clipped) that create real segmentation
 //   - Head outline is clipped so you don't see harsh outline under hair
 // - Draw order: head fill -> hair back -> hair front -> outline (face only)
 
@@ -64,13 +64,6 @@ function fmt(n: number) {
   return Number(n.toFixed(2)).toString();
 }
 
-/**
- * Morph the PERFECT_DEFAULT_D by scaling:
- * - Y around face center (faceLength)
- * - X around centerline using cheek/jaw weights based on Y position
- *
- * If recipe is default (1/1/1), returns PERFECT_DEFAULT_D exactly.
- */
 function morphedHeadPath(recipe: AvatarRecipe): string {
   const faceLength = clamp(recipe.faceLength, 0.5, 1.5);
   const cheekWidth = clamp(recipe.cheekWidth, 0.5, 1.5);
@@ -148,7 +141,6 @@ function morphedHeadPath(recipe: AvatarRecipe): string {
   return out.join(" ").replace(/\s+/g, " ").trim();
 }
 
-/** Hair helper: keep Y placements stable as faceLength changes */
 function faceTy(recipe: AvatarRecipe) {
   const faceLength = clamp(recipe.faceLength, 0.5, 1.5);
   const yTop = 84;
@@ -157,20 +149,11 @@ function faceTy(recipe: AvatarRecipe) {
   return (y: number) => cy + (y - cy) * faceLength;
 }
 
-/**
- * Side-swept red hair built from CHUNKS (not one blob):
- * - Back volume (not clipped)
- * - Front chunks (clipped) that create real segmentation
- * - Shadow seams + subtle highlight streaks
- */
 function sweptRedHair(recipe: AvatarRecipe) {
   const ty = faceTy(recipe);
 
-  // where we stop drawing the head outline (so hair covers it cleanly)
-  // slightly below the hairline
   const outlineCutY = ty(172);
 
-  // BACK VOLUME (more “hair flow”, less helmet)
   const back = `
     M 132 ${ty(150)}
     C 140 ${ty(108)} 178 ${ty(78)} 232 ${ty(70)}
@@ -183,8 +166,6 @@ function sweptRedHair(recipe: AvatarRecipe) {
     Z
   `.replace(/\s+/g, " ").trim();
 
-  // FRONT CHUNKS (CLIPPED) — these are the “separated pieces”
-  // Left bang
   const chunkL = `
     M 150 ${ty(162)}
     C 170 ${ty(134)} 210 ${ty(112)} 246 ${ty(118)}
@@ -194,7 +175,6 @@ function sweptRedHair(recipe: AvatarRecipe) {
     Z
   `.replace(/\s+/g, " ").trim();
 
-  // Middle bang (the main swoop)
   const chunkM = `
     M 186 ${ty(156)}
     C 220 ${ty(118)} 286 ${ty(98)} 334 ${ty(112)}
@@ -204,7 +184,6 @@ function sweptRedHair(recipe: AvatarRecipe) {
     Z
   `.replace(/\s+/g, " ").trim();
 
-  // Right bang (curves into the side tuft)
   const chunkR = `
     M 270 ${ty(150)}
     C 306 ${ty(118)} 360 ${ty(124)} 382 ${ty(152)}
@@ -215,9 +194,6 @@ function sweptRedHair(recipe: AvatarRecipe) {
     Z
   `.replace(/\s+/g, " ").trim();
 
-  // Side tuft (sticks out like reference; sits on the right)
-  // Not clipped to head outline — but we still draw it in the front group,
-  // clipped to head so it doesn't look detached inside the face region.
   const tuft = `
     M 360 ${ty(152)}
     C 404 ${ty(144)} 424 ${ty(170)} 414 ${ty(206)}
@@ -226,7 +202,6 @@ function sweptRedHair(recipe: AvatarRecipe) {
     Z
   `.replace(/\s+/g, " ").trim();
 
-  // Seam shadows between chunks (gives “cut” separation)
   const seam1 = `
     M 210 ${ty(154)}
     C 236 ${ty(134)} 264 ${ty(128)} 290 ${ty(132)}
@@ -235,7 +210,8 @@ function sweptRedHair(recipe: AvatarRecipe) {
     Z
   `.replace(/\s+/g, " ").trim();
 
-    const seam2 = `
+  // ✅ FIXED: complete + closed seam2 path
+  const seam2 = `
     M 300 ${ty(148)}
     C 326 ${ty(140)} 350 ${ty(144)} 360 ${ty(162)}
     C 344 ${ty(160)} 324 ${ty(166)} 314 ${ty(178)}
@@ -243,3 +219,83 @@ function sweptRedHair(recipe: AvatarRecipe) {
     Z
   `.replace(/\s+/g, " ").trim();
 
+  const hi1 = `
+    M 178 ${ty(160)}
+    C 204 ${ty(132)} 236 ${ty(122)} 264 ${ty(126)}
+    C 238 ${ty(136)} 214 ${ty(150)} 196 ${ty(168)}
+    C 188 ${ty(176)} 172 ${ty(172)} 178 ${ty(160)}
+    Z
+  `.replace(/\s+/g, " ").trim();
+
+  const hi2 = `
+    M 274 ${ty(132)}
+    C 302 ${ty(122)} 334 ${ty(126)} 350 ${ty(144)}
+    C 328 ${ty(144)} 306 ${ty(152)} 292 ${ty(166)}
+    C 282 ${ty(172)} 268 ${ty(160)} 274 ${ty(132)}
+    Z
+  `.replace(/\s+/g, " ").trim();
+
+  const faceOutlineClipRect = { x: 0, y: outlineCutY, w: 512, h: 512 - outlineCutY };
+
+  return {
+    faceOutlineClipRect,
+    back,
+    chunks: { chunkL, chunkM, chunkR, tuft },
+    seams: { seam1, seam2 },
+    his: { hi1, hi2 },
+  };
+}
+
+export function renderAvatarSvg(recipe: AvatarRecipe, size = 512): string {
+  const headD = morphedHeadPath(recipe);
+  const hair = sweptRedHair(recipe);
+  const ty = faceTy(recipe);
+
+  return `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="${size}" height="${size}" preserveAspectRatio="xMidYMid meet">
+  <style>
+    .ol { stroke: var(--outline); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+
+  <defs>
+    <clipPath id="clipHead">
+      <path d="${headD}" />
+    </clipPath>
+
+    <clipPath id="clipFaceOutline">
+      <rect x="${hair.faceOutlineClipRect.x}" y="${hair.faceOutlineClipRect.y}" width="${hair.faceOutlineClipRect.w}" height="${hair.faceOutlineClipRect.h}" />
+    </clipPath>
+  </defs>
+
+  <g id="head-fill">
+    <path fill="var(--skin)" d="${headD}" />
+  </g>
+
+  <g id="hair-back">
+    <path fill="var(--hair)" d="${hair.back}" />
+  </g>
+
+  <g id="hair-front" clip-path="url(#clipHead)">
+    <path fill="var(--hair)" d="${hair.chunks.chunkL}" />
+    <path fill="var(--hair)" d="${hair.chunks.chunkM}" />
+    <path fill="var(--hair)" d="${hair.chunks.chunkR}" />
+    <path fill="var(--hair)" d="${hair.chunks.tuft}" />
+
+    <path fill="${PALETTE.hair.redDeep}" opacity="0.22" d="${hair.seams.seam1}" />
+    <path fill="${PALETTE.hair.redDeep}" opacity="0.20" d="${hair.seams.seam2}" />
+
+    <g opacity="0.28" stroke="${PALETTE.hair.redDeep}" stroke-width="3" fill="none" stroke-linecap="round">
+      <path d="M 186 ${ty(154)} C 230 ${ty(124)} 270 ${ty(118)} 318 ${ty(130)}" />
+      <path d="M 262 ${ty(150)} C 300 ${ty(140)} 332 ${ty(144)} 356 ${ty(160)}" />
+    </g>
+
+    <path fill="${PALETTE.hair.redHi}" d="${hair.his.hi1}" />
+    <path fill="${PALETTE.hair.redHi2}" d="${hair.his.hi2}" />
+  </g>
+
+  <g id="head-outline" clip-path="url(#clipFaceOutline)">
+    <path class="ol" fill="none" d="${headD}" />
+  </g>
+</svg>
+`.trim();
+}
