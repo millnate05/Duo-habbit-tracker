@@ -69,15 +69,26 @@ export default function AvatarEditor({ initial, onSave }: AvatarEditorProps) {
         }}
       >
         <div
-          style={{
-            width: "min(520px, 92%)",
-            aspectRatio: "1 / 1",
-            display: "grid",
-            placeItems: "center",
-            ...(vars as any),
-          }}
-          dangerouslySetInnerHTML={{ __html: svg }}
-        />
+  style={{
+    // Bigger overall render area (fills the preview box more)
+    width: "min(720px, 98%)",
+    height: "min(720px, 95%)", // allow it to grow vertically too
+    display: "grid",
+    placeItems: "center",
+    ...(vars as any),
+    // Nudge up a bit to leave room above the head for future hair shapes
+    transform: "translateY(-4%)",
+  }}
+>
+  <div
+    style={{
+      width: "100%",
+      height: "100%",
+    }}
+    dangerouslySetInnerHTML={{ __html: svg }}
+  />
+</div>
+
 
         {/* Save button overlay */}
         <div style={{ position: "absolute", right: 12, bottom: 12, display: "flex", gap: 10 }}>
