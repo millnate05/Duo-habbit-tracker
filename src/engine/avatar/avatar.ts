@@ -41,20 +41,19 @@ function clamp(n: number, min: number, max: number) {
 function buildHeadPath(recipe: AvatarRecipe) {
   const cx = 256;
 
-  // Clamp for safety (in case old saved data is weird)
   const faceLength = clamp(recipe.faceLength, 0.5, 1.5);
   const cheek = clamp(recipe.cheekWidth, 0.5, 1.5);
   const jaw = clamp(recipe.jawWidth, 0.5, 1.5);
 
-  // Base vertical landmarks (default head)
+  // Vertical landmarks (base)
   const yTop = 84;
-  const yTemple = 130;
-  const yCheek = 210;
-  const yJaw = 300;
+  const yTemple = 132;
+  const yCheek = 220;
+  const yJaw = 304;
   const yChin = 372;
 
-  // Scale vertical positions around a center so it lengthens/shortens naturally
-  const cy = (yTop + yChin) / 2; // 228
+  // Scale vertically around center
+  const cy = (yTop + yChin) / 2;
   const sy = (y: number) => cy + (y - cy) * faceLength;
 
   const YT = sy(yTop);
@@ -63,53 +62,71 @@ function buildHeadPath(recipe: AvatarRecipe) {
   const YJ = sy(yJaw);
   const YCh = sy(yChin);
 
-  // Base half-widths at key landmarks
-  // (These numbers are tuned to look good at default = 1)
-  const wTempleBase = 78;
-  const wCheekBase = 106;
-  const wJawBase = 82;
-  const wChinBase = 40;
+  // Half-widths (base)
+  const wTempleBase = 76;
+  const wCheekBase = 108;
+  const wJawBase = 84;
+  const wChinBase = 42;
 
-  // Apply width scaling
-  const wTemple = wTempleBase * (0.65 * cheek + 0.35 * jaw);
+  // Apply scaling
+  const wTemple = wTempleBase * (0.75 * cheek + 0.25 * jaw);
   const wCheek = wCheekBase * cheek;
   const wJaw = wJawBase * jaw;
   const wChin = wChinBase * jaw;
 
-  // Left side X values
+  // X positions
   const xTempleL = cx - wTemple;
   const xCheekL = cx - wCheek;
   const xJawL = cx - wJaw;
   const xChinL = cx - wChin;
 
-  // Right side X values
   const xTempleR = cx + wTemple;
   const xCheekR = cx + wCheek;
   const xJawR = cx + wJaw;
   const xChinR = cx + wChin;
 
-  // Control-point helpers for smoothness
-  // We keep the silhouette “oval but defined” without adding any shading.
-  const cTopOut = 18; // how rounded the top is
-  const cSide = 26; // side curvature strength
-  const cJaw = 22; // jaw corner softness
-  const cChin = 20; // chin roundness
+  /**
+   * Curve strategy:
+   * - Use "vertical" control points (same x as anchor) so we don’t kink inward/outward.
+   * - Keep each segment bulging smoothly without dents.
+   */
 
-  // Build a single closed path:
-  // top -> right temple -> right cheek -> right jaw -> chin -> left jaw -> left cheek -> left temple -> top
+  const topBulge = 24;     // roundness at top
+  const cheekBulge = 30;   // cheek fullness
+  const jawBulge = 22;     // jaw corner softness
+  const chinBulge = 18;    // chin roundness
+
   return `
     M ${cx} ${YT}
-    C ${cx + cTopOut} ${YT} ${xTempleR + cSide} ${YTe - 8} ${xTempleR} ${YTe}
-    C ${xCheekR} ${YC - 34} ${xCheekR} ${YC + 18} ${xCheekR - 2} ${YC}
-    C ${xJawR + cJaw} ${YJ - 6} ${xJawR + cJaw} ${YJ + 36} ${xJawR} ${YJ}
-    C ${xChinR - 4} ${YCh - cChin} ${cx + cChin} ${YCh} ${cx} ${YCh}
-    C ${cx - cChin} ${YCh} ${xChinL + 4} ${YCh - cChin} ${xJawL} ${YJ}
-    C ${xJawL - cJaw} ${YJ + 36} ${xJawL - cJaw} ${YJ - 6} ${xCheekL + 2} ${YC}
-    C ${xCheekL} ${YC + 18} ${xCheekL} ${YC - 34} ${xTempleL} ${YTe}
-    C ${xTempleL - cSide} ${YTe - 8} ${cx - cTopOut} ${YT} ${cx} ${YT}
+
+    /* Top -> Right temple */
+    C ${cx + topBulge} ${YT} ${xTempleR} ${YTe - 28} ${xTempleR} ${YTe}
+
+    /* Right temple -> Right cheek */
+    C ${xTempleR} ${YTe + 46} ${xCheekR} ${YC - cheekBulge} ${xCheekR} ${YC}
+
+    /* Right cheek -> Right jaw */
+    C ${xCheekR} ${YC + cheekBulge} ${xJawR} ${YJ - jawBulge} ${xJawR} ${YJ}
+
+    /* Right jaw -> Chin */
+    C ${xJawR} ${YJ + 46} ${xChinR} ${YCh - chinBulge} ${cx} ${YCh}
+
+    /* Chin -> Left jaw */
+    C ${xChinL} ${YCh - chinBulge} ${xJawL} ${YJ + 46} ${xJawL} ${YJ}
+
+    /* Left jaw -> Left cheek */
+    C ${xJawL} ${YJ - jawBulge} ${xCheekL} ${YC + cheekBulge} ${xCheekL} ${YC}
+
+    /* Left cheek -> Left temple */
+    C ${xCheekL} ${YC - cheekBulge} ${xTempleL} ${YTe + 46} ${xTempleL} ${YTe}
+
+    /* Left temple -> Top */
+    C ${xTempleL} ${YTe - 28} ${cx - topBulge} ${YT} ${cx} ${YT}
+
     Z
   `.replace(/\s+/g, " ").trim();
 }
+
 
 export function renderAvatarSvg(recipe: AvatarRecipe, size = 512): string {
   const d = buildHeadPath(recipe);
