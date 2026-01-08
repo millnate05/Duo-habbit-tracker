@@ -1,31 +1,60 @@
-// src/UI/avatar/AvatarEditor.tsx
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React from "react";
 import { DEFAULT_AVATAR, cssVars, renderAvatarSvg, type AvatarRecipe } from "@/engine/avatar/avatar";
+
+type AvatarEditorProps = {
+  initial?: AvatarRecipe | null;
+  onSave?: (recipe: AvatarRecipe) => Promise<void> | void;
+};
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-export default function AvatarEditor() {
-  const [recipe, setRecipe] = useState<AvatarRecipe>(DEFAULT_AVATAR);
+export default function AvatarEditor({ initial, onSave }: AvatarEditorProps) {
+  const [recipe, setRecipe] = React.useState<AvatarRecipe>(DEFAULT_AVATAR);
+  const [saving, setSaving] = React.useState(false);
+  const [saveMsg, setSaveMsg] = React.useState<string | null>(null);
 
-  const svg = useMemo(() => renderAvatarSvg(recipe, 512), [recipe]);
-  const vars = useMemo(() => cssVars(recipe), [recipe]);
+  // When initial loads from Supabase, apply it once.
+  const appliedInitialRef = React.useRef(false);
+  React.useEffect(() => {
+    if (appliedInitialRef.current) return;
+    if (!initial) return;
+    setRecipe(initial);
+    appliedInitialRef.current = true;
+  }, [initial]);
+
+  const svg = React.useMemo(() => renderAvatarSvg(recipe, 512), [recipe]);
+  const vars = React.useMemo(() => cssVars(recipe), [recipe]);
+
+  async function handleSave() {
+    if (!onSave) return;
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      await onSave(recipe);
+      setSaveMsg("Saved!");
+      window.setTimeout(() => setSaveMsg(null), 1200);
+    } catch (e: any) {
+      setSaveMsg(e?.message ? `Error: ${e.message}` : "Error saving.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div
       style={{
-        // full page content area
-        minHeight: "calc(100vh - 64px)", // if you have a fixed header ~64px; adjust/remove if not
+        // If your page already has padding, this component doesn't need extra margin.
+        minHeight: "calc(100vh - 64px)", // adjust/remove if your header differs
         display: "flex",
         flexDirection: "column",
         gap: 12,
-        padding: 16,
       }}
     >
-      {/* TOP: Avatar preview (60% of viewport height) */}
+      {/* TOP: avatar preview ~60% of viewport height */}
       <div
         style={{
           height: "60vh",
@@ -39,21 +68,54 @@ export default function AvatarEditor() {
           position: "relative",
         }}
       >
-        {/* Keep avatar nicely sized within the box */}
         <div
           style={{
-            width: "min(520px, 90%)",
+            width: "min(520px, 92%)",
             aspectRatio: "1 / 1",
             display: "grid",
             placeItems: "center",
             ...(vars as any),
           }}
-          // render raw svg
           dangerouslySetInnerHTML={{ __html: svg }}
         />
+
+        {/* Save button overlay */}
+        <div style={{ position: "absolute", right: 12, bottom: 12, display: "flex", gap: 10 }}>
+          {saveMsg ? (
+            <div
+              style={{
+                padding: "8px 10px",
+                borderRadius: 10,
+                border: "1px solid var(--border)",
+                background: "var(--bg)",
+                fontSize: 13,
+                opacity: 0.9,
+              }}
+            >
+              {saveMsg}
+            </div>
+          ) : null}
+
+          <button
+            onClick={handleSave}
+            disabled={!onSave || saving}
+            style={{
+              padding: "10px 12px",
+              borderRadius: 12,
+              border: "1px solid var(--border)",
+              background: "var(--bg)",
+              color: "var(--text)",
+              cursor: saving ? "default" : "pointer",
+              opacity: saving ? 0.7 : 1,
+              fontWeight: 600,
+            }}
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
       </div>
 
-      {/* BOTTOM: Controls */}
+      {/* BOTTOM: controls */}
       <div
         style={{
           flex: 1,
@@ -92,8 +154,6 @@ export default function AvatarEditor() {
           step={0.01}
           onChange={(v) => setRecipe((r) => ({ ...r, jawWidth: v }))}
         />
-
-        {/* Add more controls here as needed */}
       </div>
     </div>
   );
