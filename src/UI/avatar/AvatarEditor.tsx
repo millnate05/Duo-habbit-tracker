@@ -5,38 +5,37 @@ import type { AvatarRecipe } from "@/engine/avatar/avatar";
 import { DEFAULT_AVATAR } from "@/engine/avatar/avatar";
 import { AvatarPreview } from "./AvatarPreview";
 
-type Option<T extends string> = { id: T; label: string };
-
-const SKIN: Option<AvatarRecipe["skinTone"]>[] = [{ id: "olive", label: "Olive" }];
-
-function Row<T extends string>(props: {
+function SliderRow(props: {
   title: string;
-  options: Option<T>[];
-  value: T;
-  onChange: (v: T) => void;
+  value: number;
+  onChange: (v: number) => void;
 }) {
-  const { title, options, value, onChange } = props;
+  const { title, value, onChange } = props;
+
   return (
     <div style={{ display: "grid", gap: 8 }}>
-      <div style={{ fontWeight: 800 }}>{title}</div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {options.map((o) => (
-          <button
-            key={o.id}
-            onClick={() => onChange(o.id)}
-            style={{
-              padding: "8px 10px",
-              borderRadius: 12,
-              border: "1px solid var(--border)",
-              background: o.id === value ? "rgba(255,255,255,0.08)" : "transparent",
-              color: "var(--text)",
-              cursor: "pointer",
-              fontWeight: 700,
-            }}
-          >
-            {o.label}
-          </button>
-        ))}
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ fontWeight: 800 }}>{title}</div>
+        <div style={{ opacity: 0.8, fontVariantNumeric: "tabular-nums" }}>{value.toFixed(2)}×</div>
+      </div>
+
+      <input
+        type="range"
+        min={0.5}
+        max={1.5}
+        step={0.01}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        style={{
+          width: "100%",
+          accentColor: "#f59e0b", // orange
+        }}
+      />
+
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, opacity: 0.7 }}>
+        <span>0.5×</span>
+        <span>1.0×</span>
+        <span>1.5×</span>
       </div>
     </div>
   );
@@ -62,8 +61,13 @@ export function AvatarEditor({
   }
 
   function randomize() {
-    // Only one option for now—this keeps the button functional without breaking types
-    setRecipe((r) => ({ ...r, skinTone: "olive" }));
+    const rand = () => Number((0.5 + Math.random() * 1.0).toFixed(2)); // 0.50–1.50
+    setRecipe((r) => ({
+      ...r,
+      faceLength: rand(),
+      cheekWidth: rand(),
+      jawWidth: rand(),
+    }));
   }
 
   return (
@@ -95,7 +99,7 @@ export function AvatarEditor({
               padding: "10px 12px",
               borderRadius: 12,
               border: "1px solid var(--border)",
-              background: "rgba(255,255,255,0.08)",
+              background: "rgba(245,158,11,0.18)", // orange-y
               color: "var(--text)",
               cursor: saving ? "not-allowed" : "pointer",
               fontWeight: 900,
@@ -107,14 +111,24 @@ export function AvatarEditor({
       </div>
 
       <div style={{ display: "grid", gap: 18 }}>
-        <Row
-          title="Skin Tone"
-          options={SKIN}
-          value={recipe.skinTone}
-          onChange={(v) => setRecipe((r) => ({ ...r, skinTone: v }))}
+        <SliderRow
+          title="Face Length"
+          value={recipe.faceLength}
+          onChange={(v) => setRecipe((r) => ({ ...r, faceLength: v }))}
         />
-        <div style={{ opacity: 0.75, fontSize: 14, lineHeight: 1.4 }}>
-          More options (hair, eyes, etc.) will appear here as we add them back into the engine.
+        <SliderRow
+          title="Cheek Width"
+          value={recipe.cheekWidth}
+          onChange={(v) => setRecipe((r) => ({ ...r, cheekWidth: v }))}
+        />
+        <SliderRow
+          title="Jaw Width"
+          value={recipe.jawWidth}
+          onChange={(v) => setRecipe((r) => ({ ...r, jawWidth: v }))}
+        />
+
+        <div style={{ opacity: 0.75, fontSize: 13, lineHeight: 1.4 }}>
+          Next: we’ll add neck + shoulders (so it stops feeling like a floating head), then ears, then facial features.
         </div>
       </div>
     </div>
