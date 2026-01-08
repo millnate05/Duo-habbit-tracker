@@ -1,5 +1,5 @@
 "use client";
-
+ 
 import React from "react";
 import { DEFAULT_AVATAR, cssVars, renderAvatarSvg, type AvatarRecipe } from "@/engine/avatar/avatar";
 
