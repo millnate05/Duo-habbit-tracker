@@ -16,7 +16,7 @@ type PartnershipRow = {
 
 type Task = {
   id: string;
-  user_id: string; // owner of the task
+  user_id: string; // OWNER (we'll always set this to meId for shared tasks)
   title: string;
   type: "habit" | "single";
   freq_times: number | null;
@@ -100,7 +100,6 @@ export default function SharedClient() {
   async function loadPartner(me: string) {
     setStatus("");
 
-    // robust: find partnership row where I'm either owner or partner
     const { data: links, error } = await supabase
       .from("partnerships")
       .select("owner_id, partner_id")
@@ -219,9 +218,11 @@ export default function SharedClient() {
     const fp = ft ? freqPer : null;
     const wsa = Math.max(0, Number.parseInt(weeklySkipsAllowed.trim() || "0", 10));
 
-    // helper to build one task row
-    const buildRow = (ownerId: string, assigneeId: string) => ({
-      user_id: ownerId,
+    // ✅ IMPORTANT CHANGE:
+    // Always insert shared tasks under *my ownership* to satisfy RLS:
+    // auth.uid() = user_id
+    const buildRow = (assigneeId: string) => ({
+      user_id: meId, // <-- ALWAYS ME (prevents RLS insert failures)
       title: trimmed,
       type: taskType,
       freq_times: ft,
@@ -236,16 +237,12 @@ export default function SharedClient() {
       reward: reward.trim() ? reward.trim() : null,
     });
 
-    // IMPORTANT:
-    // - "Assign to Me": create task owned by me
-    // - "Assign to Partner": create task owned by partner
-    // - "Both": create two tasks (one owned by each)
     const rows =
       assignTo === "me"
-        ? [buildRow(meId, meId)]
+        ? [buildRow(meId)]
         : assignTo === "partner"
-        ? [buildRow(partner.user_id, partner.user_id)]
-        : [buildRow(meId, meId), buildRow(partner.user_id, partner.user_id)];
+        ? [buildRow(partner.user_id)]
+        : [buildRow(meId), buildRow(partner.user_id)];
 
     const { error } = await supabase.from("tasks").insert(rows);
 
@@ -269,8 +266,10 @@ export default function SharedClient() {
     setStatus("Task created ✅");
   }
 
-  const myTasks = tasks.filter((t) => t.user_id === meId);
-  const partnerTasks = tasks.filter((t) => t.user_id !== meId);
+  // ✅ IMPORTANT CHANGE:
+  // Split lists by *assignee*, not by owner (owner will be meId now)
+  const myTasks = tasks.filter((t) => t.assigned_to === meId);
+  const partnerTasks = tasks.filter((t) => t.assigned_to && t.assigned_to !== meId);
 
   const partnerLabel =
     partner?.display_name ?? partner?.email ?? (partner ? partner.user_id.slice(0, 8) : "");
@@ -286,7 +285,6 @@ export default function SharedClient() {
       ) : null}
 
       {!linked ? (
-        // NOT LINKED: show link UI
         <section style={{ marginTop: 16, padding: 16, border: "1px solid var(--border)", borderRadius: 16 }}>
           <h2 style={{ marginTop: 0 }}>Link a partner</h2>
           <div style={{ opacity: 0.8, marginBottom: 10 }}>
@@ -307,7 +305,6 @@ export default function SharedClient() {
         </section>
       ) : (
         <>
-          {/* linked header */}
           <section style={{ marginTop: 16, padding: 16, border: "1px solid var(--border)", borderRadius: 16 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
               <div>
@@ -325,7 +322,6 @@ export default function SharedClient() {
             </div>
           </section>
 
-          {/* create task */}
           <section style={{ marginTop: 16, padding: 16, border: "1px solid var(--border)", borderRadius: 16 }}>
             <h2 style={{ marginTop: 0 }}>Create Shared Task</h2>
 
@@ -431,7 +427,6 @@ export default function SharedClient() {
                 </button>
               </div>
 
-              {/* punishment & reward */}
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <label style={labelStyle()}>Punishment (optional)</label>
                 <textarea
@@ -452,16 +447,16 @@ export default function SharedClient() {
                 />
 
                 <div style={{ opacity: 0.7, fontSize: 13 }}>
-                  For “Both”, the app creates one task under each account so each person owns their copy.
+                  For “Both”, the app creates one shared task assigned to each person (both rows are owned by you to
+                  satisfy RLS).
                 </div>
               </div>
             </div>
           </section>
 
-          {/* tasks */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 16 }}>
-            <TaskBox title="My Shared Tasks" tasks={myTasks} />
-            <TaskBox title="Partner Shared Tasks" tasks={partnerTasks} />
+            <TaskBox title="My Shared Tasks" tasks={myTasks} meId={meId} partner={partner} />
+            <TaskBox title="Partner Shared Tasks" tasks={partnerTasks} meId={meId} partner={partner} />
           </div>
         </>
       )}
@@ -469,7 +464,27 @@ export default function SharedClient() {
   );
 }
 
-function TaskBox({ title, tasks }: { title: string; tasks: Task[] }) {
+function TaskBox({
+  title,
+  tasks,
+  meId,
+  partner,
+}: {
+  title: string;
+  tasks: Task[];
+  meId: string | null;
+  partner: Profile | null;
+}) {
+  const partnerLabel =
+    partner?.display_name ?? partner?.email ?? (partner ? partner.user_id.slice(0, 8) : "Partner");
+
+  const assignedLabel = (t: Task) => {
+    if (!meId) return t.assigned_to?.slice(0, 8) ?? "—";
+    if (t.assigned_to === meId) return "Me";
+    if (t.assigned_to === partner?.user_id) return partnerLabel;
+    return t.assigned_to?.slice(0, 8) ?? "—";
+  };
+
   return (
     <section style={{ padding: 16, border: "1px solid var(--border)", borderRadius: 16 }}>
       <h3 style={{ marginTop: 0 }}>{title}</h3>
@@ -481,6 +496,7 @@ function TaskBox({ title, tasks }: { title: string; tasks: Task[] }) {
           {tasks.map((t) => (
             <div key={t.id} style={{ padding: 12, border: "1px solid var(--border)", borderRadius: 14 }}>
               <div style={{ fontWeight: 900 }}>{t.title}</div>
+
               <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
                 {t.type.toUpperCase()}
                 {t.freq_times ? ` • ${t.freq_times}/${t.freq_per}` : ""} •{" "}
@@ -503,7 +519,7 @@ function TaskBox({ title, tasks }: { title: string; tasks: Task[] }) {
               ) : null}
 
               <div style={{ fontSize: 12, opacity: 0.7, marginTop: 8 }}>
-                Assigned: <b>{t.assigned_to ? t.assigned_to.slice(0, 8) : "—"}</b> • Created:{" "}
+                Assigned: <b>{assignedLabel(t)}</b> • Created:{" "}
                 <b>{t.created_by ? t.created_by.slice(0, 8) : "—"}</b>
               </div>
             </div>
@@ -546,7 +562,7 @@ function btnStyle(disabled: boolean, primary: boolean): React.CSSProperties {
   return {
     padding: "10px 14px",
     borderRadius: 12,
-    border: primary ? "1px solid var(--border)" : "1px solid var(--border)",
+    border: "1px solid var(--border)",
     background: primary ? "var(--card)" : "transparent",
     color: "var(--text)",
     cursor: disabled ? "not-allowed" : "pointer",
