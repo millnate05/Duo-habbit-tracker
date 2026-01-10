@@ -149,21 +149,20 @@ export default function TasksPage() {
 
     try {
       const payload = {
-        user_id: userId,
+  user_id: userId,
 
-        // ✅ REQUIRED FOR RLS
-        created_by: userId,
-        assigned_to: userId,
-        is_shared: false,
+  created_by: userId,
+  assigned_to: userId,
+  is_shared: false,
 
-        title: t,
-        type,
-        archived: false,
-        freq_times: type === "habit" ? freqTimes : null,
-        freq_per: type === "habit" ? freqPer : null,
-        scheduled_days: scheduledDays,
-        weekly_skips_allowed: weeklySkipsAllowed,
-      };
+  title: t,
+  type,
+  archived: false,
+  freq_times: type === "habit" ? freqTimes : null,
+  freq_per: type === "habit" ? freqPer : null,
+  scheduled_days: scheduledDays,
+  weekly_skips_allowed: weeklySkipsAllowed,
+};
 
       const { data, error } = await supabase
         .from("tasks")
