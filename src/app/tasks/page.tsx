@@ -22,6 +22,17 @@ type TaskRow = {
   weekly_skips_allowed: number; // default 0
 };
 
+type CompletionRow = {
+  id: string;
+  user_id: string;
+  task_id: string;
+  proof_type: "photo" | "override";
+  proof_note: string | null;
+  photo_path: string | null;
+  completed_at: string;
+  tasks?: { title: string } | null;
+};
+
 const DOW = [
   { n: 0, label: "Sun" },
   { n: 1, label: "Mon" },
@@ -74,26 +85,29 @@ export default function TasksPage() {
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
+  const [loadingCompleted, setLoadingCompleted] = useState(true);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
   const [tasks, setTasks] = useState<TaskRow[]>([]);
+  const [completions, setCompletions] = useState<CompletionRow[]>([]);
 
   // Create form
   const [title, setTitle] = useState("");
   const [type, setType] = useState<TaskType>("habit");
 
-  // ✅ store as strings so the input can be blank
+  // store as strings so the input can be blank
   const [freqTimesStr, setFreqTimesStr] = useState<string>("1");
   const [freqPer, setFreqPer] = useState<FrequencyUnit>("week");
   const [scheduledDays, setScheduledDays] = useState<number[] | null>(null); // null => every day
-  const [weeklySkipsAllowedStr, setWeeklySkipsAllowedStr] = useState<string>("0");
+  const [weeklySkipsAllowedStr, setWeeklySkipsAllowedStr] =
+    useState<string>("0");
 
   // Edit modal
   const [editOpen, setEditOpen] = useState(false);
   const [editTask, setEditTask] = useState<TaskRow | null>(null);
 
-  // ✅ string versions for edit modal numeric fields
+  // string versions for edit modal numeric fields
   const [editFreqTimesStr, setEditFreqTimesStr] = useState<string>("1");
   const [editWeeklySkipsStr, setEditWeeklySkipsStr] = useState<string>("0");
 
@@ -175,20 +189,49 @@ export default function TasksPage() {
     setLoading(false);
   }
 
+  async function loadCompletions(uid: string) {
+    setLoadingCompleted(true);
+
+    const { data, error } = await supabase
+      .from("completions")
+      .select("id,user_id,task_id,proof_type,proof_note,photo_path,completed_at,tasks(title)")
+      .eq("user_id", uid)
+      .order("completed_at", { ascending: false })
+      .limit(100);
+
+    if (error) {
+      console.error(error);
+      setStatus((prev) => prev ?? error.message);
+      setCompletions([]);
+      setLoadingCompleted(false);
+      return;
+    }
+
+    setCompletions((data ?? []) as CompletionRow[]);
+    setLoadingCompleted(false);
+  }
+
   useEffect(() => {
     if (!userId) {
       setTasks([]);
+      setCompletions([]);
       setLoading(false);
+      setLoadingCompleted(false);
       return;
     }
     loadTasks(userId);
+    loadCompletions(userId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
   const activeTasks = useMemo(() => tasks.filter((t) => !t.archived), [tasks]);
   const archivedTasks = useMemo(() => tasks.filter((t) => t.archived), [tasks]);
 
-  function toggleDay(day: number, current: number[] | null, setFn: (v: number[] | null) => void) {
+  function toggleDay(
+    day: number,
+    current: number[] | null,
+    setFn: (v: number[] | null) => void
+  ) {
     const base = current ?? [0, 1, 2, 3, 4, 5, 6];
     const set = new Set(base);
     if (set.has(day)) set.delete(day);
@@ -196,6 +239,11 @@ export default function TasksPage() {
     const next = Array.from(set).sort((a, b) => a - b);
     if (next.length === 7) setFn(null);
     else setFn(next);
+  }
+
+  function onNumberFieldChange(setter: (v: string) => void, raw: string) {
+    if (raw === "") return setter("");
+    if (/^\d+$/.test(raw)) return setter(raw);
   }
 
   async function createTask() {
@@ -210,9 +258,16 @@ export default function TasksPage() {
     setStatus(null);
 
     try {
-      // ✅ sanitize at submit time (blank is allowed while typing)
-      const freqTimes = parseBoundedInt(freqTimesStr, { min: 1, max: 999, fallback: 1 });
-      const weeklySkipsAllowed = parseBoundedInt(weeklySkipsAllowedStr, { min: 0, max: 7, fallback: 0 });
+      const freqTimes = parseBoundedInt(freqTimesStr, {
+        min: 1,
+        max: 999,
+        fallback: 1,
+      });
+      const weeklySkipsAllowed = parseBoundedInt(weeklySkipsAllowedStr, {
+        min: 0,
+        max: 7,
+        fallback: 0,
+      });
 
       const base = {
         user_id: userId,
@@ -235,12 +290,16 @@ export default function TasksPage() {
         base.freq_per = freqPer;
       }
 
-      const { data, error } = await supabase.from("tasks").insert(base).select("*").single();
+      const { data, error } = await supabase
+        .from("tasks")
+        .insert(base)
+        .select("*")
+        .single();
+
       if (error) throw error;
 
       setTasks((prev) => [data as TaskRow, ...prev]);
 
-      // reset create form
       setTitle("");
       setType("habit");
       setFreqTimesStr("1");
@@ -260,7 +319,6 @@ export default function TasksPage() {
     setEditOpen(true);
     setStatus(null);
 
-    // sync edit string fields from the selected task
     setEditFreqTimesStr(String(t.freq_times ?? 1));
     setEditWeeklySkipsStr(String(t.weekly_skips_allowed ?? 0));
   }
@@ -278,8 +336,16 @@ export default function TasksPage() {
     setStatus(null);
 
     try {
-      const freqTimes = parseBoundedInt(editFreqTimesStr, { min: 1, max: 999, fallback: 1 });
-      const weeklySkipsAllowed = parseBoundedInt(editWeeklySkipsStr, { min: 0, max: 7, fallback: 0 });
+      const freqTimes = parseBoundedInt(editFreqTimesStr, {
+        min: 1,
+        max: 999,
+        fallback: 1,
+      });
+      const weeklySkipsAllowed = parseBoundedInt(editWeeklySkipsStr, {
+        min: 0,
+        max: 7,
+        fallback: 0,
+      });
 
       const { data, error } = await supabase
         .from("tasks")
@@ -349,7 +415,12 @@ export default function TasksPage() {
     setStatus(null);
 
     try {
-      const { error } = await supabase.from("tasks").delete().eq("id", t.id).eq("user_id", userId);
+      const { error } = await supabase
+        .from("tasks")
+        .delete()
+        .eq("id", t.id)
+        .eq("user_id", userId);
+
       if (error) throw error;
 
       setTasks((prev) => prev.filter((x) => x.id !== t.id));
@@ -365,22 +436,33 @@ export default function TasksPage() {
     }
   }
 
-  // Helpers to allow blank while typing, but still restrict to digits-ish
-  function onNumberFieldChange(setter: (v: string) => void, raw: string) {
-    // allow "", or digits
-    if (raw === "") return setter("");
-    if (/^\d+$/.test(raw)) return setter(raw);
-    // ignore other characters
+  function fmtDateTime(iso: string) {
+    try {
+      return new Date(iso).toLocaleString();
+    } catch {
+      return iso;
+    }
   }
 
   if (!userId) {
     return (
-      <main style={{ minHeight: theme.layout.fullHeight, background: theme.page.background, color: theme.page.text, padding: 24 }}>
+      <main
+        style={{
+          minHeight: theme.layout.fullHeight,
+          background: theme.page.background,
+          color: theme.page.text,
+          padding: 24,
+        }}
+      >
         <style>{globalFixesCSS}</style>
         <div style={{ maxWidth: 980, margin: "0 auto" }}>
           <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>Tasks</h1>
-          <p style={{ margin: "8px 0 0 0", opacity: 0.8 }}>Log in to manage tasks.</p>
+          <p style={{ margin: "8px 0 0 0", opacity: 0.8 }}>
+            Log in to manage tasks.
+          </p>
+
           <div style={{ height: 14 }} />
+
           <Link
             href="/profile"
             style={{
@@ -401,11 +483,35 @@ export default function TasksPage() {
   }
 
   return (
-    <main style={{ minHeight: theme.layout.fullHeight, background: theme.page.background, color: theme.page.text, padding: 24 }}>
+    <main
+      style={{
+        height: "100vh",
+        overflowY: "auto",
+        background: theme.page.background,
+        color: theme.page.text,
+        padding: 24,
+      }}
+    >
       <style>{globalFixesCSS}</style>
 
-      <div style={{ maxWidth: 980, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+      <div
+        style={{
+          maxWidth: 980,
+          margin: "0 auto",
+          display: "flex",
+          flexDirection: "column",
+          gap: 16,
+          paddingBottom: 40,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
           <div>
             <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>Tasks</h1>
             <div style={{ opacity: 0.8, marginTop: 6 }}>
@@ -413,7 +519,14 @@ export default function TasksPage() {
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-start" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 10,
+              flexWrap: "wrap",
+              alignItems: "flex-start",
+            }}
+          >
             <Link
               href="/"
               style={{
@@ -427,31 +540,32 @@ export default function TasksPage() {
             >
               Home
             </Link>
-
-            <Link
-              href="/completed"
-              style={{
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: "1px solid var(--border)",
-                color: "var(--text)",
-                textDecoration: "none",
-                fontWeight: 900,
-              }}
-            >
-              Completed
-            </Link>
           </div>
         </div>
 
         {status ? (
-          <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 12, background: "rgba(255,255,255,0.02)" }}>
+          <div
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: 14,
+              padding: 12,
+              background: "rgba(255,255,255,0.02)",
+            }}
+          >
             {status}
           </div>
         ) : null}
 
         {/* Create card */}
-        <section style={{ border: "1px solid var(--border)", borderRadius: 16, padding: 16, background: "rgba(255,255,255,0.02)", boxShadow: "0 10px 24px rgba(0,0,0,0.20)" }}>
+        <section
+          style={{
+            border: "1px solid var(--border)",
+            borderRadius: 16,
+            padding: 16,
+            background: "rgba(255,255,255,0.02)",
+            boxShadow: "0 10px 24px rgba(0,0,0,0.20)",
+          }}
+        >
           <div style={{ fontSize: 20, fontWeight: 900 }}>Create Task</div>
           <div style={{ height: 12 }} />
 
@@ -471,29 +585,48 @@ export default function TasksPage() {
               }}
             />
 
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                flexWrap: "wrap",
+                alignItems: "center",
+              }}
+            >
               <label style={{ fontWeight: 900, opacity: 0.9 }}>Type</label>
-              <select value={type} onChange={(e) => setType(e.target.value as TaskType)} style={cleanSelect}>
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value as TaskType)}
+                style={cleanSelect}
+              >
                 <option value="habit">Habit</option>
                 <option value="single">Single</option>
               </select>
 
               {type === "habit" ? (
                 <>
-                  <label style={{ fontWeight: 900, opacity: 0.9 }}>Frequency</label>
+                  <label style={{ fontWeight: 900, opacity: 0.9 }}>
+                    Frequency
+                  </label>
                   <input
                     type="number"
                     min={1}
                     max={999}
                     value={freqTimesStr}
-                    onChange={(e) => onNumberFieldChange(setFreqTimesStr, e.target.value)}
+                    onChange={(e) =>
+                      onNumberFieldChange(setFreqTimesStr, e.target.value)
+                    }
                     style={{ ...cleanNumber, width: 90 }}
                     inputMode="numeric"
                     pattern="[0-9]*"
                     placeholder="1"
                   />
                   <span style={{ opacity: 0.85 }}>x per</span>
-                  <select value={freqPer} onChange={(e) => setFreqPer(e.target.value as FrequencyUnit)} style={cleanSelect}>
+                  <select
+                    value={freqPer}
+                    onChange={(e) => setFreqPer(e.target.value as FrequencyUnit)}
+                    style={cleanSelect}
+                  >
                     <option value="day">day</option>
                     <option value="week">week</option>
                     <option value="month">month</option>
@@ -505,25 +638,35 @@ export default function TasksPage() {
 
             {/* Scheduled days */}
             <div>
-              <div style={{ fontWeight: 900, marginBottom: 6 }}>Scheduled days</div>
+              <div style={{ fontWeight: 900, marginBottom: 6 }}>
+                Scheduled days
+              </div>
               <div style={{ opacity: 0.8, fontSize: 13, marginBottom: 10 }}>
                 If you select all 7 days, it becomes <b>Every day</b>.
               </div>
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {DOW.map((d) => {
-                  const selected = (scheduledDays ?? [0, 1, 2, 3, 4, 5, 6]).includes(d.n);
+                  const selected = (scheduledDays ?? [
+                    0, 1, 2, 3, 4, 5, 6,
+                  ]).includes(d.n);
                   return (
                     <button
                       key={d.n}
                       type="button"
-                      onClick={() => toggleDay(d.n, scheduledDays, setScheduledDays)}
+                      onClick={() =>
+                        toggleDay(d.n, scheduledDays, setScheduledDays)
+                      }
                       disabled={busy}
                       style={{
                         padding: "8px 10px",
                         borderRadius: 999,
-                        border: `1px solid ${selected ? theme.accent.primary : "var(--border)"}`,
-                        background: selected ? "rgba(255,255,255,0.04)" : "transparent",
+                        border: `1px solid ${
+                          selected ? theme.accent.primary : "var(--border)"
+                        }`,
+                        background: selected
+                          ? "rgba(255,255,255,0.04)"
+                          : "transparent",
                         color: "var(--text)",
                         fontWeight: 900,
                         cursor: busy ? "not-allowed" : "pointer",
@@ -542,20 +685,31 @@ export default function TasksPage() {
             </div>
 
             {/* Weekly skips allowed */}
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                flexWrap: "wrap",
+                alignItems: "center",
+              }}
+            >
               <div style={{ fontWeight: 900 }}>Weekly skips allowed</div>
               <input
                 type="number"
                 min={0}
                 max={7}
                 value={weeklySkipsAllowedStr}
-                onChange={(e) => onNumberFieldChange(setWeeklySkipsAllowedStr, e.target.value)}
+                onChange={(e) =>
+                  onNumberFieldChange(setWeeklySkipsAllowedStr, e.target.value)
+                }
                 style={{ ...cleanNumber, width: 90 }}
                 inputMode="numeric"
                 pattern="[0-9]*"
                 placeholder="0"
               />
-              <div style={{ opacity: 0.8, fontSize: 13 }}>Example: a 5x/week task can allow 2 skips.</div>
+              <div style={{ opacity: 0.8, fontSize: 13 }}>
+                Example: a 5x/week task can allow 2 skips.
+              </div>
             </div>
 
             <div>
@@ -580,8 +734,16 @@ export default function TasksPage() {
           </div>
         </section>
 
-        {/* List */}
-        <section style={{ border: "1px solid var(--border)", borderRadius: 16, padding: 16, background: "rgba(255,255,255,0.02)", boxShadow: "0 10px 24px rgba(0,0,0,0.20)" }}>
+        {/* Active */}
+        <section
+          style={{
+            border: "1px solid var(--border)",
+            borderRadius: 16,
+            padding: 16,
+            background: "rgba(255,255,255,0.02)",
+            boxShadow: "0 10px 24px rgba(0,0,0,0.20)",
+          }}
+        >
           <div style={{ fontSize: 20, fontWeight: 900 }}>Active Tasks</div>
           <div style={{ marginTop: 6, opacity: 0.85 }}>
             Total: <b>{activeTasks.length}</b>
@@ -589,9 +751,27 @@ export default function TasksPage() {
           <div style={{ height: 12 }} />
 
           {loading ? (
-            <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>Loading…</div>
+            <div
+              style={{
+                border: "1px dashed var(--border)",
+                borderRadius: 16,
+                padding: 14,
+                opacity: 0.85,
+              }}
+            >
+              Loading…
+            </div>
           ) : activeTasks.length === 0 ? (
-            <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>No active tasks.</div>
+            <div
+              style={{
+                border: "1px dashed var(--border)",
+                borderRadius: 16,
+                padding: 14,
+                opacity: 0.85,
+              }}
+            >
+              No active tasks.
+            </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {activeTasks.map((t) => (
@@ -614,7 +794,8 @@ export default function TasksPage() {
                     <div style={{ opacity: 0.85, marginTop: 6 }}>
                       {t.type === "habit" ? (
                         <>
-                          Habit • <b>{t.freq_times ?? 1}x</b> per <b>{t.freq_per ?? "week"}</b>
+                          Habit • <b>{t.freq_times ?? 1}x</b> per{" "}
+                          <b>{t.freq_per ?? "week"}</b>
                         </>
                       ) : (
                         <>Single</>
@@ -692,7 +873,15 @@ export default function TasksPage() {
         </section>
 
         {/* Archived */}
-        <section style={{ border: "1px solid var(--border)", borderRadius: 16, padding: 16, background: "rgba(255,255,255,0.02)", boxShadow: "0 10px 24px rgba(0,0,0,0.20)" }}>
+        <section
+          style={{
+            border: "1px solid var(--border)",
+            borderRadius: 16,
+            padding: 16,
+            background: "rgba(255,255,255,0.02)",
+            boxShadow: "0 10px 24px rgba(0,0,0,0.20)",
+          }}
+        >
           <div style={{ fontSize: 20, fontWeight: 900 }}>Archived</div>
           <div style={{ marginTop: 6, opacity: 0.85 }}>
             Total: <b>{archivedTasks.length}</b>
@@ -700,7 +889,16 @@ export default function TasksPage() {
           <div style={{ height: 12 }} />
 
           {archivedTasks.length === 0 ? (
-            <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>No archived tasks.</div>
+            <div
+              style={{
+                border: "1px dashed var(--border)",
+                borderRadius: 16,
+                padding: 14,
+                opacity: 0.85,
+              }}
+            >
+              No archived tasks.
+            </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {archivedTasks.map((t) => (
@@ -723,7 +921,8 @@ export default function TasksPage() {
                     <div style={{ opacity: 0.85, marginTop: 6 }}>
                       {t.type === "habit" ? (
                         <>
-                          Habit • <b>{t.freq_times ?? 1}x</b> per <b>{t.freq_per ?? "week"}</b>
+                          Habit • <b>{t.freq_times ?? 1}x</b> per{" "}
+                          <b>{t.freq_per ?? "week"}</b>
                         </>
                       ) : (
                         <>Single</>
@@ -782,6 +981,99 @@ export default function TasksPage() {
           )}
         </section>
 
+        {/* COMPLETED (bottom) */}
+        <section
+          style={{
+            border: "1px solid var(--border)",
+            borderRadius: 16,
+            padding: 0,
+            background: "rgba(255,255,255,0.02)",
+            boxShadow: "0 10px 24px rgba(0,0,0,0.20)",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              padding: 16,
+              borderBottom: "1px solid var(--border)",
+              background: "rgba(255,255,255,0.03)",
+            }}
+          >
+            <div style={{ fontSize: 20, fontWeight: 900 }}>Completed</div>
+            <div style={{ marginTop: 6, opacity: 0.85 }}>
+              Total: <b>{completions.length}</b>
+            </div>
+          </div>
+
+          <div style={{ padding: 16 }}>
+            {loadingCompleted ? (
+              <div
+                style={{
+                  border: "1px dashed var(--border)",
+                  borderRadius: 16,
+                  padding: 14,
+                  opacity: 0.85,
+                }}
+              >
+                Loading…
+              </div>
+            ) : completions.length === 0 ? (
+              <div
+                style={{
+                  border: "1px dashed var(--border)",
+                  borderRadius: 16,
+                  padding: 14,
+                  opacity: 0.85,
+                }}
+              >
+                No completed tasks yet.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {completions.map((c) => (
+                  <div
+                    key={c.id}
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 14,
+                      padding: 12,
+                      background: "rgba(255,255,255,0.02)",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div style={{ minWidth: 240 }}>
+                      <div style={{ fontWeight: 900 }}>
+                        {c.tasks?.title ?? "Task"}
+                      </div>
+                      <div style={{ opacity: 0.85, marginTop: 6 }}>
+                        <span>
+                          Completed: <b>{fmtDateTime(c.completed_at)}</b>
+                        </span>
+                        <span>
+                          {" "}
+                          • Proof: <b>{c.proof_type}</b>
+                        </span>
+                        {c.proof_note ? (
+                          <span>
+                            {" "}
+                            • Note: <b>{c.proof_note}</b>
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {/* (Optional later) view photo proof, etc. */}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
         {/* Edit modal */}
         {editOpen && editTask && (
           <div
@@ -819,7 +1111,9 @@ export default function TasksPage() {
 
               <input
                 value={editTask.title}
-                onChange={(e) => setEditTask({ ...editTask, title: e.target.value })}
+                onChange={(e) =>
+                  setEditTask({ ...editTask, title: e.target.value })
+                }
                 placeholder="Task title"
                 style={{
                   width: "100%",
@@ -834,11 +1128,23 @@ export default function TasksPage() {
 
               <div style={{ height: 12 }} />
 
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                }}
+              >
                 <label style={{ fontWeight: 900, opacity: 0.9 }}>Type</label>
                 <select
                   value={editTask.type}
-                  onChange={(e) => setEditTask({ ...editTask, type: e.target.value as TaskType })}
+                  onChange={(e) =>
+                    setEditTask({
+                      ...editTask,
+                      type: e.target.value as TaskType,
+                    })
+                  }
                   style={cleanSelect}
                 >
                   <option value="habit">Habit</option>
@@ -847,13 +1153,17 @@ export default function TasksPage() {
 
                 {editTask.type === "habit" ? (
                   <>
-                    <label style={{ fontWeight: 900, opacity: 0.9 }}>Frequency</label>
+                    <label style={{ fontWeight: 900, opacity: 0.9 }}>
+                      Frequency
+                    </label>
                     <input
                       type="number"
                       min={1}
                       max={999}
                       value={editFreqTimesStr}
-                      onChange={(e) => onNumberFieldChange(setEditFreqTimesStr, e.target.value)}
+                      onChange={(e) =>
+                        onNumberFieldChange(setEditFreqTimesStr, e.target.value)
+                      }
                       style={{ ...cleanNumber, width: 90 }}
                       inputMode="numeric"
                       pattern="[0-9]*"
@@ -862,7 +1172,12 @@ export default function TasksPage() {
                     <span style={{ opacity: 0.85 }}>x per</span>
                     <select
                       value={(editTask.freq_per ?? "week") as FrequencyUnit}
-                      onChange={(e) => setEditTask({ ...editTask, freq_per: e.target.value as FrequencyUnit })}
+                      onChange={(e) =>
+                        setEditTask({
+                          ...editTask,
+                          freq_per: e.target.value as FrequencyUnit,
+                        })
+                      }
                       style={cleanSelect}
                     >
                       <option value="day">day</option>
@@ -877,23 +1192,33 @@ export default function TasksPage() {
               <div style={{ height: 12 }} />
 
               <div>
-                <div style={{ fontWeight: 900, marginBottom: 6 }}>Scheduled days</div>
+                <div style={{ fontWeight: 900, marginBottom: 6 }}>
+                  Scheduled days
+                </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {DOW.map((d) => {
-                    const selected = (editTask.scheduled_days ?? [0, 1, 2, 3, 4, 5, 6]).includes(d.n);
+                    const selected = (editTask.scheduled_days ?? [
+                      0, 1, 2, 3, 4, 5, 6,
+                    ]).includes(d.n);
                     return (
                       <button
                         key={d.n}
                         type="button"
                         onClick={() =>
-                          toggleDay(d.n, editTask.scheduled_days, (v) => setEditTask({ ...editTask, scheduled_days: v }))
+                          toggleDay(d.n, editTask.scheduled_days, (v) =>
+                            setEditTask({ ...editTask, scheduled_days: v })
+                          )
                         }
                         disabled={busy}
                         style={{
                           padding: "8px 10px",
                           borderRadius: 999,
-                          border: `1px solid ${selected ? theme.accent.primary : "var(--border)"}`,
-                          background: selected ? "rgba(255,255,255,0.04)" : "transparent",
+                          border: `1px solid ${
+                            selected ? theme.accent.primary : "var(--border)"
+                          }`,
+                          background: selected
+                            ? "rgba(255,255,255,0.04)"
+                            : "transparent",
                           color: "var(--text)",
                           fontWeight: 900,
                           cursor: busy ? "not-allowed" : "pointer",
@@ -913,14 +1238,23 @@ export default function TasksPage() {
 
               <div style={{ height: 12 }} />
 
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                }}
+              >
                 <div style={{ fontWeight: 900 }}>Weekly skips allowed</div>
                 <input
                   type="number"
                   min={0}
                   max={7}
                   value={editWeeklySkipsStr}
-                  onChange={(e) => onNumberFieldChange(setEditWeeklySkipsStr, e.target.value)}
+                  onChange={(e) =>
+                    onNumberFieldChange(setEditWeeklySkipsStr, e.target.value)
+                  }
                   style={{ ...cleanNumber, width: 90 }}
                   inputMode="numeric"
                   pattern="[0-9]*"
@@ -930,7 +1264,14 @@ export default function TasksPage() {
 
               <div style={{ height: 14 }} />
 
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  flexWrap: "wrap",
+                }}
+              >
                 <button
                   type="button"
                   onClick={() => deleteTask(editTask)}
