@@ -17,6 +17,8 @@ export default function ProfilePage() {
   const [userId, setUserId] = useState<string | null>(null);
 
   const [displayName, setDisplayName] = useState("");
+  const [partnerLabel, setPartnerLabel] = useState<string | null>(null);
+
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -40,32 +42,6 @@ export default function ProfilePage() {
       setUserId(user?.id ?? null);
       setSessionEmail(user?.email ?? null);
     });
-
-    const [partnerLabel, setPartnerLabel] = useState<string | null>(null);
-
-useEffect(() => {
-  if (!userId) return;
-
-  (async () => {
-    const { data: links } = await supabase
-      .from("partnerships")
-      .select("partner_id")
-      .eq("owner_id", userId)
-      .limit(1);
-
-    const partnerId = (links?.[0] as any)?.partner_id as string | undefined;
-    if (!partnerId) return setPartnerLabel(null);
-
-    const { data: prof } = await supabase
-      .from("profiles")
-      .select("display_name,email")
-      .eq("user_id", partnerId)
-      .maybeSingle();
-
-    setPartnerLabel(prof?.display_name ?? prof?.email ?? partnerId.slice(0, 8));
-  })();
-}, [userId]);
-
 
     return () => {
       mounted = false;
@@ -110,6 +86,48 @@ useEffect(() => {
 
       setDisplayName(data.display_name ?? "");
       setStatus(null);
+    })();
+  }, [userId]);
+
+  // Load partner label when logged in (v1: 0 or 1 partner)
+  useEffect(() => {
+    if (!userId) {
+      setPartnerLabel(null);
+      return;
+    }
+
+    (async () => {
+      const { data: links, error: linkErr } = await supabase
+        .from("partnerships")
+        .select("partner_id")
+        .eq("owner_id", userId)
+        .limit(1);
+
+      if (linkErr) {
+        console.error(linkErr);
+        setStatus(linkErr.message);
+        return;
+      }
+
+      const partnerId = (links?.[0] as any)?.partner_id as string | undefined;
+      if (!partnerId) {
+        setPartnerLabel(null);
+        return;
+      }
+
+      const { data: prof, error: profErr } = await supabase
+        .from("profiles")
+        .select("display_name,email")
+        .eq("user_id", partnerId)
+        .maybeSingle();
+
+      if (profErr) {
+        console.error(profErr);
+        setStatus(profErr.message);
+        return;
+      }
+
+      setPartnerLabel(prof?.display_name ?? prof?.email ?? partnerId.slice(0, 8));
     })();
   }, [userId]);
 
@@ -163,9 +181,12 @@ useEffect(() => {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
+
       setEmail("");
       setPassword("");
       setDisplayName("");
+      setPartnerLabel(null);
+
       setStatus("Logged out.");
     } catch (e: any) {
       setStatus(e?.message ?? "Failed to log out.");
@@ -188,6 +209,22 @@ useEffect(() => {
       setStatus("Saved.");
     } catch (e: any) {
       setStatus(e?.message ?? "Failed to save.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function unlinkPartner() {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const { error } = await supabase.rpc("unlink_partner");
+      if (error) throw error;
+
+      setPartnerLabel(null);
+      setStatus("Unlinked partner.");
+    } catch (e: any) {
+      setStatus(e?.message ?? "Failed to unlink.");
     } finally {
       setBusy(false);
     }
@@ -282,7 +319,6 @@ useEffect(() => {
                   {mode === "signup" ? "Create account" : "Log in"}
                 </button>
 
-                {/* Forgot password link (login mode only) */}
                 {mode === "login" ? (
                   <div style={{ marginTop: 2 }}>
                     <Link href="/forgot-password" style={linkStyle()}>
@@ -303,6 +339,37 @@ useEffect(() => {
                   Logged in as <b>{sessionEmail}</b>
                 </div>
                 <div style={{ opacity: 0.7, fontSize: 13 }}>User ID: {userId}</div>
+
+                <div style={{ height: 6 }} />
+
+                <div style={{ fontWeight: 900 }}>Partner</div>
+                {partnerLabel ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div style={{ opacity: 0.85 }}>
+                      Linked to <b>{partnerLabel}</b>
+                    </div>
+                    <button
+                      onClick={unlinkPartner}
+                      disabled={busy}
+                      style={secondaryBtnStyle(busy)}
+                      type="button"
+                    >
+                      Unlink
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ opacity: 0.7, fontSize: 13 }}>
+                    No partner linked. Go to <b>Shared</b> to link by email.
+                  </div>
+                )}
 
                 <div style={{ height: 6 }} />
 
@@ -336,8 +403,7 @@ useEffect(() => {
               </div>
 
               <div style={{ opacity: 0.7, marginTop: 10, fontSize: 13 }}>
-                Next: we’ll move tasks + proof photos into Supabase so they follow your account
-                across devices.
+                Next: shared tasks + proof will appear in the Shared tab once you’re linked.
               </div>
             </>
           )}
