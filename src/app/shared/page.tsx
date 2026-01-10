@@ -1,3 +1,5 @@
+import SharedClient from "@/UI/shared/SharedClient";
+
 export default function SharedPage() {
   return (
     <main style={{ padding: 16 }}>
