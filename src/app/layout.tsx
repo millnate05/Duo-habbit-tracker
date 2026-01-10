@@ -106,6 +106,7 @@ function Header() {
         >
           <MenuItem href="/" label="Home" onSelect={closeMenu} />
           <MenuItem href="/tasks" label="Tasks" onSelect={closeMenu} />
+          <MenuItem href="/shared" label="Shared" onSelect={closeMenu} />
           <MenuItem href="/completed" label="Completed" onSelect={closeMenu} />
           <MenuItem href="/stats" label="Stats" onSelect={closeMenu} />
           <MenuItem href="/avatar" label="Avatar" onSelect={closeMenu} />
