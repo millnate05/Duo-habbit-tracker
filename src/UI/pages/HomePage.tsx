@@ -1,6 +1,6 @@
-// FORCE NEW COMMIT: 2026-01-06-REWRITE-HOME
+// FORCE NEW COMMIT: 2026-01-10-FIX-HOME-SHARED-FILTER
 "use client";
- 
+
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { theme } from "@/UI/theme";
@@ -21,6 +21,10 @@ type TaskRow = {
 
   scheduled_days?: number[] | null; // 0=Sun..6=Sat, null => every day
   weekly_skips_allowed?: number; // default 0
+
+  // ✅ needed so home can correctly filter shared tasks
+  is_shared?: boolean;
+  assigned_to?: string | null;
 };
 
 type CompletionRow = {
@@ -149,12 +153,17 @@ export default function HomePage() {
     const weekStartIso = startOfWeekLocal(now).toISOString();
     const yearStartIso = startOfYearLocal(now).toISOString();
 
-    // tasks
+    // ✅ tasks:
+    // show:
+    // 1) your personal tasks: user_id = me AND is_shared = false
+    // 2) shared tasks assigned to you: assigned_to = me AND is_shared = true
     const { data: tasksData, error: tasksErr } = await supabase
       .from("tasks")
       .select("*")
-      .eq("user_id", uid)
       .eq("archived", false)
+      .or(
+        `and(user_id.eq.${uid},is_shared.eq.false),and(assigned_to.eq.${uid},is_shared.eq.true)`
+      )
       .order("created_at", { ascending: false });
 
     if (tasksErr) {
@@ -295,7 +304,7 @@ export default function HomePage() {
     return countSkipsSince(taskId, weekStartMs);
   }
 
-  // ✅ Tasks shown on home (this is the core logic)
+  // ✅ Tasks shown on home (core logic)
   const homeTasks = useMemo(() => {
     return tasks.filter((t) => {
       if (t.archived) return false;
@@ -443,37 +452,28 @@ export default function HomePage() {
     }
   }
 
-  async function viewLastPhoto(taskId: string, title: string) {
-    const c = (completionsByTask[taskId] ?? []).find(
-      (x) => x.proof_type === "photo" && x.photo_path
-    );
-    if (!c?.photo_path) return;
-
-    setBusy(true);
-    setStatus(null);
-
-    try {
-      const { data, error } = await supabase.storage
-        .from("proofs")
-        .createSignedUrl(c.photo_path, 60);
-
-      if (error) throw error;
-
-      setPhotoViewer({ open: true, url: data.signedUrl, title });
-    } catch (e: any) {
-      setStatus(e?.message ?? "Could not load photo.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // ---------------- UI ----------------
-
   // Logged out: show hero, NO tasks
   if (!userId) {
     return (
-      <main style={{ minHeight: theme.layout.fullHeight, background: theme.page.background, color: theme.page.text, padding: 24 }}>
-        <div style={{ maxWidth: 980, margin: "0 auto", display: "flex", flexDirection: "column", gap: 20, alignItems: "center", textAlign: "center" }}>
+      <main
+        style={{
+          minHeight: theme.layout.fullHeight,
+          background: theme.page.background,
+          color: theme.page.text,
+          padding: 24,
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 980,
+            margin: "0 auto",
+            display: "flex",
+            flexDirection: "column",
+            gap: 20,
+            alignItems: "center",
+            textAlign: "center",
+          }}
+        >
           <img
             src="/chris-bumstead-3.jpg.webp"
             alt="Chris Bumstead"
@@ -485,21 +485,57 @@ export default function HomePage() {
               border: `1px solid ${theme.accent.primary}`,
             }}
           />
-          <h1 style={{ fontSize: "clamp(28px, 6vw, 40px)", fontWeight: 900, margin: 0 }}>
+          <h1
+            style={{
+              fontSize: "clamp(28px, 6vw, 40px)",
+              fontWeight: 900,
+              margin: 0,
+            }}
+          >
             “pain is privilege”
           </h1>
 
-          <section style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 16, padding: 16, background: "rgba(255,255,255,0.02)", boxShadow: "0 10px 24px rgba(0,0,0,0.20)", textAlign: "left" }}>
+          <section
+            style={{
+              width: "100%",
+              border: "1px solid var(--border)",
+              borderRadius: 16,
+              padding: 16,
+              background: "rgba(255,255,255,0.02)",
+              boxShadow: "0 10px 24px rgba(0,0,0,0.20)",
+              textAlign: "left",
+            }}
+          >
             <div style={{ fontSize: 22, fontWeight: 900 }}>Welcome</div>
             <div style={{ opacity: 0.8, marginTop: 6 }}>
               Log in to see your tasks, submit proof, and track completions.
             </div>
             <div style={{ height: 12 }} />
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <Link href="/profile" style={{ padding: "10px 12px", borderRadius: 12, border: `1px solid ${theme.accent.primary}`, color: "var(--text)", textDecoration: "none", fontWeight: 900 }}>
+              <Link
+                href="/profile"
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: `1px solid ${theme.accent.primary}`,
+                  color: "var(--text)",
+                  textDecoration: "none",
+                  fontWeight: 900,
+                }}
+              >
                 Log in
               </Link>
-              <Link href="/completed" style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid var(--border)", color: "var(--text)", textDecoration: "none", fontWeight: 900 }}>
+              <Link
+                href="/completed"
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid var(--border)",
+                  color: "var(--text)",
+                  textDecoration: "none",
+                  fontWeight: 900,
+                }}
+              >
                 Completed
               </Link>
             </div>
@@ -511,8 +547,25 @@ export default function HomePage() {
 
   // Logged in: show tasks card
   return (
-    <main style={{ minHeight: theme.layout.fullHeight, background: theme.page.background, color: theme.page.text, padding: 24 }}>
-      <div style={{ maxWidth: 980, margin: "0 auto", display: "flex", flexDirection: "column", gap: 20, alignItems: "center", textAlign: "center" }}>
+    <main
+      style={{
+        minHeight: theme.layout.fullHeight,
+        background: theme.page.background,
+        color: theme.page.text,
+        padding: 24,
+      }}
+    >
+      <div
+        style={{
+          maxWidth: 980,
+          margin: "0 auto",
+          display: "flex",
+          flexDirection: "column",
+          gap: 20,
+          alignItems: "center",
+          textAlign: "center",
+        }}
+      >
         <img
           src="/chris-bumstead-3.jpg.webp"
           alt="Chris Bumstead"
@@ -525,7 +578,13 @@ export default function HomePage() {
           }}
         />
 
-        <h1 style={{ fontSize: "clamp(28px, 6vw, 40px)", fontWeight: 900, margin: 0 }}>
+        <h1
+          style={{
+            fontSize: "clamp(28px, 6vw, 40px)",
+            fontWeight: 900,
+            margin: 0,
+          }}
+        >
           “pain is privilege”
         </h1>
 
@@ -542,25 +601,73 @@ export default function HomePage() {
         />
 
         {status ? (
-          <div style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 14, padding: 12, background: "rgba(255,255,255,0.02)", textAlign: "left" }}>
+          <div
+            style={{
+              width: "100%",
+              border: "1px solid var(--border)",
+              borderRadius: 14,
+              padding: 12,
+              background: "rgba(255,255,255,0.02)",
+              textAlign: "left",
+            }}
+          >
             {status}
           </div>
         ) : null}
 
-        <section style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 16, padding: 16, background: "rgba(255,255,255,0.02)", boxShadow: "0 10px 24px rgba(0,0,0,0.20)", textAlign: "left" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+        <section
+          style={{
+            width: "100%",
+            border: "1px solid var(--border)",
+            borderRadius: 16,
+            padding: 16,
+            background: "rgba(255,255,255,0.02)",
+            boxShadow: "0 10px 24px rgba(0,0,0,0.20)",
+            textAlign: "left",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-end",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
             <div>
               <div style={{ fontSize: 22, fontWeight: 900 }}>Today</div>
               <div style={{ opacity: 0.8, marginTop: 4 }}>
-                Logged in as <b>{sessionEmail}</b> • Remaining: <b>{homeTasks.length}</b>
+                Logged in as <b>{sessionEmail}</b> • Remaining:{" "}
+                <b>{homeTasks.length}</b>
               </div>
             </div>
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <Link href="/tasks" style={{ padding: "10px 12px", borderRadius: 12, border: `1px solid ${theme.accent.primary}`, color: "var(--text)", textDecoration: "none", fontWeight: 900 }}>
+              <Link
+                href="/tasks"
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: `1px solid ${theme.accent.primary}`,
+                  color: "var(--text)",
+                  textDecoration: "none",
+                  fontWeight: 900,
+                }}
+              >
                 Manage Tasks
               </Link>
-              <Link href="/completed" style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid var(--border)", color: "var(--text)", textDecoration: "none", fontWeight: 900 }}>
+              <Link
+                href="/completed"
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid var(--border)",
+                  color: "var(--text)",
+                  textDecoration: "none",
+                  fontWeight: 900,
+                }}
+              >
                 Completed
               </Link>
             </div>
@@ -569,16 +676,38 @@ export default function HomePage() {
           <div style={{ height: 12 }} />
 
           {loading ? (
-            <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>Loading…</div>
+            <div
+              style={{
+                border: "1px dashed var(--border)",
+                borderRadius: 16,
+                padding: 14,
+                opacity: 0.85,
+              }}
+            >
+              Loading…
+            </div>
           ) : homeTasks.length === 0 ? (
-            <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>You’re done for today 🎉</div>
+            <div
+              style={{
+                border: "1px dashed var(--border)",
+                borderRadius: 16,
+                padding: 14,
+                opacity: 0.85,
+              }}
+            >
+              You’re done for today 🎉
+            </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {homeTasks.map((t) => {
-                const isDaily = t.type === "habit" && (t.freq_per ?? "week") === "day";
+                const isDaily =
+                  t.type === "habit" && (t.freq_per ?? "week") === "day";
                 const daily = isDaily ? dailyProgress(t) : null;
 
-                const skipsAllowed = Math.max(0, Number(t.weekly_skips_allowed ?? 0));
+                const skipsAllowed = Math.max(
+                  0,
+                  Number(t.weekly_skips_allowed ?? 0)
+                );
                 const skipsUsed = weeklySkipsUsed(t.id);
                 const skipsLeft = Math.max(0, skipsAllowed - skipsUsed);
 
@@ -600,7 +729,11 @@ export default function HomePage() {
                     <div style={{ minWidth: 240 }}>
                       <div style={{ fontWeight: 900 }}>{t.title}</div>
                       <div style={{ opacity: 0.8, marginTop: 4 }}>
-                        {t.type === "habit" ? <>Habit • {formatFrequency(t)}</> : <>Single</>}
+                        {t.type === "habit" ? (
+                          <>Habit • {formatFrequency(t)}</>
+                        ) : (
+                          <>Single</>
+                        )}
                         {skipsAllowed > 0 ? (
                           <>
                             {" "}
@@ -612,10 +745,30 @@ export default function HomePage() {
                       {daily ? (
                         <div style={{ marginTop: 10 }}>
                           <div style={{ opacity: 0.8, fontSize: 13 }}>
-                            Today: <b>{daily.done}/{daily.required}</b> ({Math.round(daily.pct)}%)
+                            Today:{" "}
+                            <b>
+                              {daily.done}/{daily.required}
+                            </b>{" "}
+                            ({Math.round(daily.pct)}%)
                           </div>
-                          <div style={{ marginTop: 6, width: "min(320px, 100%)", height: 10, borderRadius: 999, border: "1px solid var(--border)", overflow: "hidden", background: "rgba(255,255,255,0.04)" }}>
-                            <div style={{ height: "100%", width: `${daily.pct}%`, background: "#f59e0b" }} />
+                          <div
+                            style={{
+                              marginTop: 6,
+                              width: "min(320px, 100%)",
+                              height: 10,
+                              borderRadius: 999,
+                              border: "1px solid var(--border)",
+                              overflow: "hidden",
+                              background: "rgba(255,255,255,0.04)",
+                            }}
+                          >
+                            <div
+                              style={{
+                                height: "100%",
+                                width: `${daily.pct}%`,
+                                background: "#f59e0b",
+                              }}
+                            />
                           </div>
                         </div>
                       ) : null}
@@ -633,7 +786,10 @@ export default function HomePage() {
                             background: "transparent",
                             color: "var(--text)",
                             fontWeight: 900,
-                            cursor: busy || skipsLeft <= 0 ? "not-allowed" : "pointer",
+                            cursor:
+                              busy || skipsLeft <= 0
+                                ? "not-allowed"
+                                : "pointer",
                             opacity: busy || skipsLeft <= 0 ? 0.6 : 1,
                           }}
                           type="button"
@@ -699,8 +855,12 @@ export default function HomePage() {
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div style={{ fontWeight: 900, fontSize: 18 }}>Complete: {completeTask.title}</div>
-              <div style={{ opacity: 0.8, marginTop: 6 }}>Choose proof type.</div>
+              <div style={{ fontWeight: 900, fontSize: 18 }}>
+                Complete: {completeTask.title}
+              </div>
+              <div style={{ opacity: 0.8, marginTop: 6 }}>
+                Choose proof type.
+              </div>
 
               <div style={{ height: 12 }} />
 
@@ -765,7 +925,9 @@ export default function HomePage() {
                 </div>
               ) : (
                 <>
-                  <div style={{ opacity: 0.8, marginTop: 6 }}>Override requires a note.</div>
+                  <div style={{ opacity: 0.8, marginTop: 6 }}>
+                    Override requires a note.
+                  </div>
 
                   <textarea
                     value={overrideText}
@@ -785,7 +947,15 @@ export default function HomePage() {
                     }}
                   />
 
-                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "flex-end",
+                      gap: 10,
+                      marginTop: 12,
+                      flexWrap: "wrap",
+                    }}
+                  >
                     <button
                       type="button"
                       onClick={() => setOverrideOpen(false)}
@@ -823,65 +993,6 @@ export default function HomePage() {
                     </button>
                   </div>
                 </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Photo viewer modal */}
-        {photoViewer.open && (
-          <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(0,0,0,0.65)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 18,
-              zIndex: 1000,
-            }}
-            onClick={() => setPhotoViewer({ open: false, url: null, title: "" })}
-          >
-            <div
-              style={{
-                width: "min(900px, 100%)",
-                borderRadius: 16,
-                border: "1px solid var(--border)",
-                background: "var(--bg)",
-                boxShadow: "0 18px 40px rgba(0,0,0,0.5)",
-                padding: 12,
-                textAlign: "left",
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", padding: 8 }}>
-                <div style={{ fontWeight: 900 }}>{photoViewer.title}</div>
-                <button
-                  type="button"
-                  onClick={() => setPhotoViewer({ open: false, url: null, title: "" })}
-                  style={{
-                    padding: "8px 10px",
-                    borderRadius: 10,
-                    border: "1px solid var(--border)",
-                    background: "transparent",
-                    color: "var(--text)",
-                    fontWeight: 900,
-                    cursor: "pointer",
-                  }}
-                >
-                  Close
-                </button>
-              </div>
-
-              {photoViewer.url ? (
-                <img
-                  src={photoViewer.url}
-                  alt="Proof"
-                  style={{ width: "100%", height: "auto", borderRadius: 12, border: "1px solid var(--border)" }}
-                />
-              ) : (
-                <div style={{ padding: 10, opacity: 0.8 }}>Loading…</div>
               )}
             </div>
           </div>
