@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClient } from "@/engine/supabase/client";
+import { createClient } from "@/engine/supabase/Client";
 
 type PartnerLink = { partner_id: string };
 
