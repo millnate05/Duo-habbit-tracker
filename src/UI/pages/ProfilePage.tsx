@@ -41,6 +41,32 @@ export default function ProfilePage() {
       setSessionEmail(user?.email ?? null);
     });
 
+    const [partnerLabel, setPartnerLabel] = useState<string | null>(null);
+
+useEffect(() => {
+  if (!userId) return;
+
+  (async () => {
+    const { data: links } = await supabase
+      .from("partnerships")
+      .select("partner_id")
+      .eq("owner_id", userId)
+      .limit(1);
+
+    const partnerId = (links?.[0] as any)?.partner_id as string | undefined;
+    if (!partnerId) return setPartnerLabel(null);
+
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("display_name,email")
+      .eq("user_id", partnerId)
+      .maybeSingle();
+
+    setPartnerLabel(prof?.display_name ?? prof?.email ?? partnerId.slice(0, 8));
+  })();
+}, [userId]);
+
+
     return () => {
       mounted = false;
       sub.subscription.unsubscribe();
