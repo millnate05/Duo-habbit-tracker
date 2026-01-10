@@ -5,6 +5,8 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { theme } from "@/UI/theme";
 
+/* ================= TYPES ================= */
+
 type TaskType = "habit" | "single";
 type FrequencyUnit = "day" | "week" | "month" | "year";
 
@@ -20,6 +22,8 @@ type TaskRow = {
   scheduled_days: number[] | null;
   weekly_skips_allowed: number;
 };
+
+/* ================= CONSTANTS ================= */
 
 const DOW = [
   { n: 0, label: "Sun" },
@@ -51,6 +55,8 @@ function sanitizeSkips(v: string) {
   return Math.max(0, Math.min(7, Math.floor(n)));
 }
 
+/* ================= PAGE ================= */
+
 export default function TasksPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
@@ -67,10 +73,8 @@ export default function TasksPage() {
   const [scheduledDays, setScheduledDays] = useState<number[] | null>(null);
   const [weeklySkipsAllowed, setWeeklySkipsAllowed] = useState(0);
 
-  const [editOpen, setEditOpen] = useState(false);
-  const [editTask, setEditTask] = useState<TaskRow | null>(null);
+  /* ================= AUTH ================= */
 
-  // AUTH
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       const u = data.session?.user ?? null;
@@ -84,10 +88,10 @@ export default function TasksPage() {
       setSessionEmail(u?.email ?? null);
     });
 
-    return () => {
-      sub.subscription.unsubscribe();
-    };
+    return () => sub.subscription.unsubscribe();
   }, []);
+
+  /* ================= LOAD TASKS ================= */
 
   async function loadTasks(uid: string) {
     setLoading(true);
@@ -100,14 +104,11 @@ export default function TasksPage() {
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error(error);
       setStatus(error.message);
       setTasks([]);
-      setLoading(false);
-      return;
+    } else {
+      setTasks(data as TaskRow[]);
     }
-
-    setTasks(data as TaskRow[]);
     setLoading(false);
   }
 
@@ -123,17 +124,7 @@ export default function TasksPage() {
   const activeTasks = useMemo(() => tasks.filter((t) => !t.archived), [tasks]);
   const archivedTasks = useMemo(() => tasks.filter((t) => t.archived), [tasks]);
 
-  function toggleDay(
-    day: number,
-    current: number[] | null,
-    setFn: (v: number[] | null) => void
-  ) {
-    const base = current ?? [0, 1, 2, 3, 4, 5, 6];
-    const set = new Set(base);
-    set.has(day) ? set.delete(day) : set.add(day);
-    const next = Array.from(set).sort((a, b) => a - b);
-    next.length === 7 ? setFn(null) : setFn(next);
-  }
+  /* ================= CREATE TASK ================= */
 
   async function createTask() {
     if (!userId) return;
@@ -149,20 +140,18 @@ export default function TasksPage() {
 
     try {
       const payload = {
-  user_id: userId,
-
-  created_by: userId,
-  assigned_to: userId,
-  is_shared: false,
-
-  title: t,
-  type,
-  archived: false,
-  freq_times: type === "habit" ? freqTimes : null,
-  freq_per: type === "habit" ? freqPer : null,
-  scheduled_days: scheduledDays,
-  weekly_skips_allowed: weeklySkipsAllowed,
-};
+        user_id: userId,
+        created_by: userId,
+        assigned_to: userId,
+        is_shared: false,
+        title: t,
+        type,
+        archived: false,
+        freq_times: type === "habit" ? freqTimes : null,
+        freq_per: type === "habit" ? freqPer : null,
+        scheduled_days: scheduledDays,
+        weekly_skips_allowed: weeklySkipsAllowed,
+      };
 
       const { data, error } = await supabase
         .from("tasks")
@@ -180,39 +169,13 @@ export default function TasksPage() {
       setScheduledDays(null);
       setWeeklySkipsAllowed(0);
     } catch (e: any) {
-      console.error(e);
       setStatus(e?.message ?? "Failed to create task.");
     } finally {
       setBusy(false);
     }
   }
 
-  async function toggleArchive(t: TaskRow) {
-    if (!userId) return;
-
-    setBusy(true);
-    setStatus(null);
-
-    try {
-      const { data, error } = await supabase
-        .from("tasks")
-        .update({ archived: !t.archived })
-        .eq("id", t.id)
-        .eq("user_id", userId)
-        .select("*")
-        .single();
-
-      if (error) throw error;
-      setTasks((prev) =>
-        prev.map((x) => (x.id === t.id ? (data as TaskRow) : x))
-      );
-    } catch (e: any) {
-      console.error(e);
-      setStatus(e?.message ?? "Failed to update task.");
-    } finally {
-      setBusy(false);
-    }
-  }
+  /* ================= RENDER ================= */
 
   if (!userId) {
     return (
@@ -225,30 +188,56 @@ export default function TasksPage() {
   }
 
   return (
-    <main style={{ minHeight: theme.layout.fullHeight, padding: 24 }}>
-      <h1>Tasks</h1>
+    <main
+      style={{
+        minHeight: theme.layout.fullHeight,
+        background: theme.page.background,
+        color: theme.page.text,
+        padding: 24,
+      }}
+    >
+      <div style={{ maxWidth: 980, margin: "0 auto" }}>
+        <h1 style={{ fontSize: 34, fontWeight: 900 }}>Tasks</h1>
+        <div style={{ opacity: 0.8 }}>Logged in as <b>{sessionEmail}</b></div>
 
-      <section>
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Task title"
-        />
-        <button onClick={createTask} disabled={busy}>
-          Create
-        </button>
-      </section>
+        {status && <div style={{ marginTop: 12 }}>{status}</div>}
 
-      {loading ? (
-        <p>Loading…</p>
-      ) : (
-        activeTasks.map((t) => (
-          <div key={t.id}>
-            {t.title}
-            <button onClick={() => toggleArchive(t)}>Archive</button>
-          </div>
-        ))
-      )}
+        {/* CREATE */}
+        <section style={{ marginTop: 24 }}>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Task title"
+          />
+          <button onClick={createTask} disabled={busy}>
+            Create
+          </button>
+        </section>
+
+        {/* ACTIVE */}
+        <section style={{ marginTop: 24 }}>
+          <h2>Active Tasks</h2>
+          {loading ? (
+            <div>Loading…</div>
+          ) : activeTasks.length === 0 ? (
+            <div>No active tasks.</div>
+          ) : (
+            activeTasks.map((t) => (
+              <div key={t.id} style={{ marginTop: 8 }}>
+                {t.title}
+              </div>
+            ))
+          )}
+        </section>
+
+        {/* ARCHIVED */}
+        <section style={{ marginTop: 24 }}>
+          <h2>Archived</h2>
+          {archivedTasks.map((t) => (
+            <div key={t.id}>{t.title}</div>
+          ))}
+        </section>
+      </div>
     </main>
   );
 }
