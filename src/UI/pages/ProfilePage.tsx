@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { theme } from "@/UI/theme";
 
@@ -239,9 +240,7 @@ export default function ProfilePage() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Password"
                   type="password"
-                  autoComplete={
-                    mode === "signup" ? "new-password" : "current-password"
-                  }
+                  autoComplete={mode === "signup" ? "new-password" : "current-password"}
                   style={inputStyle()}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") handleAuth();
@@ -256,6 +255,15 @@ export default function ProfilePage() {
                 >
                   {mode === "signup" ? "Create account" : "Log in"}
                 </button>
+
+                {/* Forgot password link (login mode only) */}
+                {mode === "login" ? (
+                  <div style={{ marginTop: 2 }}>
+                    <Link href="/forgot-password" style={linkStyle()}>
+                      Forgot password?
+                    </Link>
+                  </div>
+                ) : null}
               </div>
 
               <div style={{ opacity: 0.7, marginTop: 10, fontSize: 13 }}>
@@ -268,9 +276,7 @@ export default function ProfilePage() {
                 <div style={{ opacity: 0.85 }}>
                   Logged in as <b>{sessionEmail}</b>
                 </div>
-                <div style={{ opacity: 0.7, fontSize: 13 }}>
-                  User ID: {userId}
-                </div>
+                <div style={{ opacity: 0.7, fontSize: 13 }}>User ID: {userId}</div>
 
                 <div style={{ height: 6 }} />
 
@@ -304,8 +310,8 @@ export default function ProfilePage() {
               </div>
 
               <div style={{ opacity: 0.7, marginTop: 10, fontSize: 13 }}>
-                Next: we’ll move tasks + proof photos into Supabase so they follow
-                your account across devices.
+                Next: we’ll move tasks + proof photos into Supabase so they follow your account
+                across devices.
               </div>
             </>
           )}
@@ -390,5 +396,16 @@ function secondaryBtnStyle(disabled: boolean): React.CSSProperties {
     fontWeight: 900,
     cursor: disabled ? "not-allowed" : "pointer",
     opacity: disabled ? 0.6 : 1,
+  };
+}
+
+function linkStyle(): React.CSSProperties {
+  return {
+    display: "inline-block",
+    fontSize: 13,
+    fontWeight: 800,
+    opacity: 0.85,
+    textDecoration: "underline",
+    color: "var(--text)",
   };
 }
