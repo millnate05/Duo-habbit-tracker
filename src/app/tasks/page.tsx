@@ -50,35 +50,20 @@ function sanitizeSkips(v: string) {
   return Math.max(0, Math.min(7, Math.floor(n)));
 }
 
-/** ✅ Clean select styling (single arrow, no native black arrow) */
-const selectWrapStyle: React.CSSProperties = {
-  position: "relative",
-  display: "inline-flex",
-  alignItems: "center",
-};
+/** Remove number spinners + make selects use a cleaner arrow */
+const globalFixesCSS = `
+/* Hide number input spinners (Chrome/Safari/Edge) */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
 
-const selectStyle: React.CSSProperties = {
-  padding: "10px 38px 10px 12px", // room for arrow
-  borderRadius: 12,
-  border: "1px solid var(--border)",
-  background: "transparent",
-  color: "var(--text)",
-  outline: "none",
-  appearance: "none" as any,
-  WebkitAppearance: "none" as any,
-  MozAppearance: "none" as any,
-  lineHeight: 1.2,
-};
-
-const selectArrowStyle: React.CSSProperties = {
-  position: "absolute",
-  right: 12,
-  pointerEvents: "none",
-  opacity: 0.85,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-};
+/* Hide number input spinners (Firefox) */
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+`;
 
 export default function TasksPage() {
   const [userId, setUserId] = useState<string | null>(null);
@@ -101,6 +86,36 @@ export default function TasksPage() {
   // Edit modal
   const [editOpen, setEditOpen] = useState(false);
   const [editTask, setEditTask] = useState<TaskRow | null>(null);
+
+  // Shared styles
+  const baseField: React.CSSProperties = {
+    padding: "10px 12px",
+    borderRadius: 12,
+    border: "1px solid var(--border)",
+    background: "transparent",
+    color: "var(--text)",
+    outline: "none",
+  };
+
+  // Clean select: remove default arrow + use a single subtle arrow (SVG) that respects current text color
+  const cleanSelect: React.CSSProperties = {
+    ...baseField,
+    WebkitAppearance: "none",
+    MozAppearance: "none",
+    appearance: "none",
+    paddingRight: 38,
+    backgroundImage:
+      'url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 20 20%27%3E%3Cpath d=%27M6 8l4 4 4-4%27 fill=%27none%27 stroke=%27%23c9c9c9%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27/%3E%3C/svg%3E")',
+    backgroundRepeat: "no-repeat",
+    backgroundPosition: "right 12px center",
+    backgroundSize: "16px 16px",
+  };
+
+  // For number inputs: keep typing, remove spinners, same look
+  const cleanNumber: React.CSSProperties = {
+    ...baseField,
+    MozAppearance: "textfield",
+  };
 
   // Auth session
   useEffect(() => {
@@ -163,11 +178,7 @@ export default function TasksPage() {
   const activeTasks = useMemo(() => tasks.filter((t) => !t.archived), [tasks]);
   const archivedTasks = useMemo(() => tasks.filter((t) => t.archived), [tasks]);
 
-  function toggleDay(
-    day: number,
-    current: number[] | null,
-    setFn: (v: number[] | null) => void
-  ) {
+  function toggleDay(day: number, current: number[] | null, setFn: (v: number[] | null) => void) {
     // If null (every day), start from full week selected
     const base = current ?? [0, 1, 2, 3, 4, 5, 6];
     const set = new Set(base);
@@ -191,20 +202,17 @@ export default function TasksPage() {
     setStatus(null);
 
     try {
-      // ✅ RLS-required fields included (fix)
+      // RLS-required fields included
       const base = {
         user_id: userId,
         created_by: userId,
         assigned_to: userId,
         is_shared: false,
-
         title: t,
         type,
         archived: false,
-
         scheduled_days: scheduledDays,
         weekly_skips_allowed: weeklySkipsAllowed,
-
         freq_times: null as number | null,
         freq_per: null as FrequencyUnit | null,
       };
@@ -214,12 +222,7 @@ export default function TasksPage() {
         base.freq_per = freqPer;
       }
 
-      const { data, error } = await supabase
-        .from("tasks")
-        .insert(base as any)
-        .select("*")
-        .single();
-
+      const { data, error } = await supabase.from("tasks").insert(base).select("*").single();
       if (error) throw error;
 
       setTasks((prev) => [data as TaskRow, ...prev]);
@@ -232,34 +235,6 @@ export default function TasksPage() {
     } catch (e: any) {
       console.error(e);
       setStatus(e?.message ?? "Failed to create task.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  /** ✅ NEW: Full delete */
-  async function deleteTask(t: TaskRow) {
-    if (!userId) return;
-
-    const ok = window.confirm(`Delete "${t.title}"? This cannot be undone.`);
-    if (!ok) return;
-
-    setBusy(true);
-    setStatus(null);
-
-    try {
-      const { error } = await supabase
-        .from("tasks")
-        .delete()
-        .eq("id", t.id)
-        .eq("user_id", userId);
-
-      if (error) throw error;
-
-      setTasks((prev) => prev.filter((x) => x.id !== t.id));
-    } catch (e: any) {
-      console.error(e);
-      setStatus(e?.message ?? "Failed to delete task.");
     } finally {
       setBusy(false);
     }
@@ -340,21 +315,40 @@ export default function TasksPage() {
     }
   }
 
+  async function deleteTask(t: TaskRow) {
+    if (!userId) return;
+    if (busy) return;
+
+    const ok = window.confirm(`Delete "${t.title}"?\n\nThis cannot be undone.`);
+    if (!ok) return;
+
+    setBusy(true);
+    setStatus(null);
+
+    try {
+      const { error } = await supabase.from("tasks").delete().eq("id", t.id).eq("user_id", userId);
+      if (error) throw error;
+
+      setTasks((prev) => prev.filter((x) => x.id !== t.id));
+      if (editTask?.id === t.id) {
+        setEditOpen(false);
+        setEditTask(null);
+      }
+    } catch (e: any) {
+      console.error(e);
+      setStatus(e?.message ?? "Failed to delete task.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!userId) {
     return (
-      <main
-        style={{
-          minHeight: theme.layout.fullHeight,
-          background: theme.page.background,
-          color: theme.page.text,
-          padding: 24,
-        }}
-      >
+      <main style={{ minHeight: theme.layout.fullHeight, background: theme.page.background, color: theme.page.text, padding: 24 }}>
+        <style>{globalFixesCSS}</style>
         <div style={{ maxWidth: 980, margin: "0 auto" }}>
           <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>Tasks</h1>
-          <p style={{ margin: "8px 0 0 0", opacity: 0.8 }}>
-            Log in to manage tasks.
-          </p>
+          <p style={{ margin: "8px 0 0 0", opacity: 0.8 }}>Log in to manage tasks.</p>
 
           <div style={{ height: 14 }} />
 
@@ -378,31 +372,11 @@ export default function TasksPage() {
   }
 
   return (
-    <main
-      style={{
-        minHeight: theme.layout.fullHeight,
-        background: theme.page.background,
-        color: theme.page.text,
-        padding: 24,
-      }}
-    >
-      <div
-        style={{
-          maxWidth: 980,
-          margin: "0 auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: 16,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
+    <main style={{ minHeight: theme.layout.fullHeight, background: theme.page.background, color: theme.page.text, padding: 24 }}>
+      <style>{globalFixesCSS}</style>
+
+      <div style={{ maxWidth: 980, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
             <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>Tasks</h1>
             <div style={{ opacity: 0.8, marginTop: 6 }}>
@@ -410,14 +384,7 @@ export default function TasksPage() {
             </div>
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              gap: 10,
-              flexWrap: "wrap",
-              alignItems: "flex-start",
-            }}
-          >
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-start" }}>
             <Link
               href="/"
               style={{
@@ -449,28 +416,13 @@ export default function TasksPage() {
         </div>
 
         {status ? (
-          <div
-            style={{
-              border: "1px solid var(--border)",
-              borderRadius: 14,
-              padding: 12,
-              background: "rgba(255,255,255,0.02)",
-            }}
-          >
+          <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 12, background: "rgba(255,255,255,0.02)" }}>
             {status}
           </div>
         ) : null}
 
         {/* Create card */}
-        <section
-          style={{
-            border: "1px solid var(--border)",
-            borderRadius: 16,
-            padding: 16,
-            background: "rgba(255,255,255,0.02)",
-            boxShadow: "0 10px 24px rgba(0,0,0,0.20)",
-          }}
-        >
+        <section style={{ border: "1px solid var(--border)", borderRadius: 16, padding: 16, background: "rgba(255,255,255,0.02)", boxShadow: "0 10px 24px rgba(0,0,0,0.20)" }}>
           <div style={{ fontSize: 20, fontWeight: 900 }}>Create Task</div>
           <div style={{ height: 12 }} />
 
@@ -490,101 +442,58 @@ export default function TasksPage() {
               }}
             />
 
-            <div
-              style={{
-                display: "flex",
-                gap: 10,
-                flexWrap: "wrap",
-                alignItems: "center",
-              }}
-            >
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
               <label style={{ fontWeight: 900, opacity: 0.9 }}>Type</label>
-
-              <div style={selectWrapStyle}>
-                <select
-                  value={type}
-                  onChange={(e) => setType(e.target.value as TaskType)}
-                  style={selectStyle}
-                >
-                  <option value="habit">Habit</option>
-                  <option value="single">Single</option>
-                </select>
-                <span style={selectArrowStyle}>▾</span>
-              </div>
+              <select value={type} onChange={(e) => setType(e.target.value as TaskType)} style={cleanSelect}>
+                <option value="habit">Habit</option>
+                <option value="single">Single</option>
+              </select>
 
               {type === "habit" ? (
                 <>
-                  <label style={{ fontWeight: 900, opacity: 0.9 }}>
-                    Frequency
-                  </label>
+                  <label style={{ fontWeight: 900, opacity: 0.9 }}>Frequency</label>
                   <input
                     type="number"
                     min={1}
                     max={999}
                     value={freqTimes}
                     onChange={(e) => setFreqTimes(sanitizeTimes(e.target.value))}
-                    style={{
-                      width: 90,
-                      padding: "10px 12px",
-                      borderRadius: 12,
-                      border: "1px solid var(--border)",
-                      background: "transparent",
-                      color: "var(--text)",
-                      outline: "none",
-                    }}
+                    style={{ ...cleanNumber, width: 90 }}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                   />
                   <span style={{ opacity: 0.85 }}>x per</span>
-
-                  <div style={selectWrapStyle}>
-                    <select
-                      value={freqPer}
-                      onChange={(e) =>
-                        setFreqPer(e.target.value as FrequencyUnit)
-                      }
-                      style={selectStyle}
-                    >
-                      <option value="day">day</option>
-                      <option value="week">week</option>
-                      <option value="month">month</option>
-                      <option value="year">year</option>
-                    </select>
-                    <span style={selectArrowStyle}>▾</span>
-                  </div>
+                  <select value={freqPer} onChange={(e) => setFreqPer(e.target.value as FrequencyUnit)} style={cleanSelect}>
+                    <option value="day">day</option>
+                    <option value="week">week</option>
+                    <option value="month">month</option>
+                    <option value="year">year</option>
+                  </select>
                 </>
               ) : null}
             </div>
 
             {/* Scheduled days */}
             <div>
-              <div style={{ fontWeight: 900, marginBottom: 6 }}>
-                Scheduled days
-              </div>
+              <div style={{ fontWeight: 900, marginBottom: 6 }}>Scheduled days</div>
               <div style={{ opacity: 0.8, fontSize: 13, marginBottom: 10 }}>
                 If you select all 7 days, it becomes <b>Every day</b>.
               </div>
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {DOW.map((d) => {
-                  const selected = (scheduledDays ?? [
-                    0, 1, 2, 3, 4, 5, 6,
-                  ]).includes(d.n);
+                  const selected = (scheduledDays ?? [0, 1, 2, 3, 4, 5, 6]).includes(d.n);
                   return (
                     <button
                       key={d.n}
                       type="button"
-                      onClick={() =>
-                        toggleDay(d.n, scheduledDays, setScheduledDays)
-                      }
+                      onClick={() => toggleDay(d.n, scheduledDays, setScheduledDays)}
                       disabled={busy}
                       style={{
                         padding: "8px 10px",
                         borderRadius: 999,
-                        border: `1px solid ${
-                          selected ? theme.accent.primary : "var(--border)"
-                        }`,
-                        background: selected
-                          ? "rgba(255,255,255,0.04)"
-                          : "transparent",
+                        border: `1px solid ${selected ? theme.accent.primary : "var(--border)"}`,
+                        background: selected ? "rgba(255,255,255,0.04)" : "transparent",
                         color: "var(--text)",
                         fontWeight: 900,
                         cursor: busy ? "not-allowed" : "pointer",
@@ -603,36 +512,19 @@ export default function TasksPage() {
             </div>
 
             {/* Weekly skips allowed */}
-            <div
-              style={{
-                display: "flex",
-                gap: 10,
-                flexWrap: "wrap",
-                alignItems: "center",
-              }}
-            >
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
               <div style={{ fontWeight: 900 }}>Weekly skips allowed</div>
               <input
                 type="number"
                 min={0}
                 max={7}
                 value={weeklySkipsAllowed}
-                onChange={(e) =>
-                  setWeeklySkipsAllowed(sanitizeSkips(e.target.value))
-                }
-                style={{
-                  width: 90,
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid var(--border)",
-                  background: "transparent",
-                  color: "var(--text)",
-                  outline: "none",
-                }}
+                onChange={(e) => setWeeklySkipsAllowed(sanitizeSkips(e.target.value))}
+                style={{ ...cleanNumber, width: 90 }}
+                inputMode="numeric"
+                pattern="[0-9]*"
               />
-              <div style={{ opacity: 0.8, fontSize: 13 }}>
-                Example: a 5x/week task can allow 2 skips.
-              </div>
+              <div style={{ opacity: 0.8, fontSize: 13 }}>Example: a 5x/week task can allow 2 skips.</div>
             </div>
 
             <div>
@@ -658,15 +550,7 @@ export default function TasksPage() {
         </section>
 
         {/* List */}
-        <section
-          style={{
-            border: "1px solid var(--border)",
-            borderRadius: 16,
-            padding: 16,
-            background: "rgba(255,255,255,0.02)",
-            boxShadow: "0 10px 24px rgba(0,0,0,0.20)",
-          }}
-        >
+        <section style={{ border: "1px solid var(--border)", borderRadius: 16, padding: 16, background: "rgba(255,255,255,0.02)", boxShadow: "0 10px 24px rgba(0,0,0,0.20)" }}>
           <div style={{ fontSize: 20, fontWeight: 900 }}>Active Tasks</div>
           <div style={{ marginTop: 6, opacity: 0.85 }}>
             Total: <b>{activeTasks.length}</b>
@@ -674,27 +558,9 @@ export default function TasksPage() {
           <div style={{ height: 12 }} />
 
           {loading ? (
-            <div
-              style={{
-                border: "1px dashed var(--border)",
-                borderRadius: 16,
-                padding: 14,
-                opacity: 0.85,
-              }}
-            >
-              Loading…
-            </div>
+            <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>Loading…</div>
           ) : activeTasks.length === 0 ? (
-            <div
-              style={{
-                border: "1px dashed var(--border)",
-                borderRadius: 16,
-                padding: 14,
-                opacity: 0.85,
-              }}
-            >
-              No active tasks.
-            </div>
+            <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>No active tasks.</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {activeTasks.map((t) => (
@@ -717,8 +583,7 @@ export default function TasksPage() {
                     <div style={{ opacity: 0.85, marginTop: 6 }}>
                       {t.type === "habit" ? (
                         <>
-                          Habit • <b>{t.freq_times ?? 1}x</b> per{" "}
-                          <b>{t.freq_per ?? "week"}</b>
+                          Habit • <b>{t.freq_times ?? 1}x</b> per <b>{t.freq_per ?? "week"}</b>
                         </>
                       ) : (
                         <>Single</>
@@ -771,7 +636,6 @@ export default function TasksPage() {
                       Archive
                     </button>
 
-                    {/* ✅ NEW: Delete */}
                     <button
                       type="button"
                       onClick={() => deleteTask(t)}
@@ -779,7 +643,7 @@ export default function TasksPage() {
                       style={{
                         padding: "10px 12px",
                         borderRadius: 12,
-                        border: "1px solid rgba(255,80,80,0.45)",
+                        border: "1px solid rgba(255, 99, 99, 0.65)",
                         background: "transparent",
                         color: "var(--text)",
                         fontWeight: 900,
@@ -797,15 +661,7 @@ export default function TasksPage() {
         </section>
 
         {/* Archived */}
-        <section
-          style={{
-            border: "1px solid var(--border)",
-            borderRadius: 16,
-            padding: 16,
-            background: "rgba(255,255,255,0.02)",
-            boxShadow: "0 10px 24px rgba(0,0,0,0.20)",
-          }}
-        >
+        <section style={{ border: "1px solid var(--border)", borderRadius: 16, padding: 16, background: "rgba(255,255,255,0.02)", boxShadow: "0 10px 24px rgba(0,0,0,0.20)" }}>
           <div style={{ fontSize: 20, fontWeight: 900 }}>Archived</div>
           <div style={{ marginTop: 6, opacity: 0.85 }}>
             Total: <b>{archivedTasks.length}</b>
@@ -813,16 +669,7 @@ export default function TasksPage() {
           <div style={{ height: 12 }} />
 
           {archivedTasks.length === 0 ? (
-            <div
-              style={{
-                border: "1px dashed var(--border)",
-                borderRadius: 16,
-                padding: 14,
-                opacity: 0.85,
-              }}
-            >
-              No archived tasks.
-            </div>
+            <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>No archived tasks.</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {archivedTasks.map((t) => (
@@ -845,8 +692,7 @@ export default function TasksPage() {
                     <div style={{ opacity: 0.85, marginTop: 6 }}>
                       {t.type === "habit" ? (
                         <>
-                          Habit • <b>{t.freq_times ?? 1}x</b> per{" "}
-                          <b>{t.freq_per ?? "week"}</b>
+                          Habit • <b>{t.freq_times ?? 1}x</b> per <b>{t.freq_per ?? "week"}</b>
                         </>
                       ) : (
                         <>Single</>
@@ -881,7 +727,6 @@ export default function TasksPage() {
                       Unarchive
                     </button>
 
-                    {/* ✅ NEW: Delete (archived too) */}
                     <button
                       type="button"
                       onClick={() => deleteTask(t)}
@@ -889,7 +734,7 @@ export default function TasksPage() {
                       style={{
                         padding: "10px 12px",
                         borderRadius: 12,
-                        border: "1px solid rgba(255,80,80,0.45)",
+                        border: "1px solid rgba(255, 99, 99, 0.65)",
                         background: "transparent",
                         color: "var(--text)",
                         fontWeight: 900,
@@ -943,9 +788,7 @@ export default function TasksPage() {
 
               <input
                 value={editTask.title}
-                onChange={(e) =>
-                  setEditTask({ ...editTask, title: e.target.value })
-                }
+                onChange={(e) => setEditTask({ ...editTask, title: e.target.value })}
                 placeholder="Task title"
                 style={{
                   width: "100%",
@@ -960,79 +803,41 @@ export default function TasksPage() {
 
               <div style={{ height: 12 }} />
 
-              <div
-                style={{
-                  display: "flex",
-                  gap: 10,
-                  flexWrap: "wrap",
-                  alignItems: "center",
-                }}
-              >
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                 <label style={{ fontWeight: 900, opacity: 0.9 }}>Type</label>
-
-                <div style={selectWrapStyle}>
-                  <select
-                    value={editTask.type}
-                    onChange={(e) =>
-                      setEditTask({
-                        ...editTask,
-                        type: e.target.value as TaskType,
-                      })
-                    }
-                    style={selectStyle}
-                  >
-                    <option value="habit">Habit</option>
-                    <option value="single">Single</option>
-                  </select>
-                  <span style={selectArrowStyle}>▾</span>
-                </div>
+                <select
+                  value={editTask.type}
+                  onChange={(e) => setEditTask({ ...editTask, type: e.target.value as TaskType })}
+                  style={cleanSelect}
+                >
+                  <option value="habit">Habit</option>
+                  <option value="single">Single</option>
+                </select>
 
                 {editTask.type === "habit" ? (
                   <>
-                    <label style={{ fontWeight: 900, opacity: 0.9 }}>
-                      Frequency
-                    </label>
+                    <label style={{ fontWeight: 900, opacity: 0.9 }}>Frequency</label>
                     <input
                       type="number"
                       min={1}
                       max={999}
                       value={editTask.freq_times ?? 1}
-                      onChange={(e) =>
-                        setEditTask({
-                          ...editTask,
-                          freq_times: sanitizeTimes(e.target.value),
-                        })
-                      }
-                      style={{
-                        width: 90,
-                        padding: "10px 12px",
-                        borderRadius: 12,
-                        border: "1px solid var(--border)",
-                        background: "transparent",
-                        color: "var(--text)",
-                        outline: "none",
-                      }}
+                      onChange={(e) => setEditTask({ ...editTask, freq_times: sanitizeTimes(e.target.value) })}
+                      style={{ ...cleanNumber, width: 90 }}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                     />
                     <span style={{ opacity: 0.85 }}>x per</span>
-
-                    <div style={selectWrapStyle}>
-                      <select
-                        value={(editTask.freq_per ?? "week") as FrequencyUnit}
-                        onChange={(e) =>
-                          setEditTask({
-                            ...editTask,
-                            freq_per: e.target.value as FrequencyUnit,
-                          })
-                        }
-                        style={selectStyle}
-                      >
-                        <option value="day">day</option>
-                        <option value="week">week</option>
-                        <option value="month">month</option>
-                        <option value="year">year</option>
-                      </select>
-                      <span style={selectArrowStyle}>▾</span>
-                    </div>
+                    <select
+                      value={(editTask.freq_per ?? "week") as FrequencyUnit}
+                      onChange={(e) => setEditTask({ ...editTask, freq_per: e.target.value as FrequencyUnit })}
+                      style={cleanSelect}
+                    >
+                      <option value="day">day</option>
+                      <option value="week">week</option>
+                      <option value="month">month</option>
+                      <option value="year">year</option>
+                    </select>
                   </>
                 ) : null}
               </div>
@@ -1040,33 +845,23 @@ export default function TasksPage() {
               <div style={{ height: 12 }} />
 
               <div>
-                <div style={{ fontWeight: 900, marginBottom: 6 }}>
-                  Scheduled days
-                </div>
+                <div style={{ fontWeight: 900, marginBottom: 6 }}>Scheduled days</div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {DOW.map((d) => {
-                    const selected = (editTask.scheduled_days ?? [
-                      0, 1, 2, 3, 4, 5, 6,
-                    ]).includes(d.n);
+                    const selected = (editTask.scheduled_days ?? [0, 1, 2, 3, 4, 5, 6]).includes(d.n);
                     return (
                       <button
                         key={d.n}
                         type="button"
                         onClick={() =>
-                          toggleDay(d.n, editTask.scheduled_days, (v) =>
-                            setEditTask({ ...editTask, scheduled_days: v })
-                          )
+                          toggleDay(d.n, editTask.scheduled_days, (v) => setEditTask({ ...editTask, scheduled_days: v }))
                         }
                         disabled={busy}
                         style={{
                           padding: "8px 10px",
                           borderRadius: 999,
-                          border: `1px solid ${
-                            selected ? theme.accent.primary : "var(--border)"
-                          }`,
-                          background: selected
-                            ? "rgba(255,255,255,0.04)"
-                            : "transparent",
+                          border: `1px solid ${selected ? theme.accent.primary : "var(--border)"}`,
+                          background: selected ? "rgba(255,255,255,0.04)" : "transparent",
                           color: "var(--text)",
                           fontWeight: 900,
                           cursor: busy ? "not-allowed" : "pointer",
@@ -1086,59 +881,31 @@ export default function TasksPage() {
 
               <div style={{ height: 12 }} />
 
-              <div
-                style={{
-                  display: "flex",
-                  gap: 10,
-                  flexWrap: "wrap",
-                  alignItems: "center",
-                }}
-              >
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                 <div style={{ fontWeight: 900 }}>Weekly skips allowed</div>
                 <input
                   type="number"
                   min={0}
                   max={7}
                   value={editTask.weekly_skips_allowed ?? 0}
-                  onChange={(e) =>
-                    setEditTask({
-                      ...editTask,
-                      weekly_skips_allowed: sanitizeSkips(e.target.value),
-                    })
-                  }
-                  style={{
-                    width: 90,
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    border: "1px solid var(--border)",
-                    background: "transparent",
-                    color: "var(--text)",
-                    outline: "none",
-                  }}
+                  onChange={(e) => setEditTask({ ...editTask, weekly_skips_allowed: sanitizeSkips(e.target.value) })}
+                  style={{ ...cleanNumber, width: 90 }}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                 />
               </div>
 
               <div style={{ height: 14 }} />
 
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "flex-end",
-                  gap: 10,
-                  flexWrap: "wrap",
-                }}
-              >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                 <button
                   type="button"
-                  onClick={() => {
-                    setEditOpen(false);
-                    setEditTask(null);
-                  }}
+                  onClick={() => deleteTask(editTask)}
                   disabled={busy}
                   style={{
                     padding: "10px 12px",
                     borderRadius: 12,
-                    border: "1px solid var(--border)",
+                    border: "1px solid rgba(255, 99, 99, 0.65)",
                     background: "transparent",
                     color: "var(--text)",
                     fontWeight: 900,
@@ -1146,26 +913,49 @@ export default function TasksPage() {
                     opacity: busy ? 0.6 : 1,
                   }}
                 >
-                  Cancel
+                  Delete
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => saveEdit(editTask)}
-                  disabled={busy}
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    border: `1px solid ${theme.accent.primary}`,
-                    background: "transparent",
-                    color: "var(--text)",
-                    fontWeight: 900,
-                    cursor: busy ? "not-allowed" : "pointer",
-                    opacity: busy ? 0.6 : 1,
-                  }}
-                >
-                  Save
-                </button>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditOpen(false);
+                      setEditTask(null);
+                    }}
+                    disabled={busy}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      border: "1px solid var(--border)",
+                      background: "transparent",
+                      color: "var(--text)",
+                      fontWeight: 900,
+                      cursor: busy ? "not-allowed" : "pointer",
+                      opacity: busy ? 0.6 : 1,
+                    }}
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => saveEdit(editTask)}
+                    disabled={busy}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      border: `1px solid ${theme.accent.primary}`,
+                      background: "transparent",
+                      color: "var(--text)",
+                      fontWeight: 900,
+                      cursor: busy ? "not-allowed" : "pointer",
+                      opacity: busy ? 0.6 : 1,
+                    }}
+                  >
+                    Save
+                  </button>
+                </div>
               </div>
             </div>
           </div>
