@@ -41,17 +41,20 @@ function fmtScheduledDays(days: number[] | null) {
 
 function sanitizeTimes(v: string) {
   const n = Number(v);
-  return Number.isFinite(n) ? Math.max(1, Math.min(999, Math.floor(n))) : 1;
+  if (!Number.isFinite(n)) return 1;
+  return Math.max(1, Math.min(999, Math.floor(n)));
 }
 
 function sanitizeSkips(v: string) {
   const n = Number(v);
-  return Number.isFinite(n) ? Math.max(0, Math.min(7, Math.floor(n))) : 0;
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(7, Math.floor(n)));
 }
 
 export default function TasksPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -67,23 +70,29 @@ export default function TasksPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [editTask, setEditTask] = useState<TaskRow | null>(null);
 
+  // AUTH
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      const u = data.session?.user;
+      const u = data.session?.user ?? null;
       setUserId(u?.id ?? null);
       setSessionEmail(u?.email ?? null);
     });
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
-      setUserId(s?.user?.id ?? null);
-      setSessionEmail(s?.user?.email ?? null);
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
+      const u = session?.user ?? null;
+      setUserId(u?.id ?? null);
+      setSessionEmail(u?.email ?? null);
     });
 
-    return () => sub.subscription.unsubscribe();
+    return () => {
+      sub.subscription.unsubscribe();
+    };
   }, []);
 
   async function loadTasks(uid: string) {
     setLoading(true);
+    setStatus(null);
+
     const { data, error } = await supabase
       .from("tasks")
       .select("*")
@@ -91,24 +100,40 @@ export default function TasksPage() {
       .order("created_at", { ascending: false });
 
     if (error) {
+      console.error(error);
       setStatus(error.message);
       setTasks([]);
-    } else {
-      setTasks(data as TaskRow[]);
+      setLoading(false);
+      return;
     }
+
+    setTasks(data as TaskRow[]);
     setLoading(false);
   }
 
   useEffect(() => {
-    if (userId) loadTasks(userId);
-    else {
+    if (!userId) {
       setTasks([]);
       setLoading(false);
+      return;
     }
+    loadTasks(userId);
   }, [userId]);
 
   const activeTasks = useMemo(() => tasks.filter((t) => !t.archived), [tasks]);
   const archivedTasks = useMemo(() => tasks.filter((t) => t.archived), [tasks]);
+
+  function toggleDay(
+    day: number,
+    current: number[] | null,
+    setFn: (v: number[] | null) => void
+  ) {
+    const base = current ?? [0, 1, 2, 3, 4, 5, 6];
+    const set = new Set(base);
+    set.has(day) ? set.delete(day) : set.add(day);
+    const next = Array.from(set).sort((a, b) => a - b);
+    next.length === 7 ? setFn(null) : setFn(next);
+  }
 
   async function createTask() {
     if (!userId) return;
@@ -126,7 +151,7 @@ export default function TasksPage() {
       const payload = {
         user_id: userId,
 
-        // ✅ REQUIRED FOR RLS (THIS IS THE FIX)
+        // ✅ REQUIRED FOR RLS
         created_by: userId,
         assigned_to: userId,
         is_shared: false,
@@ -163,8 +188,68 @@ export default function TasksPage() {
     }
   }
 
-  // everything else unchanged ↓↓↓
-  // (edit, archive, UI, modal, styling remain identical)
+  async function toggleArchive(t: TaskRow) {
+    if (!userId) return;
 
-  /* … rest of file continues exactly as before … */
+    setBusy(true);
+    setStatus(null);
+
+    try {
+      const { data, error } = await supabase
+        .from("tasks")
+        .update({ archived: !t.archived })
+        .eq("id", t.id)
+        .eq("user_id", userId)
+        .select("*")
+        .single();
+
+      if (error) throw error;
+      setTasks((prev) =>
+        prev.map((x) => (x.id === t.id ? (data as TaskRow) : x))
+      );
+    } catch (e: any) {
+      console.error(e);
+      setStatus(e?.message ?? "Failed to update task.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!userId) {
+    return (
+      <main style={{ minHeight: theme.layout.fullHeight, padding: 24 }}>
+        <h1>Tasks</h1>
+        <p>Log in to manage tasks.</p>
+        <Link href="/profile">Go to Profile</Link>
+      </main>
+    );
+  }
+
+  return (
+    <main style={{ minHeight: theme.layout.fullHeight, padding: 24 }}>
+      <h1>Tasks</h1>
+
+      <section>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Task title"
+        />
+        <button onClick={createTask} disabled={busy}>
+          Create
+        </button>
+      </section>
+
+      {loading ? (
+        <p>Loading…</p>
+      ) : (
+        activeTasks.map((t) => (
+          <div key={t.id}>
+            {t.title}
+            <button onClick={() => toggleArchive(t)}>Archive</button>
+          </div>
+        ))
+      )}
+    </main>
+  );
 }
