@@ -38,16 +38,20 @@ function fmtScheduledDays(days: number[] | null) {
   return sorted.map((d) => DOW.find((x) => x.n === d)?.label ?? "?").join(", ");
 }
 
-function sanitizeTimes(v: string) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return 1;
-  return Math.max(1, Math.min(999, Math.floor(n)));
-}
-
-function sanitizeSkips(v: string) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return 0;
-  return Math.max(0, Math.min(7, Math.floor(n)));
+// Convert a string to a bounded int, with a fallback if blank/invalid
+function parseBoundedInt(
+  raw: string,
+  {
+    min,
+    max,
+    fallback,
+  }: { min: number; max: number; fallback: number }
+) {
+  const s = raw.trim();
+  if (s === "") return fallback;
+  const n = Number(s);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(n)));
 }
 
 /** Remove number spinners + make selects use a cleaner arrow */
@@ -78,14 +82,20 @@ export default function TasksPage() {
   // Create form
   const [title, setTitle] = useState("");
   const [type, setType] = useState<TaskType>("habit");
-  const [freqTimes, setFreqTimes] = useState(1);
+
+  // ✅ store as strings so the input can be blank
+  const [freqTimesStr, setFreqTimesStr] = useState<string>("1");
   const [freqPer, setFreqPer] = useState<FrequencyUnit>("week");
   const [scheduledDays, setScheduledDays] = useState<number[] | null>(null); // null => every day
-  const [weeklySkipsAllowed, setWeeklySkipsAllowed] = useState(0);
+  const [weeklySkipsAllowedStr, setWeeklySkipsAllowedStr] = useState<string>("0");
 
   // Edit modal
   const [editOpen, setEditOpen] = useState(false);
   const [editTask, setEditTask] = useState<TaskRow | null>(null);
+
+  // ✅ string versions for edit modal numeric fields
+  const [editFreqTimesStr, setEditFreqTimesStr] = useState<string>("1");
+  const [editWeeklySkipsStr, setEditWeeklySkipsStr] = useState<string>("0");
 
   // Shared styles
   const baseField: React.CSSProperties = {
@@ -97,7 +107,7 @@ export default function TasksPage() {
     outline: "none",
   };
 
-  // Clean select: remove default arrow + use a single subtle arrow (SVG) that respects current text color
+  // Clean select arrow
   const cleanSelect: React.CSSProperties = {
     ...baseField,
     WebkitAppearance: "none",
@@ -111,7 +121,7 @@ export default function TasksPage() {
     backgroundSize: "16px 16px",
   };
 
-  // For number inputs: keep typing, remove spinners, same look
+  // Numeric input styling (spinners removed via CSS)
   const cleanNumber: React.CSSProperties = {
     ...baseField,
     MozAppearance: "textfield",
@@ -179,13 +189,11 @@ export default function TasksPage() {
   const archivedTasks = useMemo(() => tasks.filter((t) => t.archived), [tasks]);
 
   function toggleDay(day: number, current: number[] | null, setFn: (v: number[] | null) => void) {
-    // If null (every day), start from full week selected
     const base = current ?? [0, 1, 2, 3, 4, 5, 6];
     const set = new Set(base);
     if (set.has(day)) set.delete(day);
     else set.add(day);
     const next = Array.from(set).sort((a, b) => a - b);
-    // If all 7 selected, store null to mean "every day"
     if (next.length === 7) setFn(null);
     else setFn(next);
   }
@@ -202,17 +210,22 @@ export default function TasksPage() {
     setStatus(null);
 
     try {
-      // RLS-required fields included
+      // ✅ sanitize at submit time (blank is allowed while typing)
+      const freqTimes = parseBoundedInt(freqTimesStr, { min: 1, max: 999, fallback: 1 });
+      const weeklySkipsAllowed = parseBoundedInt(weeklySkipsAllowedStr, { min: 0, max: 7, fallback: 0 });
+
       const base = {
         user_id: userId,
         created_by: userId,
         assigned_to: userId,
         is_shared: false,
+
         title: t,
         type,
         archived: false,
         scheduled_days: scheduledDays,
         weekly_skips_allowed: weeklySkipsAllowed,
+
         freq_times: null as number | null,
         freq_per: null as FrequencyUnit | null,
       };
@@ -226,12 +239,14 @@ export default function TasksPage() {
       if (error) throw error;
 
       setTasks((prev) => [data as TaskRow, ...prev]);
+
+      // reset create form
       setTitle("");
       setType("habit");
-      setFreqTimes(1);
+      setFreqTimesStr("1");
       setFreqPer("week");
       setScheduledDays(null);
-      setWeeklySkipsAllowed(0);
+      setWeeklySkipsAllowedStr("0");
     } catch (e: any) {
       console.error(e);
       setStatus(e?.message ?? "Failed to create task.");
@@ -244,13 +259,17 @@ export default function TasksPage() {
     setEditTask(t);
     setEditOpen(true);
     setStatus(null);
+
+    // sync edit string fields from the selected task
+    setEditFreqTimesStr(String(t.freq_times ?? 1));
+    setEditWeeklySkipsStr(String(t.weekly_skips_allowed ?? 0));
   }
 
   async function saveEdit(next: TaskRow) {
     if (!userId) return;
 
-    const t = next.title.trim();
-    if (!t) {
+    const trimmed = next.title.trim();
+    if (!trimmed) {
       setStatus("Title is required.");
       return;
     }
@@ -259,15 +278,18 @@ export default function TasksPage() {
     setStatus(null);
 
     try {
+      const freqTimes = parseBoundedInt(editFreqTimesStr, { min: 1, max: 999, fallback: 1 });
+      const weeklySkipsAllowed = parseBoundedInt(editWeeklySkipsStr, { min: 0, max: 7, fallback: 0 });
+
       const { data, error } = await supabase
         .from("tasks")
         .update({
-          title: t,
+          title: trimmed,
           type: next.type,
-          freq_times: next.type === "habit" ? next.freq_times : null,
-          freq_per: next.type === "habit" ? next.freq_per : null,
+          freq_times: next.type === "habit" ? freqTimes : null,
+          freq_per: next.type === "habit" ? (next.freq_per ?? "week") : null,
           scheduled_days: next.scheduled_days,
-          weekly_skips_allowed: next.weekly_skips_allowed,
+          weekly_skips_allowed: weeklySkipsAllowed,
           archived: next.archived,
         })
         .eq("id", next.id)
@@ -305,6 +327,7 @@ export default function TasksPage() {
         .single();
 
       if (error) throw error;
+
       const updated = data as TaskRow;
       setTasks((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
     } catch (e: any) {
@@ -342,6 +365,14 @@ export default function TasksPage() {
     }
   }
 
+  // Helpers to allow blank while typing, but still restrict to digits-ish
+  function onNumberFieldChange(setter: (v: string) => void, raw: string) {
+    // allow "", or digits
+    if (raw === "") return setter("");
+    if (/^\d+$/.test(raw)) return setter(raw);
+    // ignore other characters
+  }
+
   if (!userId) {
     return (
       <main style={{ minHeight: theme.layout.fullHeight, background: theme.page.background, color: theme.page.text, padding: 24 }}>
@@ -349,9 +380,7 @@ export default function TasksPage() {
         <div style={{ maxWidth: 980, margin: "0 auto" }}>
           <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>Tasks</h1>
           <p style={{ margin: "8px 0 0 0", opacity: 0.8 }}>Log in to manage tasks.</p>
-
           <div style={{ height: 14 }} />
-
           <Link
             href="/profile"
             style={{
@@ -456,11 +485,12 @@ export default function TasksPage() {
                     type="number"
                     min={1}
                     max={999}
-                    value={freqTimes}
-                    onChange={(e) => setFreqTimes(sanitizeTimes(e.target.value))}
+                    value={freqTimesStr}
+                    onChange={(e) => onNumberFieldChange(setFreqTimesStr, e.target.value)}
                     style={{ ...cleanNumber, width: 90 }}
                     inputMode="numeric"
                     pattern="[0-9]*"
+                    placeholder="1"
                   />
                   <span style={{ opacity: 0.85 }}>x per</span>
                   <select value={freqPer} onChange={(e) => setFreqPer(e.target.value as FrequencyUnit)} style={cleanSelect}>
@@ -518,11 +548,12 @@ export default function TasksPage() {
                 type="number"
                 min={0}
                 max={7}
-                value={weeklySkipsAllowed}
-                onChange={(e) => setWeeklySkipsAllowed(sanitizeSkips(e.target.value))}
+                value={weeklySkipsAllowedStr}
+                onChange={(e) => onNumberFieldChange(setWeeklySkipsAllowedStr, e.target.value)}
                 style={{ ...cleanNumber, width: 90 }}
                 inputMode="numeric"
                 pattern="[0-9]*"
+                placeholder="0"
               />
               <div style={{ opacity: 0.8, fontSize: 13 }}>Example: a 5x/week task can allow 2 skips.</div>
             </div>
@@ -821,11 +852,12 @@ export default function TasksPage() {
                       type="number"
                       min={1}
                       max={999}
-                      value={editTask.freq_times ?? 1}
-                      onChange={(e) => setEditTask({ ...editTask, freq_times: sanitizeTimes(e.target.value) })}
+                      value={editFreqTimesStr}
+                      onChange={(e) => onNumberFieldChange(setEditFreqTimesStr, e.target.value)}
                       style={{ ...cleanNumber, width: 90 }}
                       inputMode="numeric"
                       pattern="[0-9]*"
+                      placeholder="1"
                     />
                     <span style={{ opacity: 0.85 }}>x per</span>
                     <select
@@ -887,11 +919,12 @@ export default function TasksPage() {
                   type="number"
                   min={0}
                   max={7}
-                  value={editTask.weekly_skips_allowed ?? 0}
-                  onChange={(e) => setEditTask({ ...editTask, weekly_skips_allowed: sanitizeSkips(e.target.value) })}
+                  value={editWeeklySkipsStr}
+                  onChange={(e) => onNumberFieldChange(setEditWeeklySkipsStr, e.target.value)}
                   style={{ ...cleanNumber, width: 90 }}
                   inputMode="numeric"
                   pattern="[0-9]*"
+                  placeholder="0"
                 />
               </div>
 
