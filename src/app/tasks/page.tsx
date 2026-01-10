@@ -18,8 +18,8 @@ type TaskRow = {
   archived: boolean;
   created_at: string;
 
-  scheduled_days: number[] | null; // 0=Sun..6=Sat, null => every day
-  weekly_skips_allowed: number; // default 0
+  scheduled_days: number[] | null;
+  weekly_skips_allowed: number;
 };
 
 type CompletionRow = {
@@ -30,7 +30,8 @@ type CompletionRow = {
   proof_note: string | null;
   photo_path: string | null;
   completed_at: string;
-  tasks?: { title: string } | null;
+  // NOTE: PostgREST often returns this as an array for joins
+  tasks?: { title: string }[] | null;
 };
 
 const DOW = [
@@ -49,14 +50,9 @@ function fmtScheduledDays(days: number[] | null) {
   return sorted.map((d) => DOW.find((x) => x.n === d)?.label ?? "?").join(", ");
 }
 
-// Convert a string to a bounded int, with a fallback if blank/invalid
 function parseBoundedInt(
   raw: string,
-  {
-    min,
-    max,
-    fallback,
-  }: { min: number; max: number; fallback: number }
+  { min, max, fallback }: { min: number; max: number; fallback: number }
 ) {
   const s = raw.trim();
   if (s === "") return fallback;
@@ -65,7 +61,6 @@ function parseBoundedInt(
   return Math.max(min, Math.min(max, Math.floor(n)));
 }
 
-/** Remove number spinners + make selects use a cleaner arrow */
 const globalFixesCSS = `
 /* Hide number input spinners (Chrome/Safari/Edge) */
 input[type="number"]::-webkit-outer-spin-button,
@@ -96,10 +91,10 @@ export default function TasksPage() {
   const [title, setTitle] = useState("");
   const [type, setType] = useState<TaskType>("habit");
 
-  // store as strings so the input can be blank
+  // keep as strings so the input can be blank
   const [freqTimesStr, setFreqTimesStr] = useState<string>("1");
   const [freqPer, setFreqPer] = useState<FrequencyUnit>("week");
-  const [scheduledDays, setScheduledDays] = useState<number[] | null>(null); // null => every day
+  const [scheduledDays, setScheduledDays] = useState<number[] | null>(null);
   const [weeklySkipsAllowedStr, setWeeklySkipsAllowedStr] =
     useState<string>("0");
 
@@ -107,11 +102,9 @@ export default function TasksPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [editTask, setEditTask] = useState<TaskRow | null>(null);
 
-  // string versions for edit modal numeric fields
   const [editFreqTimesStr, setEditFreqTimesStr] = useState<string>("1");
   const [editWeeklySkipsStr, setEditWeeklySkipsStr] = useState<string>("0");
 
-  // Shared styles
   const baseField: React.CSSProperties = {
     padding: "10px 12px",
     borderRadius: 12,
@@ -121,7 +114,6 @@ export default function TasksPage() {
     outline: "none",
   };
 
-  // Clean select arrow
   const cleanSelect: React.CSSProperties = {
     ...baseField,
     WebkitAppearance: "none",
@@ -135,13 +127,11 @@ export default function TasksPage() {
     backgroundSize: "16px 16px",
   };
 
-  // Numeric input styling (spinners removed via CSS)
   const cleanNumber: React.CSSProperties = {
     ...baseField,
     MozAppearance: "textfield",
   };
 
-  // Auth session
   useEffect(() => {
     let alive = true;
 
@@ -194,7 +184,9 @@ export default function TasksPage() {
 
     const { data, error } = await supabase
       .from("completions")
-      .select("id,user_id,task_id,proof_type,proof_note,photo_path,completed_at,tasks(title)")
+      .select(
+        "id,user_id,task_id,proof_type,proof_note,photo_path,completed_at,tasks(title)"
+      )
       .eq("user_id", uid)
       .order("completed_at", { ascending: false })
       .limit(100);
@@ -248,6 +240,7 @@ export default function TasksPage() {
 
   async function createTask() {
     if (!userId) return;
+
     const t = title.trim();
     if (!t) {
       setStatus("Task title is required.");
@@ -318,7 +311,6 @@ export default function TasksPage() {
     setEditTask(t);
     setEditOpen(true);
     setStatus(null);
-
     setEditFreqTimesStr(String(t.freq_times ?? 1));
     setEditWeeklySkipsStr(String(t.weekly_skips_allowed ?? 0));
   }
@@ -981,7 +973,7 @@ export default function TasksPage() {
           )}
         </section>
 
-        {/* COMPLETED (bottom) */}
+        {/* COMPLETED */}
         <section
           style={{
             border: "1px solid var(--border)",
@@ -1047,7 +1039,7 @@ export default function TasksPage() {
                   >
                     <div style={{ minWidth: 240 }}>
                       <div style={{ fontWeight: 900 }}>
-                        {c.tasks?.title ?? "Task"}
+                        {c.tasks?.[0]?.title ?? "Task"}
                       </div>
                       <div style={{ opacity: 0.85, marginTop: 6 }}>
                         <span>
@@ -1065,8 +1057,6 @@ export default function TasksPage() {
                         ) : null}
                       </div>
                     </div>
-
-                    {/* (Optional later) view photo proof, etc. */}
                   </div>
                 ))}
               </div>
