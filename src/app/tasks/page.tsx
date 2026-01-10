@@ -50,6 +50,36 @@ function sanitizeSkips(v: string) {
   return Math.max(0, Math.min(7, Math.floor(n)));
 }
 
+/** ✅ Clean select styling (single arrow, no native black arrow) */
+const selectWrapStyle: React.CSSProperties = {
+  position: "relative",
+  display: "inline-flex",
+  alignItems: "center",
+};
+
+const selectStyle: React.CSSProperties = {
+  padding: "10px 38px 10px 12px", // room for arrow
+  borderRadius: 12,
+  border: "1px solid var(--border)",
+  background: "transparent",
+  color: "var(--text)",
+  outline: "none",
+  appearance: "none" as any,
+  WebkitAppearance: "none" as any,
+  MozAppearance: "none" as any,
+  lineHeight: 1.2,
+};
+
+const selectArrowStyle: React.CSSProperties = {
+  position: "absolute",
+  right: 12,
+  pointerEvents: "none",
+  opacity: 0.85,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
+
 export default function TasksPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
@@ -167,11 +197,14 @@ export default function TasksPage() {
         created_by: userId,
         assigned_to: userId,
         is_shared: false,
+
         title: t,
         type,
         archived: false,
+
         scheduled_days: scheduledDays,
         weekly_skips_allowed: weeklySkipsAllowed,
+
         freq_times: null as number | null,
         freq_per: null as FrequencyUnit | null,
       };
@@ -183,7 +216,7 @@ export default function TasksPage() {
 
       const { data, error } = await supabase
         .from("tasks")
-        .insert(base)
+        .insert(base as any)
         .select("*")
         .single();
 
@@ -199,6 +232,34 @@ export default function TasksPage() {
     } catch (e: any) {
       console.error(e);
       setStatus(e?.message ?? "Failed to create task.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** ✅ NEW: Full delete */
+  async function deleteTask(t: TaskRow) {
+    if (!userId) return;
+
+    const ok = window.confirm(`Delete "${t.title}"? This cannot be undone.`);
+    if (!ok) return;
+
+    setBusy(true);
+    setStatus(null);
+
+    try {
+      const { error } = await supabase
+        .from("tasks")
+        .delete()
+        .eq("id", t.id)
+        .eq("user_id", userId);
+
+      if (error) throw error;
+
+      setTasks((prev) => prev.filter((x) => x.id !== t.id));
+    } catch (e: any) {
+      console.error(e);
+      setStatus(e?.message ?? "Failed to delete task.");
     } finally {
       setBusy(false);
     }
@@ -438,21 +499,18 @@ export default function TasksPage() {
               }}
             >
               <label style={{ fontWeight: 900, opacity: 0.9 }}>Type</label>
-              <select
-                value={type}
-                onChange={(e) => setType(e.target.value as TaskType)}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid var(--border)",
-                  background: "transparent",
-                  color: "var(--text)",
-                  outline: "none",
-                }}
-              >
-                <option value="habit">Habit</option>
-                <option value="single">Single</option>
-              </select>
+
+              <div style={selectWrapStyle}>
+                <select
+                  value={type}
+                  onChange={(e) => setType(e.target.value as TaskType)}
+                  style={selectStyle}
+                >
+                  <option value="habit">Habit</option>
+                  <option value="single">Single</option>
+                </select>
+                <span style={selectArrowStyle}>▾</span>
+              </div>
 
               {type === "habit" ? (
                 <>
@@ -476,23 +534,22 @@ export default function TasksPage() {
                     }}
                   />
                   <span style={{ opacity: 0.85 }}>x per</span>
-                  <select
-                    value={freqPer}
-                    onChange={(e) => setFreqPer(e.target.value as FrequencyUnit)}
-                    style={{
-                      padding: "10px 12px",
-                      borderRadius: 12,
-                      border: "1px solid var(--border)",
-                      background: "transparent",
-                      color: "var(--text)",
-                      outline: "none",
-                    }}
-                  >
-                    <option value="day">day</option>
-                    <option value="week">week</option>
-                    <option value="month">month</option>
-                    <option value="year">year</option>
-                  </select>
+
+                  <div style={selectWrapStyle}>
+                    <select
+                      value={freqPer}
+                      onChange={(e) =>
+                        setFreqPer(e.target.value as FrequencyUnit)
+                      }
+                      style={selectStyle}
+                    >
+                      <option value="day">day</option>
+                      <option value="week">week</option>
+                      <option value="month">month</option>
+                      <option value="year">year</option>
+                    </select>
+                    <span style={selectArrowStyle}>▾</span>
+                  </div>
                 </>
               ) : null}
             </div>
@@ -515,7 +572,9 @@ export default function TasksPage() {
                     <button
                       key={d.n}
                       type="button"
-                      onClick={() => toggleDay(d.n, scheduledDays, setScheduledDays)}
+                      onClick={() =>
+                        toggleDay(d.n, scheduledDays, setScheduledDays)
+                      }
                       disabled={busy}
                       style={{
                         padding: "8px 10px",
@@ -711,6 +770,25 @@ export default function TasksPage() {
                     >
                       Archive
                     </button>
+
+                    {/* ✅ NEW: Delete */}
+                    <button
+                      type="button"
+                      onClick={() => deleteTask(t)}
+                      disabled={busy}
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: 12,
+                        border: "1px solid rgba(255,80,80,0.45)",
+                        background: "transparent",
+                        color: "var(--text)",
+                        fontWeight: 900,
+                        cursor: busy ? "not-allowed" : "pointer",
+                        opacity: busy ? 0.6 : 1,
+                      }}
+                    >
+                      Delete
+                    </button>
                   </div>
                 </div>
               ))}
@@ -784,23 +862,44 @@ export default function TasksPage() {
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => toggleArchive(t)}
-                    disabled={busy}
-                    style={{
-                      padding: "10px 12px",
-                      borderRadius: 12,
-                      border: `1px solid ${theme.accent.primary}`,
-                      background: "transparent",
-                      color: "var(--text)",
-                      fontWeight: 900,
-                      cursor: busy ? "not-allowed" : "pointer",
-                      opacity: busy ? 0.6 : 1,
-                    }}
-                  >
-                    Unarchive
-                  </button>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      onClick={() => toggleArchive(t)}
+                      disabled={busy}
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: 12,
+                        border: `1px solid ${theme.accent.primary}`,
+                        background: "transparent",
+                        color: "var(--text)",
+                        fontWeight: 900,
+                        cursor: busy ? "not-allowed" : "pointer",
+                        opacity: busy ? 0.6 : 1,
+                      }}
+                    >
+                      Unarchive
+                    </button>
+
+                    {/* ✅ NEW: Delete (archived too) */}
+                    <button
+                      type="button"
+                      onClick={() => deleteTask(t)}
+                      disabled={busy}
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: 12,
+                        border: "1px solid rgba(255,80,80,0.45)",
+                        background: "transparent",
+                        color: "var(--text)",
+                        fontWeight: 900,
+                        cursor: busy ? "not-allowed" : "pointer",
+                        opacity: busy ? 0.6 : 1,
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -870,23 +969,23 @@ export default function TasksPage() {
                 }}
               >
                 <label style={{ fontWeight: 900, opacity: 0.9 }}>Type</label>
-                <select
-                  value={editTask.type}
-                  onChange={(e) =>
-                    setEditTask({ ...editTask, type: e.target.value as TaskType })
-                  }
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    border: "1px solid var(--border)",
-                    background: "transparent",
-                    color: "var(--text)",
-                    outline: "none",
-                  }}
-                >
-                  <option value="habit">Habit</option>
-                  <option value="single">Single</option>
-                </select>
+
+                <div style={selectWrapStyle}>
+                  <select
+                    value={editTask.type}
+                    onChange={(e) =>
+                      setEditTask({
+                        ...editTask,
+                        type: e.target.value as TaskType,
+                      })
+                    }
+                    style={selectStyle}
+                  >
+                    <option value="habit">Habit</option>
+                    <option value="single">Single</option>
+                  </select>
+                  <span style={selectArrowStyle}>▾</span>
+                </div>
 
                 {editTask.type === "habit" ? (
                   <>
@@ -915,28 +1014,25 @@ export default function TasksPage() {
                       }}
                     />
                     <span style={{ opacity: 0.85 }}>x per</span>
-                    <select
-                      value={(editTask.freq_per ?? "week") as FrequencyUnit}
-                      onChange={(e) =>
-                        setEditTask({
-                          ...editTask,
-                          freq_per: e.target.value as FrequencyUnit,
-                        })
-                      }
-                      style={{
-                        padding: "10px 12px",
-                        borderRadius: 12,
-                        border: "1px solid var(--border)",
-                        background: "transparent",
-                        color: "var(--text)",
-                        outline: "none",
-                      }}
-                    >
-                      <option value="day">day</option>
-                      <option value="week">week</option>
-                      <option value="month">month</option>
-                      <option value="year">year</option>
-                    </select>
+
+                    <div style={selectWrapStyle}>
+                      <select
+                        value={(editTask.freq_per ?? "week") as FrequencyUnit}
+                        onChange={(e) =>
+                          setEditTask({
+                            ...editTask,
+                            freq_per: e.target.value as FrequencyUnit,
+                          })
+                        }
+                        style={selectStyle}
+                      >
+                        <option value="day">day</option>
+                        <option value="week">week</option>
+                        <option value="month">month</option>
+                        <option value="year">year</option>
+                      </select>
+                      <span style={selectArrowStyle}>▾</span>
+                    </div>
                   </>
                 ) : null}
               </div>
