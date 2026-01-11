@@ -31,8 +31,10 @@ export default function ProfilePage() {
 
   // ---------- Push helpers ----------
   function urlBase64ToUint8Array(base64String: string) {
-    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    // iOS can be picky if env vars have whitespace/newlines
+    const cleaned = (base64String || "").trim().replace(/\s+/g, "");
+    const padding = "=".repeat((4 - (cleaned.length % 4)) % 4);
+    const base64 = (cleaned + padding).replace(/-/g, "+").replace(/_/g, "/");
     const raw = atob(base64);
     const out = new Uint8Array(raw.length);
     for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
@@ -49,6 +51,14 @@ export default function ProfilePage() {
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) return null;
     const reg = await navigator.serviceWorker.ready;
     return reg.pushManager.getSubscription();
+  }
+
+  async function getAccessTokenOrThrow() {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw error;
+    const token = data.session?.access_token;
+    if (!token) throw new Error("Not logged in.");
+    return token;
   }
 
   async function syncPushEnabledFromBrowser() {
@@ -88,6 +98,9 @@ export default function ProfilePage() {
 
     setBusy(true);
     try {
+      // IMPORTANT: token-based auth (because your session is in localStorage, not cookies)
+      const token = await getAccessTokenOrThrow();
+
       if (next) {
         const ok = await registerSW();
         if (!ok) throw new Error("Service workers not supported.");
@@ -97,7 +110,7 @@ export default function ProfilePage() {
 
         const reg = await navigator.serviceWorker.ready;
 
-        const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+        const publicKey = (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "").trim();
         if (!publicKey) throw new Error("Missing NEXT_PUBLIC_VAPID_PUBLIC_KEY env var.");
 
         const sub = await reg.pushManager.subscribe({
@@ -109,7 +122,10 @@ export default function ProfilePage() {
 
         const res = await fetch("/api/push/subscription", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify({
             action: "upsert",
             endpoint: json.endpoint,
@@ -136,7 +152,10 @@ export default function ProfilePage() {
         if (json?.endpoint) {
           const res = await fetch("/api/push/subscription", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
             body: JSON.stringify({ action: "delete", endpoint: json.endpoint }),
           });
 
@@ -151,7 +170,6 @@ export default function ProfilePage() {
       }
     } catch (e: any) {
       setPushMsg(e?.message ?? "Something went wrong enabling push notifications.");
-      // Re-sync from browser so UI matches reality
       await syncPushEnabledFromBrowser();
     } finally {
       setBusy(false);
@@ -418,16 +436,8 @@ export default function ProfilePage() {
                   marginBottom: 12,
                 }}
               >
-                <ModeBtn
-                  active={mode === "login"}
-                  label="Login"
-                  onClick={() => setMode("login")}
-                />
-                <ModeBtn
-                  active={mode === "signup"}
-                  label="Sign up"
-                  onClick={() => setMode("signup")}
-                />
+                <ModeBtn active={mode === "login"} label="Login" onClick={() => setMode("login")} />
+                <ModeBtn active={mode === "signup"} label="Sign up" onClick={() => setMode("signup")} />
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -451,7 +461,12 @@ export default function ProfilePage() {
                   }}
                 />
 
-                <button onClick={handleAuth} disabled={busy} style={primaryBtnStyle(busy)} type="button">
+                <button
+                  onClick={handleAuth}
+                  disabled={busy}
+                  style={primaryBtnStyle(busy)}
+                  type="button"
+                >
                   {mode === "signup" ? "Create account" : "Log in"}
                 </button>
 
@@ -539,7 +554,12 @@ export default function ProfilePage() {
                     <div style={{ opacity: 0.85 }}>
                       Linked to <b>{partnerLabel}</b>
                     </div>
-                    <button onClick={unlinkPartner} disabled={busy} style={secondaryBtnStyle(busy)} type="button">
+                    <button
+                      onClick={unlinkPartner}
+                      disabled={busy}
+                      style={secondaryBtnStyle(busy)}
+                      type="button"
+                    >
                       Unlink
                     </button>
                   </div>
@@ -560,11 +580,21 @@ export default function ProfilePage() {
                 />
 
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <button onClick={saveDisplayName} disabled={busy} style={primaryBtnStyle(busy)} type="button">
+                  <button
+                    onClick={saveDisplayName}
+                    disabled={busy}
+                    style={primaryBtnStyle(busy)}
+                    type="button"
+                  >
                     Save
                   </button>
 
-                  <button onClick={handleLogout} disabled={busy} style={secondaryBtnStyle(busy)} type="button">
+                  <button
+                    onClick={handleLogout}
+                    disabled={busy}
+                    style={secondaryBtnStyle(busy)}
+                    type="button"
+                  >
                     Log out
                   </button>
                 </div>
