@@ -1360,7 +1360,7 @@ export default function TasksPage() {
       setBusy(false);
     }
   }
-
+export default function TasksPage() {
   // ---------- Render ----------
   if (!userId) {
     return (
