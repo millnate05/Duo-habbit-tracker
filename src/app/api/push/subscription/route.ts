@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createClient } from "@supabase/supabase-js";
 
 type Body =
   | {
@@ -14,17 +13,35 @@ type Body =
   | { action: "delete"; endpoint: string };
 
 export async function POST(req: Request) {
-  const supabase = createRouteHandlerClient({ cookies });
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  if (!supabaseUrl || !supabaseAnon) {
+    return NextResponse.json({ error: "Missing Supabase env vars" }, { status: 500 });
+  }
 
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Expect Authorization: Bearer <access_token>
+  const authHeader = req.headers.get("authorization") || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+
+  if (!token) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseAnon);
+
+  const { data, error: userErr } = await supabase.auth.getUser(token);
+  const user = data?.user ?? null;
+
+  if (userErr || !user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const body = (await req.json()) as Body;
 
-  if (!body?.endpoint) return NextResponse.json({ error: "Missing endpoint" }, { status: 400 });
+  if (!body?.endpoint) {
+    return NextResponse.json({ error: "Missing endpoint" }, { status: 400 });
+  }
 
   if (body.action === "upsert") {
     if (!("keys" in body) || !body.keys?.p256dh || !body.keys?.auth) {
