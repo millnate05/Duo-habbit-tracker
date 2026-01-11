@@ -58,81 +58,123 @@ export default function AvatarPage() {
 ========================= */
 
 function FullBodyAvatar() {
-  const cx = 256;
+  /* =========================
+     GLOBAL CANVAS
+  ========================= */
+  const W = 512;
+  const H = 900;
+  const cx = W / 2;
 
-  // Head
-  const headRadius = 60;
-  const headY = 120;
+  /* =========================
+     HEAD (SVG-derived ratios)
+  ========================= */
+  const headWidth = 0.17 * W;          // ≈ 87
+  const headHeight = 0.21 * H;         // ≈ 189
+  const hy = 0.18 * H;                 // ≈ 162
+  const jawWidth = 0.72 * headWidth;
+  const chinY = hy + 0.48 * headHeight;
 
-  // Facial features
-  const eyeY = headY - 12;
-  const eyeOffset = 22;
-  const eyeR = 5;
+  /* =========================
+     EYES
+  ========================= */
+  const eyeY = hy - 0.12 * headHeight;
+  const eyeOffset = 0.19 * headWidth;
+  const eyeW = 0.28 * headWidth;
+  const eyeH = 0.11 * eyeW;
+  const pupilOffsetX = 0.18 * eyeW;
+  const pupilOffsetY = -0.08 * eyeH;
+  const pupilR = eyeH * 0.45;
 
-  const noseY = headY + 8;
-  const noseW = 10;
-  const noseH = 14;
+  /* =========================
+     NOSE
+  ========================= */
+  const noseY = hy + 0.10 * headHeight;
+  const noseBridgeW = 0.06 * headWidth;
+  const noseTipR = 0.04 * headWidth;
 
-  const earOffsetX = headRadius + 6;
-  const earR = 14;
+  /* =========================
+     EARS
+  ========================= */
+  const earCxOffset = 0.52 * headWidth;
+  const earCy = hy + 0.05 * headHeight;
+  const earH = 0.32 * headHeight;
+  const earW = 0.18 * headWidth;
 
-  // Torso
-  const torsoTop = headY + headRadius + 12;
-  const torsoWidth = 140;
-  const torsoHeight = 220;
+  /* =========================
+     TORSO
+  ========================= */
+  const torsoTop = hy + 0.55 * headHeight;
+  const shoulderW = 0.42 * W;
+  const waistW = 0.78 * shoulderW;
+  const torsoH = 0.27 * H;
 
-  // Arms
-  const armW = 28;
-  const armH = 170;
-  const armY = torsoTop + 28;
+  /* =========================
+     ARMS
+  ========================= */
+  const armY = torsoTop + 0.08 * torsoH;
+  const upperArmW = 0.14 * shoulderW;
+  const upperArmL = 0.45 * torsoH;
 
-  // Legs
-  const legTop = torsoTop + torsoHeight;
-  const legHeight = 240;
-  const legWidth = 40;
-  const legGap = 24;
+  /* =========================
+     LEGS
+  ========================= */
+  const legTop = torsoTop + torsoH;
+  const thighW = 0.18 * shoulderW;
+  const calfW = 0.62 * thighW;
+  const legGap = 0.14 * shoulderW;
+  const legL = 0.38 * H;
 
-  // Colors
+  /* =========================
+     SHOES
+  ========================= */
+  const shoeW = 1.35 * thighW;
+  const shoeH = 0.045 * H;
+
+  /* =========================
+     COLORS
+  ========================= */
   const skin = "#C8A07A";
   const outline = "#1a1a1a";
+  const hair = "#241812";
   const shirt = "#ffffff";
   const vest = "#8C1D18";
   const pants = "#1E2A3A";
   const shoes = "#6B4A2D";
-  const hair = "#241812";
 
   return (
-    <svg
-      viewBox="0 0 512 900"
-      width="100%"
-      height="100%"
-      style={{ maxHeight: "80vh" }}
-    >
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" style={{ maxHeight: "80vh" }}>
       {/* EARS */}
       <ellipse
-        cx={cx - earOffsetX}
-        cy={headY + 6}
-        rx={earR}
-        ry={earR + 4}
+        cx={cx - earCxOffset}
+        cy={earCy}
+        rx={earW}
+        ry={earH / 2}
         fill={skin}
         stroke={outline}
         strokeWidth={3}
       />
       <ellipse
-        cx={cx + earOffsetX}
-        cy={headY + 6}
-        rx={earR}
-        ry={earR + 4}
+        cx={cx + earCxOffset}
+        cy={earCy}
+        rx={earW}
+        ry={earH / 2}
         fill={skin}
         stroke={outline}
         strokeWidth={3}
       />
 
       {/* HEAD */}
-      <circle
-        cx={cx}
-        cy={headY}
-        r={headRadius}
+      <path
+        d={`
+          M ${cx - headWidth / 2} ${hy}
+          C ${cx - headWidth / 2} ${hy - headHeight / 2}
+            ${cx + headWidth / 2} ${hy - headHeight / 2}
+            ${cx + headWidth / 2} ${hy}
+          C ${cx + jawWidth / 2} ${chinY}
+            ${cx - jawWidth / 2} ${chinY}
+            ${cx - headWidth / 2} ${hy}
+          Z
+        `}
         fill={skin}
         stroke={outline}
         strokeWidth={4}
@@ -141,58 +183,62 @@ function FullBodyAvatar() {
       {/* HAIR */}
       <path
         d={`
-          M ${cx - headRadius} ${headY - headRadius}
-          C ${cx} ${headY - headRadius * 1.4}
-            ${cx + headRadius} ${headY - headRadius}
-            ${cx + headRadius} ${headY - headRadius * 0.25}
-          L ${cx - headRadius} ${headY - headRadius * 0.25}
+          M ${cx - headWidth / 2} ${hy - headHeight / 2}
+          C ${cx} ${hy - headHeight * 0.75}
+            ${cx + headWidth / 2} ${hy - headHeight / 2}
+            ${cx + headWidth / 2} ${hy - headHeight * 0.2}
+          L ${cx - headWidth / 2} ${hy - headHeight * 0.2}
           Z
         `}
         fill={hair}
       />
 
       {/* EYES */}
-      <circle cx={cx - eyeOffset} cy={eyeY} r={eyeR} fill="#fff" />
-      <circle cx={cx + eyeOffset} cy={eyeY} r={eyeR} fill="#fff" />
-      <circle cx={cx - eyeOffset} cy={eyeY} r={2.5} fill="#111" />
-      <circle cx={cx + eyeOffset} cy={eyeY} r={2.5} fill="#111" />
+      {[-1, 1].map((side) => {
+        const ex = cx + side * eyeOffset;
+        return (
+          <g key={side}>
+            <ellipse cx={ex} cy={eyeY} rx={eyeW / 2} ry={eyeH / 2} fill="#fff" />
+            <circle
+              cx={ex + side * pupilOffsetX}
+              cy={eyeY + pupilOffsetY}
+              r={pupilR}
+              fill="#111"
+            />
+          </g>
+        );
+      })}
 
       {/* NOSE */}
-      <path
-        d={`
-          M ${cx} ${noseY}
-          C ${cx - noseW} ${noseY + noseH}
-            ${cx + noseW} ${noseY + noseH}
-            ${cx} ${noseY}
-        `}
-        fill="rgba(0,0,0,0.08)"
-      />
+      <circle cx={cx} cy={noseY + noseTipR} r={noseTipR} fill="rgba(0,0,0,0.18)" />
 
       {/* ARMS */}
       <rect
-        x={cx - torsoWidth / 2 - armW + 4}
+        x={cx - shoulderW / 2 - upperArmW}
         y={armY}
-        width={armW}
-        height={armH}
-        rx={14}
+        width={upperArmW}
+        height={upperArmL}
+        rx={upperArmW / 2}
         fill={skin}
       />
       <rect
-        x={cx + torsoWidth / 2 - 4}
+        x={cx + shoulderW / 2}
         y={armY}
-        width={armW}
-        height={armH}
-        rx={14}
+        width={upperArmW}
+        height={upperArmL}
+        rx={upperArmW / 2}
         fill={skin}
       />
 
       {/* TORSO */}
-      <rect
-        x={cx - torsoWidth / 2}
-        y={torsoTop}
-        width={torsoWidth}
-        height={torsoHeight}
-        rx={24}
+      <path
+        d={`
+          M ${cx - shoulderW / 2} ${torsoTop}
+          L ${cx + shoulderW / 2} ${torsoTop}
+          L ${cx + waistW / 2} ${torsoTop + torsoH}
+          L ${cx - waistW / 2} ${torsoTop + torsoH}
+          Z
+        `}
         fill={vest}
         stroke={outline}
         strokeWidth={4}
@@ -200,49 +246,50 @@ function FullBodyAvatar() {
 
       {/* SHIRT */}
       <rect
-        x={cx - torsoWidth / 2 + 16}
-        y={torsoTop + 16}
-        width={torsoWidth - 32}
-        height={torsoHeight - 32}
+        x={cx - waistW / 2 + 18}
+        y={torsoTop + 18}
+        width={waistW - 36}
+        height={torsoH - 36}
         rx={18}
         fill={shirt}
       />
 
       {/* LEGS */}
       <rect
-        x={cx - legGap / 2 - legWidth}
+        x={cx - legGap / 2 - thighW}
         y={legTop}
-        width={legWidth}
-        height={legHeight}
-        rx={14}
+        width={thighW}
+        height={legL}
+        rx={thighW / 2}
         fill={pants}
       />
       <rect
         x={cx + legGap / 2}
         y={legTop}
-        width={legWidth}
-        height={legHeight}
-        rx={14}
+        width={thighW}
+        height={legL}
+        rx={thighW / 2}
         fill={pants}
       />
 
       {/* SHOES */}
       <rect
-        x={cx - legGap / 2 - legWidth - 6}
-        y={legTop + legHeight}
-        width={legWidth + 18}
-        height={26}
-        rx={12}
+        x={cx - legGap / 2 - shoeW}
+        y={legTop + legL}
+        width={shoeW}
+        height={shoeH}
+        rx={shoeH / 2}
         fill={shoes}
       />
       <rect
         x={cx + legGap / 2}
-        y={legTop + legHeight}
-        width={legWidth + 18}
-        height={26}
-        rx={12}
+        y={legTop + legL}
+        width={shoeW}
+        height={shoeH}
+        rx={shoeH / 2}
         fill={shoes}
       />
     </svg>
   );
 }
+
