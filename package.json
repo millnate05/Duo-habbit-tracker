@@ -9,11 +9,10 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.0",
+    "@supabase/auth-helpers-nextjs": "^0.10.0",
     "next": "^14.2.6",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
-    "@supabase/auth-helpers-nextjs": "^0.10.0"
-
   },
   "devDependencies": {
     "typescript": "^5.3.3",
