@@ -1,11 +1,44 @@
 "use client";
- 
+
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { theme } from "@/UI/theme";
 
 type Mode = "login" | "signup";
+
+type TaskType = "habit" | "single";
+type FrequencyUnit = "day" | "week" | "month" | "year";
+
+type TaskRow = {
+  id: string;
+  user_id: string;
+  title: string;
+  type: TaskType;
+  freq_times: number | null;
+  freq_per: FrequencyUnit | null;
+  archived: boolean;
+  created_at: string;
+
+  scheduled_days: number[] | null;
+  weekly_skips_allowed: number;
+};
+
+const DOW = [
+  { n: 0, label: "Sun" },
+  { n: 1, label: "Mon" },
+  { n: 2, label: "Tue" },
+  { n: 3, label: "Wed" },
+  { n: 4, label: "Thu" },
+  { n: 5, label: "Fri" },
+  { n: 6, label: "Sat" },
+];
+
+function fmtScheduledDays(days: number[] | null) {
+  if (!days || days.length === 0) return "Every day";
+  const sorted = [...days].sort((a, b) => a - b);
+  return sorted.map((d) => DOW.find((x) => x.n === d)?.label ?? "?").join(", ");
+}
 
 export default function ProfilePage() {
   const [mode, setMode] = useState<Mode>("login");
@@ -28,6 +61,88 @@ export default function ProfilePage() {
   const [busy, setBusy] = useState(false);
 
   const loggedIn = useMemo(() => !!userId, [userId]);
+
+  // -------------------------------
+  // Archived tasks (moved here)
+  // -------------------------------
+  const [archivedLoading, setArchivedLoading] = useState(false);
+  const [archivedBusy, setArchivedBusy] = useState(false);
+  const [archivedStatus, setArchivedStatus] = useState<string | null>(null);
+  const [archivedTasks, setArchivedTasks] = useState<TaskRow[]>([]);
+
+  async function loadArchivedTasks(uid: string) {
+    setArchivedLoading(true);
+    setArchivedStatus(null);
+
+    const { data, error } = await supabase
+      .from("tasks")
+      .select("*")
+      .eq("assigned_to", uid)
+      .eq("archived", true)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error(error);
+      setArchivedStatus(error.message);
+      setArchivedTasks([]);
+      setArchivedLoading(false);
+      return;
+    }
+
+    setArchivedTasks((data ?? []) as TaskRow[]);
+    setArchivedLoading(false);
+  }
+
+  async function unarchiveTask(t: TaskRow) {
+    if (!userId) return;
+    if (archivedBusy) return;
+
+    setArchivedBusy(true);
+    setArchivedStatus(null);
+
+    try {
+      const { data, error } = await supabase
+        .from("tasks")
+        .update({ archived: false })
+        .eq("id", t.id)
+        .eq("assigned_to", userId)
+        .select("*")
+        .single();
+
+      if (error) throw error;
+
+      // remove from archived list immediately
+      setArchivedTasks((prev) => prev.filter((x) => x.id !== (data as TaskRow).id));
+    } catch (e: any) {
+      console.error(e);
+      setArchivedStatus(e?.message ?? "Failed to unarchive task.");
+    } finally {
+      setArchivedBusy(false);
+    }
+  }
+
+  async function deleteArchivedTask(t: TaskRow) {
+    if (!userId) return;
+    if (archivedBusy) return;
+
+    const ok = window.confirm(`Delete "${t.title}"?\n\nThis cannot be undone.`);
+    if (!ok) return;
+
+    setArchivedBusy(true);
+    setArchivedStatus(null);
+
+    try {
+      const { error } = await supabase.from("tasks").delete().eq("id", t.id).eq("assigned_to", userId);
+      if (error) throw error;
+
+      setArchivedTasks((prev) => prev.filter((x) => x.id !== t.id));
+    } catch (e: any) {
+      console.error(e);
+      setArchivedStatus(e?.message ?? "Failed to delete task.");
+    } finally {
+      setArchivedBusy(false);
+    }
+  }
 
   // ---------- Push helpers ----------
   function urlBase64ToUint8Array(base64String: string) {
@@ -289,6 +404,18 @@ export default function ProfilePage() {
     })();
   }, [userId]);
 
+  // Load archived tasks when logged in
+  useEffect(() => {
+    if (!userId) {
+      setArchivedTasks([]);
+      setArchivedStatus(null);
+      setArchivedLoading(false);
+      return;
+    }
+    loadArchivedTasks(userId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
   async function handleAuth() {
     setStatus(null);
     setBusy(true);
@@ -345,6 +472,9 @@ export default function ProfilePage() {
 
       setPushEnabled(false);
       setPushMsg(null);
+
+      setArchivedTasks([]);
+      setArchivedStatus(null);
 
       setStatus("Logged out.");
     } catch (e: any) {
@@ -461,12 +591,7 @@ export default function ProfilePage() {
                   }}
                 />
 
-                <button
-                  onClick={handleAuth}
-                  disabled={busy}
-                  style={primaryBtnStyle(busy)}
-                  type="button"
-                >
+                <button onClick={handleAuth} disabled={busy} style={primaryBtnStyle(busy)} type="button">
                   {mode === "signup" ? "Create account" : "Log in"}
                 </button>
 
@@ -509,17 +634,8 @@ export default function ProfilePage() {
                     }}
                   >
                     <div style={{ opacity: 0.85, maxWidth: 480 }}>
-                      {pushEnabled ? (
-                        <>Enabled. You can turn this off anytime.</>
-                      ) : (
-                        <>
-                          Off. Turn on to enable push notifications on this device. On iPhone, install the app to
-                          Home Screen first.
-                        </>
-                      )}
-                      {pushMsg ? (
-                        <div style={{ marginTop: 6, fontSize: 13, opacity: 0.9 }}>{pushMsg}</div>
-                      ) : null}
+                      {pushEnabled ? <>Enabled. You can turn this off anytime.</> : <>Off. Turn on to enable push notifications on this device. On iPhone, install the app to Home Screen first.</>}
+                      {pushMsg ? <div style={{ marginTop: 6, fontSize: 13, opacity: 0.9 }}>{pushMsg}</div> : null}
                     </div>
 
                     <label style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
@@ -554,12 +670,7 @@ export default function ProfilePage() {
                     <div style={{ opacity: 0.85 }}>
                       Linked to <b>{partnerLabel}</b>
                     </div>
-                    <button
-                      onClick={unlinkPartner}
-                      disabled={busy}
-                      style={secondaryBtnStyle(busy)}
-                      type="button"
-                    >
+                    <button onClick={unlinkPartner} disabled={busy} style={secondaryBtnStyle(busy)} type="button">
                       Unlink
                     </button>
                   </div>
@@ -580,21 +691,11 @@ export default function ProfilePage() {
                 />
 
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <button
-                    onClick={saveDisplayName}
-                    disabled={busy}
-                    style={primaryBtnStyle(busy)}
-                    type="button"
-                  >
+                  <button onClick={saveDisplayName} disabled={busy} style={primaryBtnStyle(busy)} type="button">
                     Save
                   </button>
 
-                  <button
-                    onClick={handleLogout}
-                    disabled={busy}
-                    style={secondaryBtnStyle(busy)}
-                    type="button"
-                  >
+                  <button onClick={handleLogout} disabled={busy} style={secondaryBtnStyle(busy)} type="button">
                     Log out
                   </button>
                 </div>
@@ -620,20 +721,150 @@ export default function ProfilePage() {
             {status}
           </div>
         ) : null}
+
+        {/* -------------------------------
+            Archived section (moved here)
+           ------------------------------- */}
+        {loggedIn ? (
+          <section
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: 16,
+              padding: 16,
+              background: "rgba(255,255,255,0.02)",
+              boxShadow: "0 10px 24px rgba(0,0,0,0.20)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline" }}>
+              <div>
+                <div style={{ fontSize: 20, fontWeight: 900 }}>Archived</div>
+                <div style={{ marginTop: 6, opacity: 0.85 }}>
+                  Total: <b>{archivedTasks.length}</b>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                disabled={archivedBusy || archivedLoading}
+                onClick={() => userId && loadArchivedTasks(userId)}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: `1px solid ${theme.accent.primary}`,
+                  background: "transparent",
+                  color: "var(--text)",
+                  fontWeight: 900,
+                  cursor: archivedBusy || archivedLoading ? "not-allowed" : "pointer",
+                  opacity: archivedBusy || archivedLoading ? 0.6 : 1,
+                }}
+              >
+                Refresh
+              </button>
+            </div>
+
+            {archivedStatus ? (
+              <div style={{ marginTop: 12, border: "1px solid var(--border)", borderRadius: 14, padding: 12, background: "rgba(255,255,255,0.02)" }}>
+                {archivedStatus}
+              </div>
+            ) : null}
+
+            <div style={{ height: 12 }} />
+
+            {archivedLoading ? (
+              <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>
+                Loading…
+              </div>
+            ) : archivedTasks.length === 0 ? (
+              <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>
+                No archived tasks.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {archivedTasks.map((t) => (
+                  <div
+                    key={t.id}
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 14,
+                      padding: 12,
+                      background: "rgba(255,255,255,0.02)",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div style={{ minWidth: 240 }}>
+                      <div style={{ fontWeight: 900 }}>{t.title}</div>
+                      <div style={{ opacity: 0.85, marginTop: 6 }}>
+                        {t.type === "habit" ? (
+                          <>
+                            Habit • <b>{t.freq_times ?? 1}x</b> per <b>{t.freq_per ?? "week"}</b>
+                          </>
+                        ) : (
+                          <>Single</>
+                        )}
+                        <span>
+                          {" "}
+                          • Days: <b>{fmtScheduledDays(t.scheduled_days)}</b>
+                        </span>
+                        <span>
+                          {" "}
+                          • Skips/wk: <b>{t.weekly_skips_allowed ?? 0}</b>
+                        </span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        onClick={() => unarchiveTask(t)}
+                        disabled={archivedBusy}
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: 12,
+                          border: `1px solid ${theme.accent.primary}`,
+                          background: "transparent",
+                          color: "var(--text)",
+                          fontWeight: 900,
+                          cursor: archivedBusy ? "not-allowed" : "pointer",
+                          opacity: archivedBusy ? 0.6 : 1,
+                        }}
+                      >
+                        Unarchive
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => deleteArchivedTask(t)}
+                        disabled={archivedBusy}
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: 12,
+                          border: "1px solid rgba(255, 99, 99, 0.65)",
+                          background: "transparent",
+                          color: "var(--text)",
+                          fontWeight: 900,
+                          cursor: archivedBusy ? "not-allowed" : "pointer",
+                          opacity: archivedBusy ? 0.6 : 1,
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        ) : null}
       </div>
     </main>
   );
 }
 
-function ModeBtn({
-  active,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-}) {
+function ModeBtn({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
   return (
     <button
       type="button"
