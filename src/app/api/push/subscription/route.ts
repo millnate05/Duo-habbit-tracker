@@ -28,10 +28,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const supabase = createClient(supabaseUrl, supabaseAnon);
+  // IMPORTANT: create a client that includes the user's JWT for ALL db calls
+  const supabase = createClient(supabaseUrl, supabaseAnon, {
+    global: {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  });
 
-  const { data, error: userErr } = await supabase.auth.getUser(token);
-  const user = data?.user ?? null;
+  // Validate token + get user
+  const { data: userData, error: userErr } = await supabase.auth.getUser();
+  const user = userData?.user ?? null;
 
   if (userErr || !user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
