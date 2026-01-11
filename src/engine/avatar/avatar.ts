@@ -40,7 +40,7 @@ export default function AvatarPage() {
         />
       </section>
 
-      {/* RIGHT HALF: leave room for future controls */}
+      {/* RIGHT HALF */}
       <section
         style={{
           border: "1px solid var(--border)",
@@ -68,19 +68,15 @@ export default function AvatarPage() {
             border: "1px solid var(--border)",
             textDecoration: "none",
             color: "var(--text)",
-            background: "transparent",
           }}
         >
           ← Back Home
         </Link>
       </section>
 
-      {/* Mobile: stack */}
       <style>{`
         @media (max-width: 900px) {
-          main {
-            grid-template-columns: 1fr !important;
-          }
+          main { grid-template-columns: 1fr !important; }
         }
       `}</style>
     </main>
