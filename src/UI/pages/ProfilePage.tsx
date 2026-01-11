@@ -19,12 +19,146 @@ export default function ProfilePage() {
   const [displayName, setDisplayName] = useState("");
   const [partnerLabel, setPartnerLabel] = useState<string | null>(null);
 
+  // Push toggle state (this device)
+  const [pushSupported, setPushSupported] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushMsg, setPushMsg] = useState<string | null>(null);
+
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const loggedIn = useMemo(() => !!userId, [userId]);
 
-  // Load current session + listen for auth changes
+  // ---------- Push helpers ----------
+  function urlBase64ToUint8Array(base64String: string) {
+    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const raw = atob(base64);
+    const out = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+  }
+
+  async function registerSW() {
+    if (!("serviceWorker" in navigator)) return false;
+    await navigator.serviceWorker.register("/sw.js");
+    return true;
+  }
+
+  async function getSubscription() {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return null;
+    const reg = await navigator.serviceWorker.ready;
+    return reg.pushManager.getSubscription();
+  }
+
+  async function syncPushEnabledFromBrowser() {
+    const ok =
+      typeof window !== "undefined" &&
+      "Notification" in window &&
+      "serviceWorker" in navigator &&
+      "PushManager" in window;
+
+    setPushSupported(ok);
+    if (!ok) {
+      setPushEnabled(false);
+      return;
+    }
+
+    try {
+      await registerSW();
+      const sub = await getSubscription();
+      setPushEnabled(!!sub);
+    } catch {
+      setPushEnabled(false);
+    }
+  }
+
+  async function togglePush(next: boolean) {
+    setPushMsg(null);
+
+    if (!loggedIn) {
+      setPushMsg("Log in first to enable push notifications.");
+      return;
+    }
+
+    if (!pushSupported) {
+      setPushMsg("Push notifications aren't supported on this device/browser.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      if (next) {
+        const ok = await registerSW();
+        if (!ok) throw new Error("Service workers not supported.");
+
+        const perm = await Notification.requestPermission();
+        if (perm !== "granted") throw new Error("Notifications permission not granted.");
+
+        const reg = await navigator.serviceWorker.ready;
+
+        const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+        if (!publicKey) throw new Error("Missing NEXT_PUBLIC_VAPID_PUBLIC_KEY env var.");
+
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey),
+        });
+
+        const json = sub.toJSON();
+
+        const res = await fetch("/api/push/subscription", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "upsert",
+            endpoint: json.endpoint,
+            keys: json.keys,
+            userAgent: navigator.userAgent,
+            platform: navigator.platform,
+            locale: navigator.language,
+          }),
+        });
+
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          throw new Error(j.error || "Failed to save push subscription.");
+        }
+
+        setPushEnabled(true);
+        setPushMsg("Push notifications enabled on this device.");
+      } else {
+        const existing = await getSubscription();
+        const json = existing?.toJSON();
+
+        if (existing) await existing.unsubscribe();
+
+        if (json?.endpoint) {
+          const res = await fetch("/api/push/subscription", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "delete", endpoint: json.endpoint }),
+          });
+
+          if (!res.ok) {
+            const j = await res.json().catch(() => ({}));
+            throw new Error(j.error || "Failed to remove push subscription.");
+          }
+        }
+
+        setPushEnabled(false);
+        setPushMsg("Push notifications disabled on this device.");
+      }
+    } catch (e: any) {
+      setPushMsg(e?.message ?? "Something went wrong enabling push notifications.");
+      // Re-sync from browser so UI matches reality
+      await syncPushEnabledFromBrowser();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // ---------- Auth/session ----------
   useEffect(() => {
     let mounted = true;
 
@@ -48,6 +182,12 @@ export default function ProfilePage() {
       sub.subscription.unsubscribe();
     };
   }, []);
+
+  // Push support/subscription state (runs once, and again when login state changes)
+  useEffect(() => {
+    syncPushEnabledFromBrowser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loggedIn]);
 
   // Ensure profile row exists once logged in
   useEffect(() => {
@@ -141,7 +281,6 @@ export default function ProfilePage() {
       }
 
       if (mode === "signup") {
-        // ✅ include emailRedirectTo so confirmation links return to your site
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
@@ -151,7 +290,6 @@ export default function ProfilePage() {
         });
         if (error) throw error;
 
-        // If email confirmations are enabled, user may need to verify email
         if (!data.session) {
           setStatus("Account created. Check your email to confirm, then log in.");
         } else {
@@ -186,6 +324,9 @@ export default function ProfilePage() {
       setPassword("");
       setDisplayName("");
       setPartnerLabel(null);
+
+      setPushEnabled(false);
+      setPushMsg(null);
 
       setStatus("Logged out.");
     } catch (e: any) {
@@ -310,12 +451,7 @@ export default function ProfilePage() {
                   }}
                 />
 
-                <button
-                  onClick={handleAuth}
-                  disabled={busy}
-                  style={primaryBtnStyle(busy)}
-                  type="button"
-                >
+                <button onClick={handleAuth} disabled={busy} style={primaryBtnStyle(busy)} type="button">
                   {mode === "signup" ? "Create account" : "Log in"}
                 </button>
 
@@ -342,6 +478,53 @@ export default function ProfilePage() {
 
                 <div style={{ height: 6 }} />
 
+                <div style={{ fontWeight: 900 }}>Push notifications (this device)</div>
+                {pushSupported ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      flexWrap: "wrap",
+                      border: "1px solid var(--border)",
+                      borderRadius: 12,
+                      padding: 12,
+                      background: "rgba(255,255,255,0.01)",
+                    }}
+                  >
+                    <div style={{ opacity: 0.85, maxWidth: 480 }}>
+                      {pushEnabled ? (
+                        <>Enabled. You can turn this off anytime.</>
+                      ) : (
+                        <>
+                          Off. Turn on to enable push notifications on this device. On iPhone, install the app to
+                          Home Screen first.
+                        </>
+                      )}
+                      {pushMsg ? (
+                        <div style={{ marginTop: 6, fontSize: 13, opacity: 0.9 }}>{pushMsg}</div>
+                      ) : null}
+                    </div>
+
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                      <input
+                        type="checkbox"
+                        checked={pushEnabled}
+                        disabled={busy}
+                        onChange={(e) => togglePush(e.target.checked)}
+                      />
+                      <span style={{ fontWeight: 900 }}>{pushEnabled ? "On" : "Off"}</span>
+                    </label>
+                  </div>
+                ) : (
+                  <div style={{ opacity: 0.7, fontSize: 13 }}>
+                    Push isn’t supported on this device/browser. On iPhone, install the app to Home Screen first.
+                  </div>
+                )}
+
+                <div style={{ height: 6 }} />
+
                 <div style={{ fontWeight: 900 }}>Partner</div>
                 {partnerLabel ? (
                   <div
@@ -356,12 +539,7 @@ export default function ProfilePage() {
                     <div style={{ opacity: 0.85 }}>
                       Linked to <b>{partnerLabel}</b>
                     </div>
-                    <button
-                      onClick={unlinkPartner}
-                      disabled={busy}
-                      style={secondaryBtnStyle(busy)}
-                      type="button"
-                    >
+                    <button onClick={unlinkPartner} disabled={busy} style={secondaryBtnStyle(busy)} type="button">
                       Unlink
                     </button>
                   </div>
@@ -382,21 +560,11 @@ export default function ProfilePage() {
                 />
 
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <button
-                    onClick={saveDisplayName}
-                    disabled={busy}
-                    style={primaryBtnStyle(busy)}
-                    type="button"
-                  >
+                  <button onClick={saveDisplayName} disabled={busy} style={primaryBtnStyle(busy)} type="button">
                     Save
                   </button>
 
-                  <button
-                    onClick={handleLogout}
-                    disabled={busy}
-                    style={secondaryBtnStyle(busy)}
-                    type="button"
-                  >
+                  <button onClick={handleLogout} disabled={busy} style={secondaryBtnStyle(busy)} type="button">
                     Log out
                   </button>
                 </div>
