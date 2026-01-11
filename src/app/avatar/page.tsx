@@ -58,22 +58,33 @@ export default function AvatarPage() {
 ========================= */
 
 function FullBodyAvatar() {
-  // ---- BASE GEOMETRY ----
   const cx = 256;
 
   // Head
   const headRadius = 60;
-  const headY = 110;
+  const headY = 120;
 
-  // Eyes
-  const eyeY = headY - 10;
-  const eyeOffset = 20;
-  const eyeRadius = 5;
+  // Facial features
+  const eyeY = headY - 12;
+  const eyeOffset = 22;
+  const eyeR = 5;
+
+  const noseY = headY + 8;
+  const noseW = 10;
+  const noseH = 14;
+
+  const earOffsetX = headRadius + 6;
+  const earR = 14;
 
   // Torso
-  const torsoTop = headY + headRadius + 10;
+  const torsoTop = headY + headRadius + 12;
   const torsoWidth = 140;
   const torsoHeight = 220;
+
+  // Arms
+  const armW = 28;
+  const armH = 170;
+  const armY = torsoTop + 28;
 
   // Legs
   const legTop = torsoTop + torsoHeight;
@@ -97,6 +108,26 @@ function FullBodyAvatar() {
       height="100%"
       style={{ maxHeight: "80vh" }}
     >
+      {/* EARS */}
+      <ellipse
+        cx={cx - earOffsetX}
+        cy={headY + 6}
+        rx={earR}
+        ry={earR + 4}
+        fill={skin}
+        stroke={outline}
+        strokeWidth={3}
+      />
+      <ellipse
+        cx={cx + earOffsetX}
+        cy={headY + 6}
+        rx={earR}
+        ry={earR + 4}
+        fill={skin}
+        stroke={outline}
+        strokeWidth={3}
+      />
+
       {/* HEAD */}
       <circle
         cx={cx}
@@ -113,20 +144,49 @@ function FullBodyAvatar() {
           M ${cx - headRadius} ${headY - headRadius}
           C ${cx} ${headY - headRadius * 1.4}
             ${cx + headRadius} ${headY - headRadius}
-            ${cx + headRadius} ${headY - headRadius * 0.3}
-          L ${cx - headRadius} ${headY - headRadius * 0.3}
+            ${cx + headRadius} ${headY - headRadius * 0.25}
+          L ${cx - headRadius} ${headY - headRadius * 0.25}
           Z
         `}
         fill={hair}
       />
 
       {/* EYES */}
-      <circle cx={cx - eyeOffset} cy={eyeY} r={eyeRadius} fill="#fff" />
-      <circle cx={cx + eyeOffset} cy={eyeY} r={eyeRadius} fill="#fff" />
+      <circle cx={cx - eyeOffset} cy={eyeY} r={eyeR} fill="#fff" />
+      <circle cx={cx + eyeOffset} cy={eyeY} r={eyeR} fill="#fff" />
       <circle cx={cx - eyeOffset} cy={eyeY} r={2.5} fill="#111" />
       <circle cx={cx + eyeOffset} cy={eyeY} r={2.5} fill="#111" />
 
-      {/* TORSO (VEST) */}
+      {/* NOSE */}
+      <path
+        d={`
+          M ${cx} ${noseY}
+          C ${cx - noseW} ${noseY + noseH}
+            ${cx + noseW} ${noseY + noseH}
+            ${cx} ${noseY}
+        `}
+        fill="rgba(0,0,0,0.08)"
+      />
+
+      {/* ARMS */}
+      <rect
+        x={cx - torsoWidth / 2 - armW + 4}
+        y={armY}
+        width={armW}
+        height={armH}
+        rx={14}
+        fill={skin}
+      />
+      <rect
+        x={cx + torsoWidth / 2 - 4}
+        y={armY}
+        width={armW}
+        height={armH}
+        rx={14}
+        fill={skin}
+      />
+
+      {/* TORSO */}
       <rect
         x={cx - torsoWidth / 2}
         y={torsoTop}
