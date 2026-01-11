@@ -1,84 +1,43 @@
-// src/app/avatar/page.tsx
-import Link from "next/link";
+// src/engine/avatar/avatar.ts
+// ENGINE ONLY (NO JSX)
 
-export default function AvatarPage() {
-  return (
-    <main
-      style={{
-        minHeight: "calc(100vh - 64px)",
-        display: "grid",
-        gridTemplateColumns: "1fr 1fr",
-        gap: 24,
-        padding: 24,
-        boxSizing: "border-box",
-      }}
-    >
-      {/* LEFT HALF: big avatar */}
-      <section
-        style={{
-          border: "1px solid var(--border)",
-          background: "var(--bg)",
-          borderRadius: 16,
-          padding: 16,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          overflow: "hidden",
-        }}
-      >
-        {/* Put your file at: /public/avatars/Avatar.svg */}
-        <img
-          src="/avatars/Avatar.svg"
-          alt="Avatar"
-          style={{
-            width: "100%",
-            height: "100%",
-            maxHeight: "80vh",
-            objectFit: "contain",
-            display: "block",
-          }}
-        />
-      </section>
+export type AvatarRecipe = {
+  skinTone: "olive";
+  faceLength: number;
+  cheekWidth: number;
+  jawWidth: number;
+  hair: "none";
+};
 
-      {/* RIGHT HALF */}
-      <section
-        style={{
-          border: "1px solid var(--border)",
-          background: "var(--bg)",
-          borderRadius: 16,
-          padding: 16,
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-        }}
-      >
-        <h1 style={{ margin: 0, fontSize: 22, color: "var(--text)" }}>Avatar</h1>
-        <p style={{ margin: 0, color: "var(--muted)" }}>
-          This page is now using your SVG avatar. Later we can add customization controls here.
-        </p>
+export const DEFAULT_AVATAR: AvatarRecipe = {
+  skinTone: "olive",
+  faceLength: 1,
+  cheekWidth: 1,
+  jawWidth: 1,
+  hair: "none",
+};
 
-        <div style={{ flex: 1 }} />
+const PALETTE = {
+  outline: "#1a1a1a",
+  skin: { olive: "#C8A07A" } as const,
+} as const;
 
-        <Link
-          href="/"
-          style={{
-            alignSelf: "flex-start",
-            padding: "10px 12px",
-            borderRadius: 12,
-            border: "1px solid var(--border)",
-            textDecoration: "none",
-            color: "var(--text)",
-          }}
-        >
-          ← Back Home
-        </Link>
-      </section>
+export function cssVars(recipe: AvatarRecipe): Record<string, string> {
+  return {
+    "--outline": PALETTE.outline,
+    "--skin": PALETTE.skin[recipe.skinTone],
+  };
+}
 
-      <style>{`
-        @media (max-width: 900px) {
-          main { grid-template-columns: 1fr !important; }
-        }
-      `}</style>
-    </main>
-  );
+// Keep this so AvatarEditor/Preview can still import it without breaking.
+export function renderAvatarSvg(_recipe: AvatarRecipe, size = 512): string {
+  return `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="${size}" height="${size}">
+  <rect width="512" height="512" fill="transparent"/>
+  <circle cx="256" cy="220" r="110" fill="var(--skin)" stroke="var(--outline)" stroke-width="6"/>
+  <text x="256" y="420" text-anchor="middle" font-family="system-ui" font-size="18" fill="#666">
+    Engine Avatar Placeholder
+  </text>
+</svg>
+`.trim();
 }
