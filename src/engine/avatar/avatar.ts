@@ -1,156 +1,188 @@
-// Avatar Engine v2 — Full Body Parametric Reconstruction
-// Math + geometry only (NO JSX)
+export default function AvatarPage() {
+  return (
+    <main
+      style={{
+        minHeight: "calc(100vh - 64px)",
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr",
+        gap: 24,
+        padding: 24,
+        boxSizing: "border-box",
+      }}
+    >
+      {/* LEFT SIDE — AVATAR */}
+      <section
+        style={{
+          border: "1px solid var(--border)",
+          background: "var(--bg)",
+          borderRadius: 16,
+          padding: 16,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <FullBodyAvatar />
+      </section>
 
-export type AvatarRecipe = {
-  skinTone: "light" | "olive" | "tan";
-  bodyHeight: number;     // 0.8 – 1.2
-  torsoWidth: number;     // 0.8 – 1.2
-  headScale: number;      // 0.85 – 1.15
-  eyeSpacing: number;     // 0.85 – 1.15
-  legLength: number;      // 0.8 – 1.2
-  hair: "short" | "none";
-};
+      {/* RIGHT SIDE — PLACEHOLDER */}
+      <section
+        style={{
+          border: "1px solid var(--border)",
+          background: "var(--bg)",
+          borderRadius: 16,
+          padding: 16,
+        }}
+      >
+        <h1 style={{ marginTop: 0 }}>Avatar</h1>
+        <p>
+          This is a from-scratch, math-driven SVG avatar.  
+          No legacy avatar code is used.
+        </p>
+      </section>
 
-export const DEFAULT_AVATAR: AvatarRecipe = {
-  skinTone: "olive",
-  bodyHeight: 1,
-  torsoWidth: 1,
-  headScale: 1,
-  eyeSpacing: 1,
-  legLength: 1,
-  hair: "short",
-};
+      <style>{`
+        @media (max-width: 900px) {
+          main {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
+    </main>
+  );
+}
 
-const PALETTE = {
-  outline: "#1a1a1a",
-  skin: {
-    light: "#F1D0B5",
-    olive: "#C8A07A",
-    tan: "#A87452",
-  },
-  shirt: "#FFFFFF",
-  vest: "#8C1D18",
-  pants: "#1E2A3A",
-  shoes: "#6B4A2D",
-  hair: "#241812",
-};
+/* =========================
+   FULL BODY AVATAR
+   Pure SVG + math
+========================= */
 
-const clamp = (n: number, min: number, max: number) =>
-  Math.max(min, Math.min(max, n));
-
-export function renderAvatarSvg(recipe: AvatarRecipe, size = 512): string {
-  const skin = PALETTE.skin[recipe.skinTone];
-
-  // Base proportions
-  const H = 900 * clamp(recipe.bodyHeight, 0.8, 1.2);
-  const centerX = 256;
+function FullBodyAvatar() {
+  // ---- BASE GEOMETRY ----
+  const cx = 256;
 
   // Head
-  const headR = 70 * clamp(recipe.headScale, 0.85, 1.15);
-  const headCY = 120;
+  const headRadius = 60;
+  const headY = 110;
 
   // Eyes
-  const eyeY = headCY - 10;
-  const eyeOffset = 22 * clamp(recipe.eyeSpacing, 0.85, 1.15);
-  const eyeR = 6;
+  const eyeY = headY - 10;
+  const eyeOffset = 20;
+  const eyeRadius = 5;
 
   // Torso
-  const torsoTop = headCY + headR + 10;
-  const torsoH = 220;
-  const torsoW = 120 * clamp(recipe.torsoWidth, 0.8, 1.2);
+  const torsoTop = headY + headRadius + 10;
+  const torsoWidth = 140;
+  const torsoHeight = 220;
 
   // Legs
-  const legTop = torsoTop + torsoH;
-  const legH = 260 * clamp(recipe.legLength, 0.8, 1.2);
-  const legGap = 20;
+  const legTop = torsoTop + torsoHeight;
+  const legHeight = 240;
+  const legWidth = 40;
+  const legGap = 24;
 
-  return `
-<svg xmlns="http://www.w3.org/2000/svg"
-     viewBox="0 0 512 ${H}"
-     width="${size}"
-     height="${size * (H / 512)}"
-     shape-rendering="geometricPrecision">
+  // Colors
+  const skin = "#C8A07A";
+  const outline = "#1a1a1a";
+  const shirt = "#ffffff";
+  const vest = "#8C1D18";
+  const pants = "#1E2A3A";
+  const shoes = "#6B4A2D";
+  const hair = "#241812";
 
-  <style>
-    .ol { stroke: ${PALETTE.outline}; stroke-width: 4; stroke-linejoin: round; }
-  </style>
+  return (
+    <svg
+      viewBox="0 0 512 900"
+      width="100%"
+      height="100%"
+      style={{ maxHeight: "80vh" }}
+    >
+      {/* HEAD */}
+      <circle
+        cx={cx}
+        cy={headY}
+        r={headRadius}
+        fill={skin}
+        stroke={outline}
+        strokeWidth={4}
+      />
 
-  <!-- HEAD -->
-  <circle cx="${centerX}" cy="${headCY}" r="${headR}" fill="${skin}" class="ol"/>
+      {/* HAIR */}
+      <path
+        d={`
+          M ${cx - headRadius} ${headY - headRadius}
+          C ${cx} ${headY - headRadius * 1.4}
+            ${cx + headRadius} ${headY - headRadius}
+            ${cx + headRadius} ${headY - headRadius * 0.3}
+          L ${cx - headRadius} ${headY - headRadius * 0.3}
+          Z
+        `}
+        fill={hair}
+      />
 
-  <!-- EYES -->
-  <circle cx="${centerX - eyeOffset}" cy="${eyeY}" r="${eyeR}" fill="#fff"/>
-  <circle cx="${centerX + eyeOffset}" cy="${eyeY}" r="${eyeR}" fill="#fff"/>
-  <circle cx="${centerX - eyeOffset}" cy="${eyeY}" r="3" fill="#111"/>
-  <circle cx="${centerX + eyeOffset}" cy="${eyeY}" r="3" fill="#111"/>
+      {/* EYES */}
+      <circle cx={cx - eyeOffset} cy={eyeY} r={eyeRadius} fill="#fff" />
+      <circle cx={cx + eyeOffset} cy={eyeY} r={eyeRadius} fill="#fff" />
+      <circle cx={cx - eyeOffset} cy={eyeY} r={2.5} fill="#111" />
+      <circle cx={cx + eyeOffset} cy={eyeY} r={2.5} fill="#111" />
 
-  <!-- HAIR -->
-  ${
-    recipe.hair === "short"
-      ? `<path d="
-          M ${centerX - headR} ${headCY - headR}
-          C ${centerX} ${headCY - headR * 1.4}
-            ${centerX + headR} ${headCY - headR}
-            ${centerX + headR} ${headCY - headR * 0.3}
-          L ${centerX - headR} ${headCY - headR * 0.3}
-          Z"
-          fill="${PALETTE.hair}"/>`
-      : ""
-  }
+      {/* TORSO (VEST) */}
+      <rect
+        x={cx - torsoWidth / 2}
+        y={torsoTop}
+        width={torsoWidth}
+        height={torsoHeight}
+        rx={24}
+        fill={vest}
+        stroke={outline}
+        strokeWidth={4}
+      />
 
-  <!-- TORSO -->
-  <rect
-    x="${centerX - torsoW / 2}"
-    y="${torsoTop}"
-    width="${torsoW}"
-    height="${torsoH}"
-    rx="22"
-    fill="${PALETTE.vest}"
-    class="ol"/>
+      {/* SHIRT */}
+      <rect
+        x={cx - torsoWidth / 2 + 16}
+        y={torsoTop + 16}
+        width={torsoWidth - 32}
+        height={torsoHeight - 32}
+        rx={18}
+        fill={shirt}
+      />
 
-  <!-- SHIRT -->
-  <rect
-    x="${centerX - torsoW / 2 + 14}"
-    y="${torsoTop + 16}"
-    width="${torsoW - 28}"
-    height="${torsoH - 32}"
-    rx="18"
-    fill="${PALETTE.shirt}"/>
+      {/* LEGS */}
+      <rect
+        x={cx - legGap / 2 - legWidth}
+        y={legTop}
+        width={legWidth}
+        height={legHeight}
+        rx={14}
+        fill={pants}
+      />
+      <rect
+        x={cx + legGap / 2}
+        y={legTop}
+        width={legWidth}
+        height={legHeight}
+        rx={14}
+        fill={pants}
+      />
 
-  <!-- LEGS -->
-  <rect
-    x="${centerX - legGap / 2 - 36}"
-    y="${legTop}"
-    width="36"
-    height="${legH}"
-    rx="14"
-    fill="${PALETTE.pants}"/>
-
-  <rect
-    x="${centerX + legGap / 2}"
-    y="${legTop}"
-    width="36"
-    height="${legH}"
-    rx="14"
-    fill="${PALETTE.pants}"/>
-
-  <!-- SHOES -->
-  <rect
-    x="${centerX - legGap / 2 - 42}"
-    y="${legTop + legH}"
-    width="52"
-    height="22"
-    rx="10"
-    fill="${PALETTE.shoes}"/>
-
-  <rect
-    x="${centerX + legGap / 2}"
-    y="${legTop + legH}"
-    width="52"
-    height="22"
-    rx="10"
-    fill="${PALETTE.shoes}"/>
-
-</svg>
-`.trim();
+      {/* SHOES */}
+      <rect
+        x={cx - legGap / 2 - legWidth - 6}
+        y={legTop + legHeight}
+        width={legWidth + 18}
+        height={26}
+        rx={12}
+        fill={shoes}
+      />
+      <rect
+        x={cx + legGap / 2}
+        y={legTop + legHeight}
+        width={legWidth + 18}
+        height={26}
+        rx={12}
+        fill={shoes}
+      />
+    </svg>
+  );
 }
