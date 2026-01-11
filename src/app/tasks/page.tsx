@@ -22,6 +22,7 @@ type TaskRow = {
   weekly_skips_allowed: number;
 };
 
+// KEEP: completion types/state/helpers (safe for Complete button + /completed page)
 type CompletionRow = {
   id: string;
   user_id: string;
@@ -145,18 +146,13 @@ function defaultReminderDraft(): ReminderDraft {
     timezone: guessTimeZone(),
     time_of_day: "09:00",
     cadence: "daily",
-
-    // weekly (single day in UI; default Monday)
     days_of_week: [1],
-
     monthlyMode: "day_of_month",
     day_of_month: 1,
     week_of_month: 1,
-    weekday: 1, // Mon
-
+    weekday: 1,
     month_of_year: 1,
     day_of_year_month: 1,
-
     start_date: "",
     end_date: "",
   };
@@ -173,18 +169,13 @@ function toDraftFromRow(r: ReminderRow): ReminderDraft {
     timezone: r.timezone || guessTimeZone(),
     time_of_day: r.time_of_day || "09:00",
     cadence,
-
-    // keep one if present; else default Mon
     days_of_week: days.length ? [days[0]] : [1],
-
     monthlyMode,
     day_of_month: r.day_of_month ?? 1,
     week_of_month: r.week_of_month ?? 1,
     weekday: r.weekday ?? 1,
-
     month_of_year: r.month_of_year ?? 1,
     day_of_year_month: r.day_of_year_month ?? 1,
-
     start_date: r.start_date ?? "",
     end_date: r.end_date ?? "",
   };
@@ -211,19 +202,14 @@ function toUpsertRow(taskId: string, userId: string, d: ReminderDraft): Omit<Rem
     end_date: d.cadence === "daily" ? null : d.end_date ? d.end_date : null,
   };
 
-  if (d.cadence === "weekly") {
-    base.days_of_week = d.days_of_week.length ? [d.days_of_week[0]] : [];
-  }
-
+  if (d.cadence === "weekly") base.days_of_week = d.days_of_week.length ? [d.days_of_week[0]] : [];
   if (d.cadence === "monthly") {
-    if (d.monthlyMode === "day_of_month") {
-      base.day_of_month = d.day_of_month;
-    } else {
+    if (d.monthlyMode === "day_of_month") base.day_of_month = d.day_of_month;
+    else {
       base.week_of_month = d.week_of_month;
       base.weekday = d.weekday;
     }
   }
-
   if (d.cadence === "yearly") {
     base.month_of_year = d.month_of_year;
     base.day_of_year_month = d.day_of_year_month;
@@ -247,20 +233,14 @@ function onNumberFieldChange(setter: (v: string) => void, raw: string) {
 }
 
 const globalFixesCSS = `
-/* Hide number input spinners (Chrome/Safari/Edge) */
 input[type="number"]::-webkit-outer-spin-button,
-input[type="number"]::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-/* Hide number input spinners (Firefox) */
+input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 input[type="number"] { -moz-appearance: textfield; }
 `;
 
 function daysInMonth(year: number, month0: number) {
   return new Date(year, month0 + 1, 0).getDate();
 }
-
 function firstDowOfMonth(year: number, month0: number) {
   return new Date(year, month0, 1).getDay();
 }
@@ -440,14 +420,6 @@ export default function TasksPage() {
     else setFn(next);
   }
 
-  function fmtDateTime(iso: string) {
-    try {
-      return new Date(iso).toLocaleString();
-    } catch {
-      return iso;
-    }
-  }
-
   function describeReminder(d: ReminderDraft) {
     const time = d.time_of_day;
     const tz = d.timezone;
@@ -461,9 +433,7 @@ export default function TasksPage() {
     }
 
     if (d.cadence === "monthly") {
-      if (d.monthlyMode === "day_of_month") {
-        return `Monthly on day ${d.day_of_month} at ${time} (${tz})`;
-      }
+      if (d.monthlyMode === "day_of_month") return `Monthly on day ${d.day_of_month} at ${time} (${tz})`;
       const wom = WEEK_OF_MONTH_OPTIONS.find((x) => x.v === d.week_of_month)?.label ?? `${d.week_of_month}`;
       const wd = DOW.find((x) => x.n === d.weekday)?.label ?? "?";
       return `Monthly on ${wom} ${wd} at ${time} (${tz})`;
@@ -496,9 +466,7 @@ export default function TasksPage() {
       if (m < 0) {
         setViewMonth0(11);
         setViewYear((y) => y - 1);
-      } else {
-        setViewMonth0(m);
-      }
+      } else setViewMonth0(m);
     }
 
     function nextMonth() {
@@ -506,9 +474,7 @@ export default function TasksPage() {
       if (m > 11) {
         setViewMonth0(0);
         setViewYear((y) => y + 1);
-      } else {
-        setViewMonth0(m);
-      }
+      } else setViewMonth0(m);
     }
 
     useEffect(() => {
@@ -684,7 +650,13 @@ export default function TasksPage() {
     );
   }
 
-  function ReminderEditor({ drafts, setDrafts }: { drafts: ReminderDraft[]; setDrafts: (v: ReminderDraft[]) => void }) {
+  function ReminderEditor({
+    drafts,
+    setDrafts,
+  }: {
+    drafts: ReminderDraft[];
+    setDrafts: (v: ReminderDraft[]) => void;
+  }) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
@@ -914,7 +886,6 @@ export default function TasksPage() {
                   {d.monthlyMode === "day_of_month" ? (
                     <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                       <div style={{ fontWeight: 900, opacity: 0.9 }}>Pick day</div>
-
                       <DayOfMonthCalendarPicker
                         value={d.day_of_month}
                         disabled={busy}
@@ -924,10 +895,9 @@ export default function TasksPage() {
                           setDrafts(next);
                         }}
                       />
-
                       <div style={{ fontSize: 12, opacity: 0.75 }}>
-                        This stores the <b>day number</b> (1–31). If a month doesn’t have that day (ex: 31st),
-                        your backend should decide how to handle it (usually “skip”).
+                        Stores the <b>day number</b> (1–31). If a month doesn’t have that day (ex: 31st), backend should
+                        decide (usually “skip”).
                       </div>
                     </div>
                   ) : (
@@ -1008,7 +978,7 @@ export default function TasksPage() {
                       next[idx] = { ...d, day_of_year_month: n };
                       setDrafts(next);
                     }}
-                    style={{ ...cleanNumber, width: 90 }}
+                    style={{ ...baseField, width: 90 }}
                   />
                 </div>
               ) : null}
@@ -1066,10 +1036,14 @@ export default function TasksPage() {
                     </button>
                   </div>
 
-                  <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>If set, the reminder is only valid inside this date window.</div>
+                  <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>
+                    If set, the reminder is only valid inside this date window.
+                  </div>
                 </div>
               ) : (
-                <div style={{ gridColumn: "1 / -1", fontSize: 12, opacity: 0.75 }}>Daily reminders run until you delete them (no start/end dates).</div>
+                <div style={{ gridColumn: "1 / -1", fontSize: 12, opacity: 0.75 }}>
+                  Daily reminders run until you delete them (no start/end dates).
+                </div>
               )}
             </div>
           </div>
@@ -1085,8 +1059,8 @@ export default function TasksPage() {
       if (!isTimeStringValidHHMM(d.time_of_day)) throw new Error(`Invalid time format: "${d.time_of_day}". Use HH:MM.`);
       if (!d.timezone.trim()) throw new Error("Timezone is required (ex: America/Los_Angeles).");
 
-      if (d.cadence === "weekly") {
-        if (d.days_of_week.length !== 1) throw new Error("Weekly reminder must have exactly one day selected.");
+      if (d.cadence === "weekly" && d.days_of_week.length !== 1) {
+        throw new Error("Weekly reminder must have exactly one day selected.");
       }
 
       if (d.cadence === "monthly" && d.monthlyMode === "day_of_month") {
@@ -1160,9 +1134,7 @@ export default function TasksPage() {
       setTasks((prev) => [data as TaskRow, ...prev]);
 
       const newTaskId = (data as TaskRow).id;
-      if (createReminders.length > 0) {
-        await upsertRemindersForTask(newTaskId, createReminders);
-      }
+      if (createReminders.length > 0) await upsertRemindersForTask(newTaskId, createReminders);
 
       setTitle("");
       setType("habit");
@@ -1218,7 +1190,7 @@ export default function TasksPage() {
           archived: next.archived,
         })
         .eq("id", next.id)
-        .eq("assigned_to", userId)
+        .eq("user_id", userId)
         .select("*")
         .single();
 
@@ -1250,7 +1222,7 @@ export default function TasksPage() {
         .from("tasks")
         .update({ archived: !t.archived })
         .eq("id", t.id)
-        .eq("assigned_to", userId)
+        .eq("user_id", userId)
         .select("*")
         .single();
 
@@ -1277,7 +1249,7 @@ export default function TasksPage() {
     setStatus(null);
 
     try {
-      const { error } = await supabase.from("tasks").delete().eq("id", t.id).eq("assigned_to", userId);
+      const { error } = await supabase.from("tasks").delete().eq("id", t.id).eq("user_id", userId);
       if (error) throw error;
 
       setTasks((prev) => prev.filter((x) => x.id !== t.id));
@@ -1358,29 +1330,9 @@ export default function TasksPage() {
           paddingBottom: 40,
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>Tasks</h1>
-            <div style={{ opacity: 0.8, marginTop: 6 }}>
-              Logged in as <b>{sessionEmail}</b>
-            </div>
-          </div>
-
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-start" }}>
-            <Link
-              href="/"
-              style={{
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: `1px solid ${theme.accent.primary}`,
-                color: "var(--text)",
-                textDecoration: "none",
-                fontWeight: 900,
-              }}
-            >
-              Home
-            </Link>
-          </div>
+        {/* ✅ Top header: removed Home button and removed "Logged in as ..." line */}
+        <div>
+          <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>Tasks</h1>
         </div>
 
         {status ? (
@@ -1548,9 +1500,13 @@ export default function TasksPage() {
           <div style={{ height: 12 }} />
 
           {loading ? (
-            <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>Loading…</div>
+            <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>
+              Loading…
+            </div>
           ) : activeTasks.length === 0 ? (
-            <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>No active tasks.</div>
+            <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>
+              No active tasks.
+            </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {activeTasks.map((t) => {
@@ -1657,233 +1613,195 @@ export default function TasksPage() {
           )}
         </section>
 
-        {/* COMPLETED (kept as-is since you didn’t ask to remove it here) */}
-        <section
+        {/* ✅ Completed UI REMOVED (intentionally) */}
+        {/* We keep completions state + loadCompletions() for button flows / other pages */}
+      </div>
+
+      {/* Edit modal (unchanged) */}
+      {editOpen && editTask && (
+        <div
           style={{
-            border: "1px solid var(--border)",
-            borderRadius: 16,
-            padding: 0,
-            background: "rgba(255,255,255,0.02)",
-            boxShadow: "0 10px 24px rgba(0,0,0,0.20)",
-            overflow: "hidden",
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 18,
+            zIndex: 999,
+          }}
+          onClick={() => {
+            if (busy) return;
+            setEditOpen(false);
+            setEditTask(null);
+            setEditReminders([]);
           }}
         >
-          <div style={{ padding: 16, borderBottom: "1px solid var(--border)", background: "rgba(255,255,255,0.03)" }}>
-            <div style={{ fontSize: 20, fontWeight: 900 }}>Completed</div>
-            <div style={{ marginTop: 6, opacity: 0.85 }}>
-              Total: <b>{completions.length}</b>
-            </div>
-          </div>
-
-          <div style={{ padding: 16 }}>
-            {loadingCompleted ? (
-              <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>Loading…</div>
-            ) : completions.length === 0 ? (
-              <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>No completed tasks yet.</div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {completions.map((c) => (
-                  <div
-                    key={c.id}
-                    style={{
-                      border: "1px solid var(--border)",
-                      borderRadius: 14,
-                      padding: 12,
-                      background: "rgba(255,255,255,0.02)",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 12,
-                      flexWrap: "wrap",
-                      alignItems: "center",
-                    }}
-                  >
-                    <div style={{ minWidth: 240 }}>
-                      <div style={{ fontWeight: 900 }}>{c.tasks?.[0]?.title ?? "Task"}</div>
-                      <div style={{ opacity: 0.85, marginTop: 6 }}>
-                        <span>
-                          Completed: <b>{fmtDateTime(c.completed_at)}</b>
-                        </span>
-                        <span>
-                          {" "}
-                          • Proof: <b>{c.proof_type}</b>
-                        </span>
-                        {c.proof_note ? (
-                          <span>
-                            {" "}
-                            • Note: <b>{c.proof_note}</b>
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* Edit modal */}
-        {editOpen && editTask && (
           <div
             style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(0,0,0,0.55)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 18,
-              zIndex: 999,
+              width: "min(820px, 100%)",
+              borderRadius: 16,
+              border: "1px solid var(--border)",
+              background: "var(--bg)",
+              boxShadow: "0 18px 40px rgba(0,0,0,0.5)",
+              padding: 16,
+              textAlign: "left",
             }}
-            onClick={() => {
-              if (busy) return;
-              setEditOpen(false);
-              setEditTask(null);
-              setEditReminders([]);
-            }}
+            onClick={(e) => e.stopPropagation()}
           >
-            <div
+            <div style={{ fontWeight: 900, fontSize: 18 }}>Edit Task</div>
+
+            <div style={{ height: 12 }} />
+
+            <input
+              value={editTask.title}
+              onChange={(e) => setEditTask({ ...editTask, title: e.target.value })}
+              placeholder="Task title"
               style={{
-                width: "min(820px, 100%)",
-                borderRadius: 16,
+                width: "100%",
+                padding: 12,
+                borderRadius: 12,
                 border: "1px solid var(--border)",
-                background: "var(--bg)",
-                boxShadow: "0 18px 40px rgba(0,0,0,0.5)",
-                padding: 16,
-                textAlign: "left",
+                background: "transparent",
+                color: "var(--text)",
+                outline: "none",
               }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div style={{ fontWeight: 900, fontSize: 18 }}>Edit Task</div>
+            />
 
-              <div style={{ height: 12 }} />
+            <div style={{ height: 12 }} />
 
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <label style={{ fontWeight: 900, opacity: 0.9 }}>Type</label>
+              <select
+                value={editTask.type}
+                onChange={(e) => setEditTask({ ...editTask, type: e.target.value as TaskType })}
+                style={cleanSelect}
+              >
+                <option value="habit">Habit</option>
+                <option value="single">Single</option>
+              </select>
+
+              {editTask.type === "habit" ? (
+                <>
+                  <label style={{ fontWeight: 900, opacity: 0.9 }}>Frequency</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={999}
+                    value={editFreqTimesStr}
+                    onChange={(e) => onNumberFieldChange(setEditFreqTimesStr, e.target.value)}
+                    style={{ ...baseField, width: 90 }}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="1"
+                  />
+                  <span style={{ opacity: 0.85 }}>x per</span>
+                  <select
+                    value={(editTask.freq_per ?? "week") as FrequencyUnit}
+                    onChange={(e) => setEditTask({ ...editTask, freq_per: e.target.value as FrequencyUnit })}
+                    style={cleanSelect}
+                  >
+                    <option value="day">day</option>
+                    <option value="week">week</option>
+                    <option value="month">month</option>
+                    <option value="year">year</option>
+                  </select>
+                </>
+              ) : null}
+            </div>
+
+            <div style={{ height: 12 }} />
+
+            <div>
+              <div style={{ fontWeight: 900, marginBottom: 6 }}>Scheduled days</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {DOW.map((d) => {
+                  const selected = (editTask.scheduled_days ?? [0, 1, 2, 3, 4, 5, 6]).includes(d.n);
+                  return (
+                    <button
+                      key={d.n}
+                      type="button"
+                      onClick={() =>
+                        toggleDay(d.n, editTask.scheduled_days, (v) => setEditTask({ ...editTask, scheduled_days: v }))
+                      }
+                      disabled={busy}
+                      style={{
+                        padding: "8px 10px",
+                        borderRadius: 999,
+                        border: `1px solid ${selected ? theme.accent.primary : "var(--border)"}`,
+                        background: selected ? "rgba(255,255,255,0.04)" : "transparent",
+                        color: "var(--text)",
+                        fontWeight: 900,
+                        cursor: busy ? "not-allowed" : "pointer",
+                        opacity: busy ? 0.6 : 1,
+                      }}
+                    >
+                      {d.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div style={{ marginTop: 10, opacity: 0.85 }}>
+                Selected: <b>{fmtScheduledDays(editTask.scheduled_days)}</b>
+              </div>
+            </div>
+
+            <div style={{ height: 12 }} />
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <div style={{ fontWeight: 900 }}>Weekly skips allowed</div>
               <input
-                value={editTask.title}
-                onChange={(e) => setEditTask({ ...editTask, title: e.target.value })}
-                placeholder="Task title"
+                type="number"
+                min={0}
+                max={7}
+                value={editWeeklySkipsStr}
+                onChange={(e) => onNumberFieldChange(setEditWeeklySkipsStr, e.target.value)}
+                style={{ ...baseField, width: 90 }}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                placeholder="0"
+              />
+            </div>
+
+            <div style={{ height: 12 }} />
+
+            <ReminderEditor drafts={editReminders} setDrafts={setEditReminders} />
+
+            <div style={{ height: 14 }} />
+
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => deleteTask(editTask)}
+                disabled={busy}
                 style={{
-                  width: "100%",
-                  padding: 12,
+                  padding: "10px 12px",
                   borderRadius: 12,
-                  border: "1px solid var(--border)",
+                  border: "1px solid rgba(255, 99, 99, 0.65)",
                   background: "transparent",
                   color: "var(--text)",
-                  outline: "none",
+                  fontWeight: 900,
+                  cursor: busy ? "not-allowed" : "pointer",
+                  opacity: busy ? 0.6 : 1,
                 }}
-              />
+              >
+                Delete
+              </button>
 
-              <div style={{ height: 12 }} />
-
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                <label style={{ fontWeight: 900, opacity: 0.9 }}>Type</label>
-                <select
-                  value={editTask.type}
-                  onChange={(e) => setEditTask({ ...editTask, type: e.target.value as TaskType })}
-                  style={cleanSelect}
-                >
-                  <option value="habit">Habit</option>
-                  <option value="single">Single</option>
-                </select>
-
-                {editTask.type === "habit" ? (
-                  <>
-                    <label style={{ fontWeight: 900, opacity: 0.9 }}>Frequency</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={999}
-                      value={editFreqTimesStr}
-                      onChange={(e) => onNumberFieldChange(setEditFreqTimesStr, e.target.value)}
-                      style={{ ...cleanNumber, width: 90 }}
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      placeholder="1"
-                    />
-                    <span style={{ opacity: 0.85 }}>x per</span>
-                    <select
-                      value={(editTask.freq_per ?? "week") as FrequencyUnit}
-                      onChange={(e) => setEditTask({ ...editTask, freq_per: e.target.value as FrequencyUnit })}
-                      style={cleanSelect}
-                    >
-                      <option value="day">day</option>
-                      <option value="week">week</option>
-                      <option value="month">month</option>
-                      <option value="year">year</option>
-                    </select>
-                  </>
-                ) : null}
-              </div>
-
-              <div style={{ height: 12 }} />
-
-              <div>
-                <div style={{ fontWeight: 900, marginBottom: 6 }}>Scheduled days</div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {DOW.map((d) => {
-                    const selected = (editTask.scheduled_days ?? [0, 1, 2, 3, 4, 5, 6]).includes(d.n);
-                    return (
-                      <button
-                        key={d.n}
-                        type="button"
-                        onClick={() =>
-                          toggleDay(d.n, editTask.scheduled_days, (v) => setEditTask({ ...editTask, scheduled_days: v }))
-                        }
-                        disabled={busy}
-                        style={{
-                          padding: "8px 10px",
-                          borderRadius: 999,
-                          border: `1px solid ${selected ? theme.accent.primary : "var(--border)"}`,
-                          background: selected ? "rgba(255,255,255,0.04)" : "transparent",
-                          color: "var(--text)",
-                          fontWeight: 900,
-                          cursor: busy ? "not-allowed" : "pointer",
-                          opacity: busy ? 0.6 : 1,
-                        }}
-                      >
-                        {d.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div style={{ marginTop: 10, opacity: 0.85 }}>
-                  Selected: <b>{fmtScheduledDays(editTask.scheduled_days)}</b>
-                </div>
-              </div>
-
-              <div style={{ height: 12 }} />
-
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                <div style={{ fontWeight: 900 }}>Weekly skips allowed</div>
-                <input
-                  type="number"
-                  min={0}
-                  max={7}
-                  value={editWeeklySkipsStr}
-                  onChange={(e) => onNumberFieldChange(setEditWeeklySkipsStr, e.target.value)}
-                  style={{ ...cleanNumber, width: 90 }}
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  placeholder="0"
-                />
-              </div>
-
-              <div style={{ height: 12 }} />
-
-              <ReminderEditor drafts={editReminders} setDrafts={setEditReminders} />
-
-              <div style={{ height: 14 }} />
-
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <button
                   type="button"
-                  onClick={() => deleteTask(editTask)}
+                  onClick={() => {
+                    setEditOpen(false);
+                    setEditTask(null);
+                    setEditReminders([]);
+                  }}
                   disabled={busy}
                   style={{
                     padding: "10px 12px",
                     borderRadius: 12,
-                    border: "1px solid rgba(255, 99, 99, 0.65)",
+                    border: "1px solid var(--border)",
                     background: "transparent",
                     color: "var(--text)",
                     fontWeight: 900,
@@ -1891,55 +1809,31 @@ export default function TasksPage() {
                     opacity: busy ? 0.6 : 1,
                   }}
                 >
-                  Delete
+                  Cancel
                 </button>
 
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditOpen(false);
-                      setEditTask(null);
-                      setEditReminders([]);
-                    }}
-                    disabled={busy}
-                    style={{
-                      padding: "10px 12px",
-                      borderRadius: 12,
-                      border: "1px solid var(--border)",
-                      background: "transparent",
-                      color: "var(--text)",
-                      fontWeight: 900,
-                      cursor: busy ? "not-allowed" : "pointer",
-                      opacity: busy ? 0.6 : 1,
-                    }}
-                  >
-                    Cancel
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => saveEdit(editTask)}
-                    disabled={busy}
-                    style={{
-                      padding: "10px 12px",
-                      borderRadius: 12,
-                      border: `1px solid ${theme.accent.primary}`,
-                      background: "transparent",
-                      color: "var(--text)",
-                      fontWeight: 900,
-                      cursor: busy ? "not-allowed" : "pointer",
-                      opacity: busy ? 0.6 : 1,
-                    }}
-                  >
-                    Save
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => saveEdit(editTask)}
+                  disabled={busy}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border: `1px solid ${theme.accent.primary}`,
+                    background: "transparent",
+                    color: "var(--text)",
+                    fontWeight: 900,
+                    cursor: busy ? "not-allowed" : "pointer",
+                    opacity: busy ? 0.6 : 1,
+                  }}
+                >
+                  Save
+                </button>
               </div>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </main>
   );
 }
