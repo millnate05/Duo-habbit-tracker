@@ -389,11 +389,6 @@ export default function TasksPage() {
   setLoading(false);
 }
 
-
-    setTasks((data ?? []) as TaskRow[]);
-    setLoading(false);
-  }
-
   async function loadCompletions(uid: string) {
     setLoadingCompleted(true);
 
@@ -1360,7 +1355,7 @@ export default function TasksPage() {
       setBusy(false);
     }
   }
-export default function TasksPage() {
+
   // ---------- Render ----------
   if (!userId) {
     return (
