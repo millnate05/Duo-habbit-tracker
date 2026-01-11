@@ -53,7 +53,6 @@ type ReminderRow = {
   month_of_year: number | null; // yearly
   day_of_year_month: number | null; // yearly
 
-  // NOTE: we will NOT use start/end for daily reminders (we force null)
   start_date: string | null; // YYYY-MM-DD
   end_date: string | null; // YYYY-MM-DD
 
@@ -124,10 +123,7 @@ function fmtScheduledDays(days: number[] | null) {
   return sorted.map((d) => DOW.find((x) => x.n === d)?.label ?? "?").join(", ");
 }
 
-function parseBoundedInt(
-  raw: string,
-  { min, max, fallback }: { min: number; max: number; fallback: number }
-) {
+function parseBoundedInt(raw: string, { min, max, fallback }: { min: number; max: number; fallback: number }) {
   const s = raw.trim();
   if (s === "") return fallback;
   const n = Number(s);
@@ -169,8 +165,7 @@ function defaultReminderDraft(): ReminderDraft {
 function toDraftFromRow(r: ReminderRow): ReminderDraft {
   const cadence = r.cadence;
   const days = Array.isArray(r.days_of_week) ? r.days_of_week : [];
-  const monthlyMode: MonthlyMode =
-    r.day_of_month != null ? "day_of_month" : "nth_weekday";
+  const monthlyMode: MonthlyMode = r.day_of_month != null ? "day_of_month" : "nth_weekday";
 
   return {
     id: r.id,
@@ -190,17 +185,12 @@ function toDraftFromRow(r: ReminderRow): ReminderDraft {
     month_of_year: r.month_of_year ?? 1,
     day_of_year_month: r.day_of_year_month ?? 1,
 
-    // daily should not have a window, but we store what exists for non-daily
     start_date: r.start_date ?? "",
     end_date: r.end_date ?? "",
   };
 }
 
-function toUpsertRow(
-  taskId: string,
-  userId: string,
-  d: ReminderDraft
-): Omit<ReminderRow, "id" | "created_at"> {
+function toUpsertRow(taskId: string, userId: string, d: ReminderDraft): Omit<ReminderRow, "id" | "created_at"> {
   const base: Omit<ReminderRow, "id" | "created_at"> = {
     user_id: userId,
     task_id: taskId,
@@ -217,13 +207,11 @@ function toUpsertRow(
     month_of_year: null,
     day_of_year_month: null,
 
-    // IMPORTANT: daily reminders have NO start/end window
     start_date: d.cadence === "daily" ? null : d.start_date ? d.start_date : null,
     end_date: d.cadence === "daily" ? null : d.end_date ? d.end_date : null,
   };
 
   if (d.cadence === "weekly") {
-    // single day expected; store array anyway for future flexibility
     base.days_of_week = d.days_of_week.length ? [d.days_of_week[0]] : [];
   }
 
@@ -270,16 +258,11 @@ input[type="number"] { -moz-appearance: textfield; }
 `;
 
 function daysInMonth(year: number, month0: number) {
-  // month0: 0..11
   return new Date(year, month0 + 1, 0).getDate();
 }
 
 function firstDowOfMonth(year: number, month0: number) {
-  return new Date(year, month0, 1).getDay(); // 0..6
-}
-
-function pad2(n: number) {
-  return String(n).padStart(2, "0");
+  return new Date(year, month0, 1).getDay();
 }
 
 export default function TasksPage() {
@@ -294,7 +277,6 @@ export default function TasksPage() {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [completions, setCompletions] = useState<CompletionRow[]>([]);
 
-  // Reminders cache: taskId -> reminders
   const [remindersByTask, setRemindersByTask] = useState<Record<string, ReminderRow[]>>({});
 
   // Create form
@@ -305,7 +287,6 @@ export default function TasksPage() {
   const [scheduledDays, setScheduledDays] = useState<number[] | null>(null);
   const [weeklySkipsAllowedStr, setWeeklySkipsAllowedStr] = useState<string>("0");
 
-  // Create reminders drafts
   const [createReminders, setCreateReminders] = useState<ReminderDraft[]>([]);
 
   // Edit modal
@@ -367,27 +348,27 @@ export default function TasksPage() {
     };
   }, []);
 
- async function loadTasks(uid: string) {
-  setLoading(true);
-  setStatus(null);
+  async function loadTasks(uid: string) {
+    setLoading(true);
+    setStatus(null);
 
-  const { data, error } = await supabase
-    .from("tasks")
-    .select("*")
-    .eq("assigned_to", uid) // ✅ only tasks assigned to me
-    .order("created_at", { ascending: false });
+    const { data, error } = await supabase
+      .from("tasks")
+      .select("*")
+      .eq("assigned_to", uid)
+      .order("created_at", { ascending: false });
 
-  if (error) {
-    console.error(error);
-    setStatus(error.message);
-    setTasks([]);
+    if (error) {
+      console.error(error);
+      setStatus(error.message);
+      setTasks([]);
+      setLoading(false);
+      return;
+    }
+
+    setTasks((data ?? []) as TaskRow[]);
     setLoading(false);
-    return;
   }
-
-  setTasks((data ?? []) as TaskRow[]);
-  setLoading(false);
-}
 
   async function loadCompletions(uid: string) {
     setLoadingCompleted(true);
@@ -448,7 +429,6 @@ export default function TasksPage() {
   }, [userId]);
 
   const activeTasks = useMemo(() => tasks.filter((t) => !t.archived), [tasks]);
-  const archivedTasks = useMemo(() => tasks.filter((t) => t.archived), [tasks]);
 
   function toggleDay(day: number, current: number[] | null, setFn: (v: number[] | null) => void) {
     const base = current ?? [0, 1, 2, 3, 4, 5, 6];
@@ -468,7 +448,6 @@ export default function TasksPage() {
     }
   }
 
-  // ---------- Reminders UI helpers ----------
   function describeReminder(d: ReminderDraft) {
     const time = d.time_of_day;
     const tz = d.timezone;
@@ -506,10 +485,10 @@ export default function TasksPage() {
     const [open, setOpen] = useState(false);
     const now = new Date();
     const [viewYear, setViewYear] = useState(now.getFullYear());
-    const [viewMonth0, setViewMonth0] = useState(now.getMonth()); // 0..11
+    const [viewMonth0, setViewMonth0] = useState(now.getMonth());
 
     const dim = daysInMonth(viewYear, viewMonth0);
-    const firstDow = firstDowOfMonth(viewYear, viewMonth0); // 0..6
+    const firstDow = firstDowOfMonth(viewYear, viewMonth0);
     const monthLabel = `${MONTHS[viewMonth0]?.label ?? ""} ${viewYear}`;
 
     function prevMonth() {
@@ -532,7 +511,6 @@ export default function TasksPage() {
       }
     }
 
-    // close if disabled flips on
     useEffect(() => {
       if (disabled) setOpen(false);
     }, [disabled]);
@@ -706,13 +684,7 @@ export default function TasksPage() {
     );
   }
 
-  function ReminderEditor({
-    drafts,
-    setDrafts,
-  }: {
-    drafts: ReminderDraft[];
-    setDrafts: (v: ReminderDraft[]) => void;
-  }) {
+  function ReminderEditor({ drafts, setDrafts }: { drafts: ReminderDraft[]; setDrafts: (v: ReminderDraft[]) => void }) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
@@ -737,9 +709,7 @@ export default function TasksPage() {
         </div>
 
         {drafts.length === 0 ? (
-          <div style={{ opacity: 0.75, fontSize: 13 }}>
-            No reminders set. Add one if you want the app to notify you later.
-          </div>
+          <div style={{ opacity: 0.75, fontSize: 13 }}>No reminders set. Add one if you want the app to notify you later.</div>
         ) : null}
 
         {drafts.map((d, idx) => (
@@ -805,18 +775,15 @@ export default function TasksPage() {
 
                     const patched: ReminderDraft = { ...d, cadence: nextCadence };
 
-                    // When switching TO daily, remove any window (daily runs until deleted)
                     if (nextCadence === "daily") {
                       patched.start_date = "";
                       patched.end_date = "";
                     }
 
-                    // Weekly: enforce a single selected day
                     if (nextCadence === "weekly") {
                       patched.days_of_week = patched.days_of_week.length ? [patched.days_of_week[0]] : [1];
                     }
 
-                    // Monthly: keep defaults
                     if (nextCadence === "monthly" && !patched.monthlyMode) {
                       patched.monthlyMode = "day_of_month";
                     }
@@ -870,7 +837,6 @@ export default function TasksPage() {
                 </div>
               </div>
 
-              {/* Weekly (single day selection) */}
               {d.cadence === "weekly" ? (
                 <div style={{ gridColumn: "1 / -1" }}>
                   <div style={{ fontWeight: 900, marginBottom: 6 }}>Day of week</div>
@@ -909,7 +875,6 @@ export default function TasksPage() {
                 </div>
               ) : null}
 
-              {/* Monthly */}
               {d.cadence === "monthly" ? (
                 <div style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: 10 }}>
                   <div style={{ fontWeight: 900 }}>Monthly pattern</div>
@@ -950,7 +915,6 @@ export default function TasksPage() {
                     <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                       <div style={{ fontWeight: 900, opacity: 0.9 }}>Pick day</div>
 
-                      {/* MINI CALENDAR PICKER */}
                       <DayOfMonthCalendarPicker
                         value={d.day_of_month}
                         disabled={busy}
@@ -1010,7 +974,6 @@ export default function TasksPage() {
                 </div>
               ) : null}
 
-              {/* Yearly */}
               {d.cadence === "yearly" ? (
                 <div style={{ gridColumn: "1 / -1", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                   <div style={{ fontWeight: 900, opacity: 0.9 }}>Month</div>
@@ -1050,7 +1013,6 @@ export default function TasksPage() {
                 </div>
               ) : null}
 
-              {/* Optional window (NOT for daily) */}
               {d.cadence !== "daily" ? (
                 <div style={{ gridColumn: "1 / -1" }}>
                   <div style={{ fontWeight: 900, marginBottom: 6 }}>Active window (optional)</div>
@@ -1104,14 +1066,10 @@ export default function TasksPage() {
                     </button>
                   </div>
 
-                  <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>
-                    If set, the reminder is only valid inside this date window.
-                  </div>
+                  <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>If set, the reminder is only valid inside this date window.</div>
                 </div>
               ) : (
-                <div style={{ gridColumn: "1 / -1", fontSize: 12, opacity: 0.75 }}>
-                  Daily reminders run until you delete them (no start/end dates).
-                </div>
+                <div style={{ gridColumn: "1 / -1", fontSize: 12, opacity: 0.75 }}>Daily reminders run until you delete them (no start/end dates).</div>
               )}
             </div>
           </div>
@@ -1120,23 +1078,15 @@ export default function TasksPage() {
     );
   }
 
-  // ---------- DB operations for reminders ----------
   async function upsertRemindersForTask(taskId: string, drafts: ReminderDraft[]) {
     if (!userId) return;
 
     for (const d of drafts) {
-      if (!isTimeStringValidHHMM(d.time_of_day)) {
-        throw new Error(`Invalid time format: "${d.time_of_day}". Use HH:MM.`);
-      }
-      if (!d.timezone.trim()) {
-        throw new Error("Timezone is required (ex: America/Los_Angeles).");
-      }
+      if (!isTimeStringValidHHMM(d.time_of_day)) throw new Error(`Invalid time format: "${d.time_of_day}". Use HH:MM.`);
+      if (!d.timezone.trim()) throw new Error("Timezone is required (ex: America/Los_Angeles).");
 
-      // Weekly: SINGLE day required now
       if (d.cadence === "weekly") {
-        if (d.days_of_week.length !== 1) {
-          throw new Error("Weekly reminder must have exactly one day selected.");
-        }
+        if (d.days_of_week.length !== 1) throw new Error("Weekly reminder must have exactly one day selected.");
       }
 
       if (d.cadence === "monthly" && d.monthlyMode === "day_of_month") {
@@ -1152,12 +1102,7 @@ export default function TasksPage() {
       }
     }
 
-    const { error: delErr } = await supabase
-      .from("task_reminders")
-      .delete()
-      .eq("user_id", userId)
-      .eq("task_id", taskId);
-
+    const { error: delErr } = await supabase.from("task_reminders").delete().eq("user_id", userId).eq("task_id", taskId);
     if (delErr) throw delErr;
 
     if (drafts.length === 0) {
@@ -1172,7 +1117,6 @@ export default function TasksPage() {
     await loadReminders(userId);
   }
 
-  // ---------- Create / Edit ----------
   async function createTask() {
     if (!userId) return;
 
@@ -1274,7 +1218,7 @@ export default function TasksPage() {
           archived: next.archived,
         })
         .eq("id", next.id)
-        .eq("user_id", userId)
+        .eq("assigned_to", userId)
         .select("*")
         .single();
 
@@ -1306,7 +1250,7 @@ export default function TasksPage() {
         .from("tasks")
         .update({ archived: !t.archived })
         .eq("id", t.id)
-        .eq("user_id", userId)
+        .eq("assigned_to", userId)
         .select("*")
         .single();
 
@@ -1333,7 +1277,7 @@ export default function TasksPage() {
     setStatus(null);
 
     try {
-      const { error } = await supabase.from("tasks").delete().eq("id", t.id).eq("user_id", userId);
+      const { error } = await supabase.from("tasks").delete().eq("id", t.id).eq("assigned_to", userId);
       if (error) throw error;
 
       setTasks((prev) => prev.filter((x) => x.id !== t.id));
@@ -1356,7 +1300,6 @@ export default function TasksPage() {
     }
   }
 
-  // ---------- Render ----------
   if (!userId) {
     return (
       <main
@@ -1605,13 +1548,9 @@ export default function TasksPage() {
           <div style={{ height: 12 }} />
 
           {loading ? (
-            <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>
-              Loading…
-            </div>
+            <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>Loading…</div>
           ) : activeTasks.length === 0 ? (
-            <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>
-              No active tasks.
-            </div>
+            <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>No active tasks.</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {activeTasks.map((t) => {
@@ -1718,112 +1657,7 @@ export default function TasksPage() {
           )}
         </section>
 
-        {/* Archived */}
-        <section
-          style={{
-            border: "1px solid var(--border)",
-            borderRadius: 16,
-            padding: 16,
-            background: "rgba(255,255,255,0.02)",
-            boxShadow: "0 10px 24px rgba(0,0,0,0.20)",
-          }}
-        >
-          <div style={{ fontSize: 20, fontWeight: 900 }}>Archived</div>
-          <div style={{ marginTop: 6, opacity: 0.85 }}>
-            Total: <b>{archivedTasks.length}</b>
-          </div>
-          <div style={{ height: 12 }} />
-
-          {archivedTasks.length === 0 ? (
-            <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>
-              No archived tasks.
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {archivedTasks.map((t) => (
-                <div
-                  key={t.id}
-                  style={{
-                    border: "1px solid var(--border)",
-                    borderRadius: 14,
-                    padding: 12,
-                    background: "rgba(255,255,255,0.02)",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    flexWrap: "wrap",
-                    alignItems: "center",
-                  }}
-                >
-                  <div style={{ minWidth: 240 }}>
-                    <div style={{ fontWeight: 900 }}>{t.title}</div>
-                    <div style={{ opacity: 0.85, marginTop: 6 }}>
-                      {t.type === "habit" ? (
-                        <>
-                          Habit • <b>{t.freq_times ?? 1}x</b> per <b>{t.freq_per ?? "week"}</b>
-                        </>
-                      ) : (
-                        <>Single</>
-                      )}
-                      <span>
-                        {" "}
-                        • Days: <b>{fmtScheduledDays(t.scheduled_days)}</b>
-                      </span>
-                      <span>
-                        {" "}
-                        • Skips/wk: <b>{t.weekly_skips_allowed ?? 0}</b>
-                      </span>
-                      <span>
-                        {" "}
-                        • Reminders: <b>{(remindersByTask[t.id] ?? []).length}</b>
-                      </span>
-                    </div>
-                  </div>
-
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                    <button
-                      type="button"
-                      onClick={() => toggleArchive(t)}
-                      disabled={busy}
-                      style={{
-                        padding: "10px 12px",
-                        borderRadius: 12,
-                        border: `1px solid ${theme.accent.primary}`,
-                        background: "transparent",
-                        color: "var(--text)",
-                        fontWeight: 900,
-                        cursor: busy ? "not-allowed" : "pointer",
-                        opacity: busy ? 0.6 : 1,
-                      }}
-                    >
-                      Unarchive
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => deleteTask(t)}
-                      disabled={busy}
-                      style={{
-                        padding: "10px 12px",
-                        borderRadius: 12,
-                        border: "1px solid rgba(255, 99, 99, 0.65)",
-                        background: "transparent",
-                        color: "var(--text)",
-                        fontWeight: 900,
-                        cursor: busy ? "not-allowed" : "pointer",
-                        opacity: busy ? 0.6 : 1,
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* COMPLETED */}
+        {/* COMPLETED (kept as-is since you didn’t ask to remove it here) */}
         <section
           style={{
             border: "1px solid var(--border)",
@@ -1843,13 +1677,9 @@ export default function TasksPage() {
 
           <div style={{ padding: 16 }}>
             {loadingCompleted ? (
-              <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>
-                Loading…
-              </div>
+              <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>Loading…</div>
             ) : completions.length === 0 ? (
-              <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>
-                No completed tasks yet.
-              </div>
+              <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>No completed tasks yet.</div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {completions.map((c) => (
@@ -2041,7 +1871,6 @@ export default function TasksPage() {
 
               <div style={{ height: 12 }} />
 
-              {/* Reminders */}
               <ReminderEditor drafts={editReminders} setDrafts={setEditReminders} />
 
               <div style={{ height: 14 }} />
