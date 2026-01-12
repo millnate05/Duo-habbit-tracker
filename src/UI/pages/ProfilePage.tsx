@@ -5,33 +5,68 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { theme } from "@/UI/theme";
 
-function PushDebugButton() {
+function PushDebugButtons() {
   return (
-    <button
-      type="button"
-      onClick={async () => {
-        const perm = await Notification.requestPermission();
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
+      {/* Debug permission + subscription */}
+      <button
+        type="button"
+        onClick={async () => {
+          const perm = await Notification.requestPermission();
 
-        let subJson: any = null;
-        try {
-          const reg = await navigator.serviceWorker.ready;
-          const sub = await reg.pushManager.getSubscription();
-          subJson = sub ? sub.toJSON() : null;
-        } catch (e: any) {
-          subJson = { error: String(e?.message || e) };
-        }
+          let subJson: any = null;
+          try {
+            const reg = await navigator.serviceWorker.ready;
+            const sub = await reg.pushManager.getSubscription();
+            subJson = sub ? sub.toJSON() : null;
+          } catch (e: any) {
+            subJson = { error: String(e?.message || e) };
+          }
 
-        <button
-  type="button"
-  onClick={async () => {
-    try {
-      const res = await fetch("/api/push/test", { method: "POST" });
-      const text = await res.text();
-      if (!res.ok) throw new Error(text || "Failed");
-      alert("Test push sent. Check your iPhone.");
-    } catch (e: any) {
-      alert("Error: " + (e.message || "Unknown error"));
-    }
+          alert(JSON.stringify({ permission: perm, subscription: subJson }, null, 2));
+        }}
+        style={{
+          padding: "10px 12px",
+          borderRadius: 10,
+          border: "1px solid var(--border)",
+          background: "var(--card)",
+          color: "var(--text)",
+          fontWeight: 700,
+          width: "100%",
+        }}
+      >
+        Push Debug (iPhone)
+      </button>
+
+      {/* Manual test push */}
+      <button
+        type="button"
+        onClick={async () => {
+          try {
+            const res = await fetch("/api/push/test", { method: "POST" });
+            const text = await res.text();
+            if (!res.ok) throw new Error(text || "Failed");
+            alert("Test push sent. Check your iPhone.");
+          } catch (e: any) {
+            alert("Error sending test push: " + (e?.message || "Unknown error"));
+          }
+        }}
+        style={{
+          padding: "10px 12px",
+          borderRadius: 10,
+          border: "1px solid var(--border)",
+          background: "transparent",
+          color: "var(--text)",
+          fontWeight: 800,
+          width: "100%",
+        }}
+      >
+        Send Test Push
+      </button>
+    </div>
+  );
+}
+
   }}
   style={{
     padding: "10px 12px",
