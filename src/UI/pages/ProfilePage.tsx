@@ -21,6 +21,33 @@ function PushDebugButton() {
           subJson = { error: String(e?.message || e) };
         }
 
+        <button
+  type="button"
+  onClick={async () => {
+    try {
+      const res = await fetch("/api/push/test", { method: "POST" });
+      const text = await res.text();
+      if (!res.ok) throw new Error(text || "Failed");
+      alert("Test push sent. Check your iPhone.");
+    } catch (e: any) {
+      alert("Error: " + (e.message || "Unknown error"));
+    }
+  }}
+  style={{
+    padding: "10px 12px",
+    borderRadius: 10,
+    border: "1px solid var(--border)",
+    background: "transparent",
+    color: "var(--text)",
+    fontWeight: 800,
+    width: "100%",
+    marginTop: 10,
+  }}
+>
+  Send Test Push
+</button>
+
+
         alert(JSON.stringify({ permission: perm, subscription: subJson }, null, 2));
       }}
       style={{
