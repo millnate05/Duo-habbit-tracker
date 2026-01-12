@@ -8,6 +8,7 @@ import { theme } from "@/UI/theme";
 function PushDebugButton() {
   return (
     <button
+      type="button"
       onClick={async () => {
         const perm = await Notification.requestPermission();
 
@@ -37,7 +38,6 @@ function PushDebugButton() {
     </button>
   );
 }
-
 
 type Mode = "login" | "signup";
 
@@ -145,7 +145,6 @@ export default function ProfilePage() {
 
       if (error) throw error;
 
-      // remove from archived list immediately
       setArchivedTasks((prev) => prev.filter((x) => x.id !== (data as TaskRow).id));
     } catch (e: any) {
       console.error(e);
@@ -180,7 +179,6 @@ export default function ProfilePage() {
 
   // ---------- Push helpers ----------
   function urlBase64ToUint8Array(base64String: string) {
-    // iOS can be picky if env vars have whitespace/newlines
     const cleaned = (base64String || "").trim().replace(/\s+/g, "");
     const padding = "=".repeat((4 - (cleaned.length % 4)) % 4);
     const base64 = (cleaned + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -192,6 +190,8 @@ export default function ProfilePage() {
 
   async function registerSW() {
     if (!("serviceWorker" in navigator)) return false;
+
+    // If already registered, this is a no-op; if not, it registers at /sw.js
     await navigator.serviceWorker.register("/sw.js");
     return true;
   }
@@ -247,7 +247,6 @@ export default function ProfilePage() {
 
     setBusy(true);
     try {
-      // IMPORTANT: token-based auth (because your session is in localStorage, not cookies)
       const token = await getAccessTokenOrThrow();
 
       if (next) {
@@ -350,7 +349,7 @@ export default function ProfilePage() {
     };
   }, []);
 
-  // Push support/subscription state (runs once, and again when login state changes)
+  // Push support/subscription state
   useEffect(() => {
     syncPushEnabledFromBrowser();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -372,17 +371,6 @@ export default function ProfilePage() {
         setStatus(error.message);
         return;
       }
-
-      return (
-  <main style={{ padding: 24 }}>
-    <h1>Profile</h1>
-
-    <PushDebugButton />
-
-    {/* rest of your UI */}
-  </main>
-);
-
 
       // If no row, create one
       if (!data) {
@@ -679,7 +667,14 @@ export default function ProfilePage() {
                     }}
                   >
                     <div style={{ opacity: 0.85, maxWidth: 480 }}>
-                      {pushEnabled ? <>Enabled. You can turn this off anytime.</> : <>Off. Turn on to enable push notifications on this device. On iPhone, install the app to Home Screen first.</>}
+                      {pushEnabled ? (
+                        <>Enabled. You can turn this off anytime.</>
+                      ) : (
+                        <>
+                          Off. Turn on to enable push notifications on this device. On iPhone, install the app to Home
+                          Screen first.
+                        </>
+                      )}
                       {pushMsg ? <div style={{ marginTop: 6, fontSize: 13, opacity: 0.9 }}>{pushMsg}</div> : null}
                     </div>
 
@@ -698,6 +693,9 @@ export default function ProfilePage() {
                     Push isn’t supported on this device/browser. On iPhone, install the app to Home Screen first.
                   </div>
                 )}
+
+                {/* TEMP DEBUG BUTTON (remove after you paste me the alert JSON) */}
+                <PushDebugButton />
 
                 <div style={{ height: 6 }} />
 
@@ -780,7 +778,15 @@ export default function ProfilePage() {
               boxShadow: "0 10px 24px rgba(0,0,0,0.20)",
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                flexWrap: "wrap",
+                alignItems: "baseline",
+              }}
+            >
               <div>
                 <div style={{ fontSize: 20, fontWeight: 900 }}>Archived</div>
                 <div style={{ marginTop: 6, opacity: 0.85 }}>
@@ -808,7 +814,15 @@ export default function ProfilePage() {
             </div>
 
             {archivedStatus ? (
-              <div style={{ marginTop: 12, border: "1px solid var(--border)", borderRadius: 14, padding: 12, background: "rgba(255,255,255,0.02)" }}>
+              <div
+                style={{
+                  marginTop: 12,
+                  border: "1px solid var(--border)",
+                  borderRadius: 14,
+                  padding: 12,
+                  background: "rgba(255,255,255,0.02)",
+                }}
+              >
                 {archivedStatus}
               </div>
             ) : null}
