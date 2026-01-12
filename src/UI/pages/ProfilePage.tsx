@@ -744,7 +744,7 @@ export default function ProfilePage() {
                 )}
 
                 {/* TEMP DEBUG BUTTON (remove after you paste me the alert JSON) */}
-                <PushDebugButton />
+                <PushDebugButtons />
 
                 <div style={{ height: 6 }} />
 
