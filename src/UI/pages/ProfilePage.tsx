@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { theme } from "@/UI/theme";
-
+ 
 /**
  * Push debug feature flag.
  * - false (default): NO users will see debug buttons; no test calls can be triggered from UI.
