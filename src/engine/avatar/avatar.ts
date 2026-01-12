@@ -5,7 +5,7 @@
 export type AvatarRecipe = {
   placeholder: true;
 };
- 
+  
 export const DEFAULT_AVATAR: AvatarRecipe = {
   placeholder: true,
 };
