@@ -66,19 +66,6 @@ function PushDebugButtons() {
     </div>
   );
 }
-
-  
-  style={{
-    padding: "10px 12px",
-    borderRadius: 10,
-    border: "1px solid var(--border)",
-    background: "transparent",
-    color: "var(--text)",
-    fontWeight: 800,
-    width: "100%",
-    marginTop: 10,
-  }}
->
   Send Test Push
 </button>
 
