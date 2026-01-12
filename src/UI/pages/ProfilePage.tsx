@@ -67,7 +67,7 @@ function PushDebugButtons() {
   );
 }
 
-  }}
+  
   style={{
     padding: "10px 12px",
     borderRadius: 10,
