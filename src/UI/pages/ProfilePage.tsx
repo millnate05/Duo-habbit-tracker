@@ -5,9 +5,20 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { theme } from "@/UI/theme";
 
+/**
+ * Temporary debug buttons for iOS push notifications.
+ * Safe to remove once push is verified.
+ */
 function PushDebugButtons() {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+        marginTop: 12,
+      }}
+    >
       {/* Debug permission + subscription */}
       <button
         type="button"
@@ -23,7 +34,13 @@ function PushDebugButtons() {
             subJson = { error: String(e?.message || e) };
           }
 
-          alert(JSON.stringify({ permission: perm, subscription: subJson }, null, 2));
+          alert(
+            JSON.stringify(
+              { permission: perm, subscription: subJson },
+              null,
+              2
+            )
+          );
         }}
         style={{
           padding: "10px 12px",
@@ -48,7 +65,10 @@ function PushDebugButtons() {
             if (!res.ok) throw new Error(text || "Failed");
             alert("Test push sent. Check your iPhone.");
           } catch (e: any) {
-            alert("Error sending test push: " + (e?.message || "Unknown error"));
+            alert(
+              "Error sending test push: " +
+                (e?.message || "Unknown error")
+            );
           }
         }}
         style={{
@@ -66,27 +86,7 @@ function PushDebugButtons() {
     </div>
   );
 }
-  Send Test Push
-</button>
 
-
-        alert(JSON.stringify({ permission: perm, subscription: subJson }, null, 2));
-      }}
-      style={{
-        padding: "10px 12px",
-        borderRadius: 10,
-        border: "1px solid var(--border)",
-        background: "var(--card)",
-        color: "var(--text)",
-        fontWeight: 700,
-        width: "100%",
-        marginTop: 12,
-      }}
-    >
-      Push Debug (iPhone)
-    </button>
-  );
-}
 
 type Mode = "login" | "signup";
 
