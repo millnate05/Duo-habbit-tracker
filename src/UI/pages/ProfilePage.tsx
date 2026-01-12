@@ -1,15 +1,25 @@
 "use client";
- 
+
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { theme } from "@/UI/theme";
 
 /**
- * Temporary debug buttons for iOS push notifications.
- * Safe to remove once push is verified.
+ * Push debug feature flag.
+ * - false (default): NO users will see debug buttons; no test calls can be triggered from UI.
+ * - true: debug buttons appear (optionally only for a specific email if you set DEBUG_EMAIL below).
  */
-function PushDebugButtons() {
+const ENABLE_PUSH_DEBUG = false;
+
+// Optional extra safety: when ENABLE_PUSH_DEBUG = true, only show to this email.
+// Set to null to allow any logged-in user to see debug buttons when enabled.
+const DEBUG_EMAIL: string | null = null; // e.g. "millnate05@gmail.com"
+
+function PushDebugButtons({ sessionEmail }: { sessionEmail: string | null }) {
+  if (!ENABLE_PUSH_DEBUG) return null;
+  if (DEBUG_EMAIL && sessionEmail !== DEBUG_EMAIL) return null;
+
   return (
     <div
       style={{
@@ -34,13 +44,7 @@ function PushDebugButtons() {
             subJson = { error: String(e?.message || e) };
           }
 
-          alert(
-            JSON.stringify(
-              { permission: perm, subscription: subJson },
-              null,
-              2
-            )
-          );
+          alert(JSON.stringify({ permission: perm, subscription: subJson }, null, 2));
         }}
         style={{
           padding: "10px 12px",
@@ -65,10 +69,7 @@ function PushDebugButtons() {
             if (!res.ok) throw new Error(text || "Failed");
             alert("Test push sent. Check your iPhone.");
           } catch (e: any) {
-            alert(
-              "Error sending test push: " +
-                (e?.message || "Unknown error")
-            );
+            alert("Error sending test push: " + (e?.message || "Unknown error"));
           }
         }}
         style={{
@@ -86,7 +87,6 @@ function PushDebugButtons() {
     </div>
   );
 }
-
 
 type Mode = "login" | "signup";
 
@@ -194,6 +194,7 @@ export default function ProfilePage() {
 
       if (error) throw error;
 
+      // remove from archived list immediately
       setArchivedTasks((prev) => prev.filter((x) => x.id !== (data as TaskRow).id));
     } catch (e: any) {
       console.error(e);
@@ -296,6 +297,7 @@ export default function ProfilePage() {
 
     setBusy(true);
     try {
+      // IMPORTANT: token-based auth (because your session is in localStorage, not cookies)
       const token = await getAccessTokenOrThrow();
 
       if (next) {
@@ -571,10 +573,7 @@ export default function ProfilePage() {
     setBusy(true);
     setStatus(null);
     try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({ display_name: displayName })
-        .eq("user_id", userId);
+      const { error } = await supabase.from("profiles").update({ display_name: displayName }).eq("user_id", userId);
 
       if (error) throw error;
       setStatus("Saved.");
@@ -743,8 +742,8 @@ export default function ProfilePage() {
                   </div>
                 )}
 
-                {/* TEMP DEBUG BUTTON (remove after you paste me the alert JSON) */}
-                <PushDebugButtons />
+                {/* Debug tools are feature-flagged off by default. */}
+                <PushDebugButtons sessionEmail={sessionEmail} />
 
                 <div style={{ height: 6 }} />
 
