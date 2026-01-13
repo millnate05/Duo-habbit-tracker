@@ -220,33 +220,25 @@ export default function CompletedPage() {
       // CHANGE THESE IF NEEDED: tasks join fields
       // NOTE: we intentionally pull extra task metadata to classify buckets.
       const { data, error } = await supabase
-        .from("completions")
-        .select(
-          [
-            "id",
-            "user_id",
-            "task_id",
-            "proof_type",
-            "proof_note",
-            "photo_path",
-            "completed_at",
-            "tasks(title,scope,is_shared,created_by,assigned_to,assignee_user_id)",
-          ].join(",")
-        )
-        .in("user_id", ids)
-        .order("completed_at", { ascending: false })
-        .limit(500);
+  .from("completions")
+  .select(
+    "id,user_id,task_id,proof_type,proof_note,photo_path,completed_at,tasks(title)"
+  )
+  .eq("user_id", userId)
+  .order("completed_at", { ascending: false })
+  .limit(300);
 
-      if (error) {
-        console.error(error);
-        setStatus(error.message);
-        setCompletions([]);
-        setLoading(false);
-        return;
-      }
+if (error || !Array.isArray(data)) {
+  console.error(error);
+  setStatus(error?.message ?? "Failed to load completions");
+  setCompletions([]);
+  setLoading(false);
+  return;
+}
 
-      setCompletions((data ?? []) as CompletionRow[]);
-      setLoading(false);
+setCompletions(data);
+setLoading(false);
+
     })();
   }, [userId, partnerId]);
 
