@@ -550,41 +550,53 @@ export default function TasksPage() {
    * It writes to public.reminders by calling your RPC: upsert_task_reminder(...)
    * and deletes the reminder row if you removed it from the UI.
    */
-  async function upsertRemindersForTask(taskId: string, drafts: ReminderDraft[]) {
-    if (!userId) return;
+ async function upsertRemindersForTask(taskId: string, drafts: ReminderDraft[]) {
+  if (!userId) return;
 
-    // If user removed reminders, delete the row so it won't fire
-    if (!drafts || drafts.length === 0) {
-      const { error: delErr } = await supabase.from("reminders").delete().eq("user_id", userId).eq("task_id", taskId);
-      if (delErr) throw delErr;
-      await loadReminders(userId);
-      return;
-    }
+  // If user removed reminders, delete row
+  if (!drafts || drafts.length === 0) {
+    setStatus(`No reminders in UI → deleting any existing reminder for task ${taskId}...`);
+    const { error: delErr } = await supabase
+      .from("reminders")
+      .delete()
+      .eq("user_id", userId)
+      .eq("task_id", taskId);
 
-    // We only support 1 reminder per task currently
-    const d = drafts[0];
+    if (delErr) throw delErr;
 
-    // Validate
-    if (!isTimeStringValidHHMM(d.time_of_day)) throw new Error(`Invalid time format: "${d.time_of_day}". Use HH:MM.`);
-    if (!d.timezone.trim()) throw new Error("Timezone is required (ex: America/Los_Angeles).");
-    if (d.cadence === "weekly" && d.days_of_week.length !== 1) throw new Error("Weekly reminder must have exactly one day selected.");
-
-    // Build RPC args
-    const timeHHMMSS = `${d.time_of_day}:00`; // "HH:MM:SS"
-    const scheduledDays = d.cadence === "daily" ? null : [d.days_of_week[0]];
-
-    const { error } = await supabase.rpc("upsert_task_reminder", {
-      p_task_id: taskId,
-      p_enabled: d.enabled,
-      p_reminder_time: timeHHMMSS,
-      p_tz: d.timezone,
-      p_scheduled_days: scheduledDays,
-    });
-
-    if (error) throw error;
-
+    setStatus(`Deleted reminder row (if any) for task ${taskId}.`);
     await loadReminders(userId);
+    return;
   }
+
+  const d = drafts[0];
+
+  // Validate
+  if (!isTimeStringValidHHMM(d.time_of_day)) throw new Error(`Invalid time format: "${d.time_of_day}". Use HH:MM.`);
+  if (!d.timezone.trim()) throw new Error("Timezone is required (ex: America/Los_Angeles).");
+  if (d.cadence === "weekly" && d.days_of_week.length !== 1) throw new Error("Weekly reminder must have exactly one day selected.");
+
+  const timeHHMMSS = `${d.time_of_day}:00`;
+  const scheduledDays = d.cadence === "daily" ? null : [d.days_of_week[0]];
+
+  setStatus(
+    `Calling upsert_task_reminder → task=${taskId} enabled=${d.enabled} time=${timeHHMMSS} tz=${d.timezone} days=${scheduledDays ? scheduledDays.join(",") : "null(daily)"}`
+  );
+
+  const { error } = await supabase.rpc("upsert_task_reminder", {
+    p_task_id: taskId,
+    p_enabled: d.enabled,
+    p_reminder_time: timeHHMMSS,
+    p_tz: d.timezone,
+    p_scheduled_days: scheduledDays,
+  });
+
+  if (error) throw error;
+
+  setStatus(`✅ Reminder saved for task ${taskId}.`);
+  await loadReminders(userId);
+}
+
 
   async function createTask() {
     if (!userId) return;
