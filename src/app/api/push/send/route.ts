@@ -21,22 +21,43 @@ function getServiceKey() {
 }
 
 export async function POST(req: Request) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
   const serviceKey = getServiceKey();
-  const vapidPublic = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!;
-  const vapidPrivate = process.env.VAPID_PRIVATE_KEY!;
+  const vapidPublic = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
+  const vapidPrivate = process.env.VAPID_PRIVATE_KEY || "";
   const vapidSubject = process.env.VAPID_SUBJECT || "mailto:admin@example.com";
 
   if (!supabaseUrl || !serviceKey || !vapidPublic || !vapidPrivate) {
-    return NextResponse.json({ error: "Missing env vars" }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: "Missing env vars",
+        have: {
+          supabaseUrl: !!supabaseUrl,
+          serviceKey: serviceKey.length,
+          vapidPublic: !!vapidPublic,
+          vapidPrivate: !!vapidPrivate,
+        },
+      },
+      { status: 500 }
+    );
   }
 
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
 
-  // Prevent random people from spamming pushes
   if (!token || token !== serviceKey) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      {
+        error: "Unauthorized",
+        debug: {
+          authHeaderStartsWithBearer: authHeader.startsWith("Bearer "),
+          tokenLength: token.length,
+          serviceKeyLength: serviceKey.length,
+          matches: token === serviceKey,
+        },
+      },
+      { status: 401 }
+    );
   }
 
   let body: Body;
@@ -77,7 +98,6 @@ export async function POST(req: Request) {
     )
   );
 
-  // cleanup dead subscriptions
   const deadEndpoints: string[] = [];
   results.forEach((r, i) => {
     if (r.status === "rejected") {
