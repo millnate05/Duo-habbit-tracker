@@ -1,5 +1,7 @@
+// src/app/api/push/subscription/route.ts
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
 
 type Body =
   | {
@@ -12,6 +14,11 @@ type Body =
     }
   | { action: "delete"; endpoint: string };
 
+function getBearerToken(req: Request) {
+  const authHeader = req.headers.get("authorization") || "";
+  return authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+}
+
 export async function POST(req: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -20,32 +27,51 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Missing Supabase env vars" }, { status: 500 });
   }
 
-  // Expect Authorization: Bearer <access_token>
-  const authHeader = req.headers.get("authorization") || "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-
-  if (!token) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  // IMPORTANT: create a client that includes the user's JWT for ALL db calls
-  const supabase = createClient(supabaseUrl, supabaseAnon, {
-    global: {
-      headers: {
-        Authorization: `Bearer ${token}`,
+  // Create a cookie-aware Supabase server client (works for PWA/browser sessions)
+  const cookieStore = await cookies();
+  const supabase = createServerClient(supabaseUrl, supabaseAnon, {
+    cookies: {
+      get(name: string) {
+        return cookieStore.get(name)?.value;
+      },
+      set(name: string, value: string, options: any) {
+        cookieStore.set({ name, value, ...options });
+      },
+      remove(name: string, options: any) {
+        cookieStore.set({ name, value: "", ...options, maxAge: 0 });
       },
     },
   });
 
-  // Validate token + get user
-  const { data: userData, error: userErr } = await supabase.auth.getUser();
+  // If a Bearer token is provided, prefer it (works for external callers/tests)
+  const bearer = getBearerToken(req);
+  const authSupabase = bearer
+    ? createServerClient(supabaseUrl, supabaseAnon, {
+        cookies: {
+          get: () => undefined,
+          set: () => {},
+          remove: () => {},
+        },
+        global: {
+          headers: { Authorization: `Bearer ${bearer}` },
+        },
+      })
+    : supabase;
+
+  // Validate session/token + get user
+  const { data: userData, error: userErr } = await authSupabase.auth.getUser();
   const user = userData?.user ?? null;
 
   if (userErr || !user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = (await req.json()) as Body;
+  let body: Body;
+  try {
+    body = (await req.json()) as Body;
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
 
   if (!body?.endpoint) {
     return NextResponse.json({ error: "Missing endpoint" }, { status: 400 });
@@ -56,7 +82,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing subscription keys" }, { status: 400 });
     }
 
-    const { error } = await supabase
+    const { error } = await authSupabase
       .from("push_subscriptions")
       .upsert(
         {
@@ -76,7 +102,7 @@ export async function POST(req: Request) {
   }
 
   if (body.action === "delete") {
-    const { error } = await supabase
+    const { error } = await authSupabase
       .from("push_subscriptions")
       .delete()
       .eq("user_id", user.id)
