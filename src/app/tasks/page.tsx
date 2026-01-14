@@ -1052,9 +1052,14 @@ export default function TasksPage() {
     );
   }
 
+  // ✅ FIXED: no more "delete all then insert"
+  // - Deletes ONLY removed reminders
+  // - Upserts existing ones (by id)
+  // - Inserts new ones (no id)
   async function upsertRemindersForTask(taskId: string, drafts: ReminderDraft[]) {
     if (!userId) return;
 
+    // 1) Validate
     for (const d of drafts) {
       if (!isTimeStringValidHHMM(d.time_of_day)) throw new Error(`Invalid time format: "${d.time_of_day}". Use HH:MM.`);
       if (!d.timezone.trim()) throw new Error("Timezone is required (ex: America/Los_Angeles).");
@@ -1062,7 +1067,6 @@ export default function TasksPage() {
       if (d.cadence === "weekly" && d.days_of_week.length !== 1) {
         throw new Error("Weekly reminder must have exactly one day selected.");
       }
-
       if (d.cadence === "monthly" && d.monthlyMode === "day_of_month") {
         if (d.day_of_month < 1 || d.day_of_month > 31) throw new Error("Monthly day must be 1..31.");
       }
@@ -1076,18 +1080,43 @@ export default function TasksPage() {
       }
     }
 
-    const { error: delErr } = await supabase.from("task_reminders").delete().eq("user_id", userId).eq("task_id", taskId);
-    if (delErr) throw delErr;
+    // 2) Pull existing IDs for this task
+    const { data: existing, error: existingErr } = await supabase
+      .from("task_reminders")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("task_id", taskId);
 
-    if (drafts.length === 0) {
-      await loadReminders(userId);
-      return;
+    if (existingErr) throw existingErr;
+
+    const existingIds = new Set((existing ?? []).map((x: any) => x.id as string));
+    const keptIds = new Set(drafts.map((d) => d.id).filter(Boolean) as string[]);
+    const toDelete = [...existingIds].filter((id) => !keptIds.has(id));
+
+    // 3) Delete only removed reminders
+    if (toDelete.length > 0) {
+      const { error: delErr } = await supabase
+        .from("task_reminders")
+        .delete()
+        .eq("user_id", userId)
+        .eq("task_id", taskId)
+        .in("id", toDelete);
+
+      if (delErr) throw delErr;
     }
 
-    const payload = drafts.map((d) => toUpsertRow(taskId, userId, d));
-    const { error: insErr } = await supabase.from("task_reminders").insert(payload);
-    if (insErr) throw insErr;
+    // 4) Upsert current drafts
+    if (drafts.length > 0) {
+      const payload = drafts.map((d) => {
+        const base = toUpsertRow(taskId, userId, d);
+        return d.id ? ({ id: d.id, ...base } as any) : (base as any);
+      });
 
+      const { error: upErr } = await supabase.from("task_reminders").upsert(payload, { onConflict: "id" });
+      if (upErr) throw upErr;
+    }
+
+    // 5) Refresh local state
     await loadReminders(userId);
   }
 
