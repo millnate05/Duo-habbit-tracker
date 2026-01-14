@@ -34,55 +34,39 @@ type CompletionRow = {
   tasks?: { title: string }[] | null;
 };
 
-type Cadence = "daily" | "weekly" | "monthly" | "yearly";
-type MonthlyMode = "day_of_month" | "nth_weekday";
-
+/**
+ * ✅ UPDATED to match your NEW DB table: public.reminders
+ * Columns we rely on:
+ * - enabled (bool)
+ * - tz (text)
+ * - reminder_time (time) -> Supabase returns as string "HH:MM:SS"
+ * - scheduled_days (int[]) -> 0..6 or null (null = daily)
+ */
 type ReminderRow = {
   id: string;
   user_id: string;
   task_id: string;
   enabled: boolean;
-  timezone: string;
-  time_of_day: string; // "HH:MM"
-  cadence: Cadence;
-
-  days_of_week: number[] | null; // weekly: 0..6
-  day_of_month: number | null; // monthly mode A
-  week_of_month: number | null; // monthly mode B (1..4 or -1)
-  weekday: number | null; // monthly mode B (0..6)
-
-  month_of_year: number | null; // yearly
-  day_of_year_month: number | null; // yearly
-
-  start_date: string | null; // YYYY-MM-DD
-  end_date: string | null; // YYYY-MM-DD
-
+  tz: string;
+  reminder_time: string; // "HH:MM:SS"
+  scheduled_days: number[] | null; // null means daily, otherwise weekly selection
+  next_fire_at: string; // timestamptz (stored, not edited here)
   created_at?: string;
+  updated_at?: string;
 };
 
+/**
+ * ✅ SIMPLIFIED reminder editor to align with compute_next_fire_at() + upsert_task_reminder()
+ * (Daily or Weekly only — because your compute_next_fire_at currently supports days-of-week + time-of-day.)
+ */
+type Cadence = "daily" | "weekly";
+
 type ReminderDraft = {
-  id?: string; // if existing
   enabled: boolean;
-  timezone: string;
-  time_of_day: string;
-  cadence: Cadence;
-
-  // weekly (we'll enforce SINGLE day selection in UI)
-  days_of_week: number[];
-
-  // monthly
-  monthlyMode: MonthlyMode;
-  day_of_month: number; // 1..31
-  week_of_month: number; // 1..4 or -1
-  weekday: number; // 0..6
-
-  // yearly
-  month_of_year: number; // 1..12
-  day_of_year_month: number; // 1..31
-
-  // optional window (NOT shown/used for daily)
-  start_date: string;
-  end_date: string;
+  timezone: string; // tz
+  time_of_day: string; // "HH:MM"
+  cadence: Cadence; // daily or weekly
+  days_of_week: number[]; // weekly: exactly ONE day (0..6)
 };
 
 const DOW = [
@@ -93,29 +77,6 @@ const DOW = [
   { n: 4, label: "Thu" },
   { n: 5, label: "Fri" },
   { n: 6, label: "Sat" },
-];
-
-const MONTHS = [
-  { n: 1, label: "Jan" },
-  { n: 2, label: "Feb" },
-  { n: 3, label: "Mar" },
-  { n: 4, label: "Apr" },
-  { n: 5, label: "May" },
-  { n: 6, label: "Jun" },
-  { n: 7, label: "Jul" },
-  { n: 8, label: "Aug" },
-  { n: 9, label: "Sep" },
-  { n: 10, label: "Oct" },
-  { n: 11, label: "Nov" },
-  { n: 12, label: "Dec" },
-];
-
-const WEEK_OF_MONTH_OPTIONS = [
-  { v: 1, label: "1st" },
-  { v: 2, label: "2nd" },
-  { v: 3, label: "3rd" },
-  { v: 4, label: "4th" },
-  { v: -1, label: "Last" },
 ];
 
 function fmtScheduledDays(days: number[] | null) {
@@ -146,76 +107,8 @@ function defaultReminderDraft(): ReminderDraft {
     timezone: guessTimeZone(),
     time_of_day: "09:00",
     cadence: "daily",
-    days_of_week: [1],
-    monthlyMode: "day_of_month",
-    day_of_month: 1,
-    week_of_month: 1,
-    weekday: 1,
-    month_of_year: 1,
-    day_of_year_month: 1,
-    start_date: "",
-    end_date: "",
+    days_of_week: [1], // Mon
   };
-}
-
-function toDraftFromRow(r: ReminderRow): ReminderDraft {
-  const cadence = r.cadence;
-  const days = Array.isArray(r.days_of_week) ? r.days_of_week : [];
-  const monthlyMode: MonthlyMode = r.day_of_month != null ? "day_of_month" : "nth_weekday";
-
-  return {
-    id: r.id,
-    enabled: !!r.enabled,
-    timezone: r.timezone || guessTimeZone(),
-    time_of_day: r.time_of_day || "09:00",
-    cadence,
-    days_of_week: days.length ? [days[0]] : [1],
-    monthlyMode,
-    day_of_month: r.day_of_month ?? 1,
-    week_of_month: r.week_of_month ?? 1,
-    weekday: r.weekday ?? 1,
-    month_of_year: r.month_of_year ?? 1,
-    day_of_year_month: r.day_of_year_month ?? 1,
-    start_date: r.start_date ?? "",
-    end_date: r.end_date ?? "",
-  };
-}
-
-function toUpsertRow(taskId: string, userId: string, d: ReminderDraft): Omit<ReminderRow, "id" | "created_at"> {
-  const base: Omit<ReminderRow, "id" | "created_at"> = {
-    user_id: userId,
-    task_id: taskId,
-    enabled: d.enabled,
-    timezone: d.timezone,
-    time_of_day: d.time_of_day,
-    cadence: d.cadence,
-
-    days_of_week: null,
-    day_of_month: null,
-    week_of_month: null,
-    weekday: null,
-
-    month_of_year: null,
-    day_of_year_month: null,
-
-    start_date: d.cadence === "daily" ? null : d.start_date ? d.start_date : null,
-    end_date: d.cadence === "daily" ? null : d.end_date ? d.end_date : null,
-  };
-
-  if (d.cadence === "weekly") base.days_of_week = d.days_of_week.length ? [d.days_of_week[0]] : [];
-  if (d.cadence === "monthly") {
-    if (d.monthlyMode === "day_of_month") base.day_of_month = d.day_of_month;
-    else {
-      base.week_of_month = d.week_of_month;
-      base.weekday = d.weekday;
-    }
-  }
-  if (d.cadence === "yearly") {
-    base.month_of_year = d.month_of_year;
-    base.day_of_year_month = d.day_of_year_month;
-  }
-
-  return base;
 }
 
 function isTimeStringValidHHMM(v: string) {
@@ -238,13 +131,6 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
 input[type="number"] { -moz-appearance: textfield; }
 `;
 
-function daysInMonth(year: number, month0: number) {
-  return new Date(year, month0 + 1, 0).getDate();
-}
-function firstDowOfMonth(year: number, month0: number) {
-  return new Date(year, month0, 1).getDay();
-}
-
 export default function TasksPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
@@ -257,6 +143,7 @@ export default function TasksPage() {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [completions, setCompletions] = useState<CompletionRow[]>([]);
 
+  // ✅ Now grouped from public.reminders (one row per task)
   const [remindersByTask, setRemindersByTask] = useState<Record<string, ReminderRow[]>>({});
 
   // Create form
@@ -267,6 +154,7 @@ export default function TasksPage() {
   const [scheduledDays, setScheduledDays] = useState<number[] | null>(null);
   const [weeklySkipsAllowedStr, setWeeklySkipsAllowedStr] = useState<string>("0");
 
+  // ✅ We allow at most ONE reminder draft per task (matches your reminders table unique(task_id))
   const [createReminders, setCreateReminders] = useState<ReminderDraft[]>([]);
 
   // Edit modal
@@ -372,9 +260,13 @@ export default function TasksPage() {
     setLoadingCompleted(false);
   }
 
+  /**
+   * ✅ UPDATED: Load from NEW TABLE "reminders"
+   * We still group into remindersByTask[task_id] as an array for minimal UI changes.
+   */
   async function loadReminders(uid: string) {
     const { data, error } = await supabase
-      .from("task_reminders")
+      .from("reminders")
       .select("*")
       .eq("user_id", uid)
       .order("created_at", { ascending: true });
@@ -423,231 +315,40 @@ export default function TasksPage() {
   function describeReminder(d: ReminderDraft) {
     const time = d.time_of_day;
     const tz = d.timezone;
-
     if (d.cadence === "daily") return `Daily at ${time} (${tz})`;
 
-    if (d.cadence === "weekly") {
-      const day = d.days_of_week.length ? d.days_of_week[0] : null;
-      const label = day == null ? "no day" : DOW.find((x) => x.n === day)?.label ?? "?";
-      return `Weekly on ${label} at ${time} (${tz})`;
-    }
-
-    if (d.cadence === "monthly") {
-      if (d.monthlyMode === "day_of_month") return `Monthly on day ${d.day_of_month} at ${time} (${tz})`;
-      const wom = WEEK_OF_MONTH_OPTIONS.find((x) => x.v === d.week_of_month)?.label ?? `${d.week_of_month}`;
-      const wd = DOW.find((x) => x.n === d.weekday)?.label ?? "?";
-      return `Monthly on ${wom} ${wd} at ${time} (${tz})`;
-    }
-
-    const m = MONTHS.find((x) => x.n === d.month_of_year)?.label ?? `${d.month_of_year}`;
-    return `Yearly on ${m} ${d.day_of_year_month} at ${time} (${tz})`;
+    const day = d.days_of_week.length ? d.days_of_week[0] : null;
+    const label = day == null ? "no day" : DOW.find((x) => x.n === day)?.label ?? "?";
+    return `Weekly on ${label} at ${time} (${tz})`;
   }
 
-  function DayOfMonthCalendarPicker({
-    value,
-    onChange,
-    disabled,
-  }: {
-    value: number;
-    onChange: (day: number) => void;
-    disabled: boolean;
-  }) {
-    const [open, setOpen] = useState(false);
-    const now = new Date();
-    const [viewYear, setViewYear] = useState(now.getFullYear());
-    const [viewMonth0, setViewMonth0] = useState(now.getMonth());
+  /**
+   * ✅ Convert DB reminder row -> UI draft
+   * - If scheduled_days is null: daily
+   * - Else: weekly (we only use first day)
+   */
+  function toDraftFromRow(r: ReminderRow): ReminderDraft {
+    const tz = r.tz || guessTimeZone();
+    const timeHHMM = (r.reminder_time || "09:00:00").slice(0, 5);
+    const days = Array.isArray(r.scheduled_days) ? r.scheduled_days : null;
 
-    const dim = daysInMonth(viewYear, viewMonth0);
-    const firstDow = firstDowOfMonth(viewYear, viewMonth0);
-    const monthLabel = `${MONTHS[viewMonth0]?.label ?? ""} ${viewYear}`;
-
-    function prevMonth() {
-      const m = viewMonth0 - 1;
-      if (m < 0) {
-        setViewMonth0(11);
-        setViewYear((y) => y - 1);
-      } else setViewMonth0(m);
+    if (!days || days.length === 0) {
+      return {
+        enabled: !!r.enabled,
+        timezone: tz,
+        time_of_day: timeHHMM,
+        cadence: "daily",
+        days_of_week: [1],
+      };
     }
 
-    function nextMonth() {
-      const m = viewMonth0 + 1;
-      if (m > 11) {
-        setViewMonth0(0);
-        setViewYear((y) => y + 1);
-      } else setViewMonth0(m);
-    }
-
-    useEffect(() => {
-      if (disabled) setOpen(false);
-    }, [disabled]);
-
-    return (
-      <div style={{ position: "relative", display: "inline-block" }}>
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => setOpen((v) => !v)}
-          style={{
-            padding: "8px 10px",
-            borderRadius: 12,
-            border: `1px solid ${theme.accent.primary}`,
-            background: "transparent",
-            color: "var(--text)",
-            fontWeight: 900,
-            cursor: disabled ? "not-allowed" : "pointer",
-            opacity: disabled ? 0.6 : 1,
-          }}
-        >
-          Pick day: {value}
-        </button>
-
-        {open ? (
-          <div
-            style={{
-              position: "absolute",
-              top: "calc(100% + 8px)",
-              left: 0,
-              zIndex: 50,
-              width: 300,
-              borderRadius: 14,
-              border: "1px solid var(--border)",
-              background: "var(--bg)",
-              boxShadow: "0 18px 40px rgba(0,0,0,0.45)",
-              padding: 12,
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={prevMonth}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 12,
-                  border: "1px solid var(--border)",
-                  background: "transparent",
-                  color: "var(--text)",
-                  fontWeight: 900,
-                  cursor: disabled ? "not-allowed" : "pointer",
-                  opacity: disabled ? 0.6 : 1,
-                }}
-              >
-                ←
-              </button>
-
-              <div style={{ fontWeight: 900 }}>{monthLabel}</div>
-
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={nextMonth}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 12,
-                  border: "1px solid var(--border)",
-                  background: "transparent",
-                  color: "var(--text)",
-                  fontWeight: 900,
-                  cursor: disabled ? "not-allowed" : "pointer",
-                  opacity: disabled ? 0.6 : 1,
-                }}
-              >
-                →
-              </button>
-            </div>
-
-            <div style={{ height: 10 }} />
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, fontSize: 12, opacity: 0.85 }}>
-              {DOW.map((d) => (
-                <div key={d.n} style={{ textAlign: "center", fontWeight: 900 }}>
-                  {d.label}
-                </div>
-              ))}
-            </div>
-
-            <div style={{ height: 8 }} />
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 }}>
-              {Array.from({ length: firstDow }).map((_, i) => (
-                <div key={`blank-${i}`} />
-              ))}
-
-              {Array.from({ length: dim }).map((_, i) => {
-                const day = i + 1;
-                const selected = day === value;
-                return (
-                  <button
-                    key={day}
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => {
-                      onChange(day);
-                      setOpen(false);
-                    }}
-                    style={{
-                      padding: "8px 0",
-                      borderRadius: 12,
-                      border: `1px solid ${selected ? theme.accent.primary : "var(--border)"}`,
-                      background: selected ? "rgba(255,255,255,0.05)" : "transparent",
-                      color: "var(--text)",
-                      fontWeight: 900,
-                      cursor: disabled ? "not-allowed" : "pointer",
-                      opacity: disabled ? 0.6 : 1,
-                    }}
-                  >
-                    {day}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div style={{ height: 10 }} />
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => setOpen(false)}
-                style={{
-                  padding: "8px 10px",
-                  borderRadius: 12,
-                  border: "1px solid var(--border)",
-                  background: "transparent",
-                  color: "var(--text)",
-                  fontWeight: 900,
-                  cursor: disabled ? "not-allowed" : "pointer",
-                  opacity: disabled ? 0.6 : 1,
-                }}
-              >
-                Close
-              </button>
-
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => {
-                  const today = new Date();
-                  onChange(today.getDate());
-                  setOpen(false);
-                }}
-                style={{
-                  padding: "8px 10px",
-                  borderRadius: 12,
-                  border: `1px solid ${theme.accent.primary}`,
-                  background: "transparent",
-                  color: "var(--text)",
-                  fontWeight: 900,
-                  cursor: disabled ? "not-allowed" : "pointer",
-                  opacity: disabled ? 0.6 : 1,
-                }}
-              >
-                Use today
-              </button>
-            </div>
-          </div>
-        ) : null}
-      </div>
-    );
+    return {
+      enabled: !!r.enabled,
+      timezone: tz,
+      time_of_day: timeHHMM,
+      cadence: "weekly",
+      days_of_week: [days[0]],
+    };
   }
 
   function ReminderEditor({
@@ -657,14 +358,16 @@ export default function TasksPage() {
     drafts: ReminderDraft[];
     setDrafts: (v: ReminderDraft[]) => void;
   }) {
+    const hasOne = drafts.length >= 1;
+
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
           <div style={{ fontWeight: 900 }}>Reminders</div>
           <button
             type="button"
-            disabled={busy}
-            onClick={() => setDrafts([...drafts, defaultReminderDraft()])}
+            disabled={busy || hasOne}
+            onClick={() => setDrafts([defaultReminderDraft()])}
             style={{
               padding: "8px 10px",
               borderRadius: 12,
@@ -672,21 +375,25 @@ export default function TasksPage() {
               background: "transparent",
               color: "var(--text)",
               fontWeight: 900,
-              cursor: busy ? "not-allowed" : "pointer",
-              opacity: busy ? 0.6 : 1,
+              cursor: busy || hasOne ? "not-allowed" : "pointer",
+              opacity: busy || hasOne ? 0.6 : 1,
             }}
           >
             + Add reminder
           </button>
         </div>
 
-        {drafts.length === 0 ? (
+        {hasOne ? (
+          <div style={{ fontSize: 12, opacity: 0.75 }}>
+            Note: Right now you can have <b>one</b> reminder per task (matches the backend).
+          </div>
+        ) : (
           <div style={{ opacity: 0.75, fontSize: 13 }}>No reminders set. Add one if you want the app to notify you later.</div>
-        ) : null}
+        )}
 
         {drafts.map((d, idx) => (
           <div
-            key={d.id ?? `new-${idx}`}
+            key={`rem-${idx}`}
             style={{
               border: "1px solid var(--border)",
               borderRadius: 14,
@@ -718,7 +425,7 @@ export default function TasksPage() {
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => setDrafts(drafts.filter((_, i) => i !== idx))}
+                  onClick={() => setDrafts([])}
                   style={{
                     padding: "8px 10px",
                     borderRadius: 12,
@@ -746,18 +453,8 @@ export default function TasksPage() {
                     const next = drafts.slice();
 
                     const patched: ReminderDraft = { ...d, cadence: nextCadence };
-
-                    if (nextCadence === "daily") {
-                      patched.start_date = "";
-                      patched.end_date = "";
-                    }
-
                     if (nextCadence === "weekly") {
                       patched.days_of_week = patched.days_of_week.length ? [patched.days_of_week[0]] : [1];
-                    }
-
-                    if (nextCadence === "monthly" && !patched.monthlyMode) {
-                      patched.monthlyMode = "day_of_month";
                     }
 
                     next[idx] = patched;
@@ -767,8 +464,6 @@ export default function TasksPage() {
                 >
                   <option value="daily">Daily</option>
                   <option value="weekly">Weekly</option>
-                  <option value="monthly">Monthly</option>
-                  <option value="yearly">Yearly</option>
                 </select>
               </div>
 
@@ -841,210 +536,8 @@ export default function TasksPage() {
                       );
                     })}
                   </div>
-                  <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
-                    Weekly reminders pick <b>one</b> day. For “every day”, use <b>Daily</b>.
-                  </div>
                 </div>
               ) : null}
-
-              {d.cadence === "monthly" ? (
-                <div style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: 10 }}>
-                  <div style={{ fontWeight: 900 }}>Monthly pattern</div>
-
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                    <label style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
-                      <input
-                        type="radio"
-                        name={`mmode-${idx}`}
-                        checked={d.monthlyMode === "day_of_month"}
-                        disabled={busy}
-                        onChange={() => {
-                          const next = drafts.slice();
-                          next[idx] = { ...d, monthlyMode: "day_of_month" };
-                          setDrafts(next);
-                        }}
-                      />
-                      <span style={{ fontWeight: 900 }}>Day of month</span>
-                    </label>
-
-                    <label style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
-                      <input
-                        type="radio"
-                        name={`mmode-${idx}`}
-                        checked={d.monthlyMode === "nth_weekday"}
-                        disabled={busy}
-                        onChange={() => {
-                          const next = drafts.slice();
-                          next[idx] = { ...d, monthlyMode: "nth_weekday" };
-                          setDrafts(next);
-                        }}
-                      />
-                      <span style={{ fontWeight: 900 }}>Nth weekday</span>
-                    </label>
-                  </div>
-
-                  {d.monthlyMode === "day_of_month" ? (
-                    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                      <div style={{ fontWeight: 900, opacity: 0.9 }}>Pick day</div>
-                      <DayOfMonthCalendarPicker
-                        value={d.day_of_month}
-                        disabled={busy}
-                        onChange={(day) => {
-                          const next = drafts.slice();
-                          next[idx] = { ...d, day_of_month: day };
-                          setDrafts(next);
-                        }}
-                      />
-                      <div style={{ fontSize: 12, opacity: 0.75 }}>
-                        Stores the <b>day number</b> (1–31). If a month doesn’t have that day (ex: 31st), backend should
-                        decide (usually “skip”).
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                      <div style={{ fontWeight: 900, opacity: 0.9 }}>Week</div>
-                      <select
-                        value={String(d.week_of_month)}
-                        disabled={busy}
-                        onChange={(e) => {
-                          const v = Number(e.target.value);
-                          const next = drafts.slice();
-                          next[idx] = { ...d, week_of_month: v };
-                          setDrafts(next);
-                        }}
-                        style={cleanSelect}
-                      >
-                        {WEEK_OF_MONTH_OPTIONS.map((o) => (
-                          <option key={o.v} value={String(o.v)}>
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
-
-                      <div style={{ fontWeight: 900, opacity: 0.9 }}>Weekday</div>
-                      <select
-                        value={String(d.weekday)}
-                        disabled={busy}
-                        onChange={(e) => {
-                          const v = Number(e.target.value);
-                          const next = drafts.slice();
-                          next[idx] = { ...d, weekday: v };
-                          setDrafts(next);
-                        }}
-                        style={cleanSelect}
-                      >
-                        {DOW.map((o) => (
-                          <option key={o.n} value={String(o.n)}>
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
-              ) : null}
-
-              {d.cadence === "yearly" ? (
-                <div style={{ gridColumn: "1 / -1", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                  <div style={{ fontWeight: 900, opacity: 0.9 }}>Month</div>
-                  <select
-                    value={String(d.month_of_year)}
-                    disabled={busy}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      const next = drafts.slice();
-                      next[idx] = { ...d, month_of_year: v };
-                      setDrafts(next);
-                    }}
-                    style={cleanSelect}
-                  >
-                    {MONTHS.map((m) => (
-                      <option key={m.n} value={String(m.n)}>
-                        {m.label}
-                      </option>
-                    ))}
-                  </select>
-
-                  <div style={{ fontWeight: 900, opacity: 0.9 }}>Day</div>
-                  <input
-                    type="number"
-                    min={1}
-                    max={31}
-                    value={String(d.day_of_year_month)}
-                    disabled={busy}
-                    onChange={(e) => {
-                      const n = parseBoundedInt(e.target.value, { min: 1, max: 31, fallback: 1 });
-                      const next = drafts.slice();
-                      next[idx] = { ...d, day_of_year_month: n };
-                      setDrafts(next);
-                    }}
-                    style={{ ...baseField, width: 90 }}
-                  />
-                </div>
-              ) : null}
-
-              {d.cadence !== "daily" ? (
-                <div style={{ gridColumn: "1 / -1" }}>
-                  <div style={{ fontWeight: 900, marginBottom: 6 }}>Active window (optional)</div>
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                    <div style={{ opacity: 0.85, fontWeight: 900 }}>Start</div>
-                    <input
-                      type="date"
-                      value={d.start_date}
-                      disabled={busy}
-                      onChange={(e) => {
-                        const next = drafts.slice();
-                        next[idx] = { ...d, start_date: e.target.value };
-                        setDrafts(next);
-                      }}
-                      style={baseField}
-                    />
-
-                    <div style={{ opacity: 0.85, fontWeight: 900 }}>End</div>
-                    <input
-                      type="date"
-                      value={d.end_date}
-                      disabled={busy}
-                      onChange={(e) => {
-                        const next = drafts.slice();
-                        next[idx] = { ...d, end_date: e.target.value };
-                        setDrafts(next);
-                      }}
-                      style={baseField}
-                    />
-
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => {
-                        const next = drafts.slice();
-                        next[idx] = { ...d, start_date: "", end_date: "" };
-                        setDrafts(next);
-                      }}
-                      style={{
-                        padding: "8px 10px",
-                        borderRadius: 12,
-                        border: "1px solid var(--border)",
-                        background: "transparent",
-                        color: "var(--text)",
-                        fontWeight: 900,
-                        cursor: busy ? "not-allowed" : "pointer",
-                        opacity: busy ? 0.6 : 1,
-                      }}
-                    >
-                      Clear window
-                    </button>
-                  </div>
-
-                  <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>
-                    If set, the reminder is only valid inside this date window.
-                  </div>
-                </div>
-              ) : (
-                <div style={{ gridColumn: "1 / -1", fontSize: 12, opacity: 0.75 }}>
-                  Daily reminders run until you delete them (no start/end dates).
-                </div>
-              )}
             </div>
           </div>
         ))}
@@ -1052,71 +545,44 @@ export default function TasksPage() {
     );
   }
 
-  // ✅ FIXED: no more "delete all then insert"
-  // - Deletes ONLY removed reminders
-  // - Upserts existing ones (by id)
-  // - Inserts new ones (no id)
+  /**
+   * ✅ NEW: This is the only place reminders are saved.
+   * It writes to public.reminders by calling your RPC: upsert_task_reminder(...)
+   * and deletes the reminder row if you removed it from the UI.
+   */
   async function upsertRemindersForTask(taskId: string, drafts: ReminderDraft[]) {
     if (!userId) return;
 
-    // 1) Validate
-    for (const d of drafts) {
-      if (!isTimeStringValidHHMM(d.time_of_day)) throw new Error(`Invalid time format: "${d.time_of_day}". Use HH:MM.`);
-      if (!d.timezone.trim()) throw new Error("Timezone is required (ex: America/Los_Angeles).");
-
-      if (d.cadence === "weekly" && d.days_of_week.length !== 1) {
-        throw new Error("Weekly reminder must have exactly one day selected.");
-      }
-      if (d.cadence === "monthly" && d.monthlyMode === "day_of_month") {
-        if (d.day_of_month < 1 || d.day_of_month > 31) throw new Error("Monthly day must be 1..31.");
-      }
-      if (d.cadence === "monthly" && d.monthlyMode === "nth_weekday") {
-        if (![1, 2, 3, 4, -1].includes(d.week_of_month)) throw new Error("Week-of-month must be 1..4 or -1.");
-        if (d.weekday < 0 || d.weekday > 6) throw new Error("Weekday must be 0..6.");
-      }
-      if (d.cadence === "yearly") {
-        if (d.month_of_year < 1 || d.month_of_year > 12) throw new Error("Month must be 1..12.");
-        if (d.day_of_year_month < 1 || d.day_of_year_month > 31) throw new Error("Day must be 1..31.");
-      }
-    }
-
-    // 2) Pull existing IDs for this task
-    const { data: existing, error: existingErr } = await supabase
-      .from("task_reminders")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("task_id", taskId);
-
-    if (existingErr) throw existingErr;
-
-    const existingIds = new Set((existing ?? []).map((x: any) => x.id as string));
-    const keptIds = new Set(drafts.map((d) => d.id).filter(Boolean) as string[]);
-    const toDelete = [...existingIds].filter((id) => !keptIds.has(id));
-
-    // 3) Delete only removed reminders
-    if (toDelete.length > 0) {
-      const { error: delErr } = await supabase
-        .from("task_reminders")
-        .delete()
-        .eq("user_id", userId)
-        .eq("task_id", taskId)
-        .in("id", toDelete);
-
+    // If user removed reminders, delete the row so it won't fire
+    if (!drafts || drafts.length === 0) {
+      const { error: delErr } = await supabase.from("reminders").delete().eq("user_id", userId).eq("task_id", taskId);
       if (delErr) throw delErr;
+      await loadReminders(userId);
+      return;
     }
 
-    // 4) Upsert current drafts
-    if (drafts.length > 0) {
-      const payload = drafts.map((d) => {
-        const base = toUpsertRow(taskId, userId, d);
-        return d.id ? ({ id: d.id, ...base } as any) : (base as any);
-      });
+    // We only support 1 reminder per task currently
+    const d = drafts[0];
 
-      const { error: upErr } = await supabase.from("task_reminders").upsert(payload, { onConflict: "id" });
-      if (upErr) throw upErr;
-    }
+    // Validate
+    if (!isTimeStringValidHHMM(d.time_of_day)) throw new Error(`Invalid time format: "${d.time_of_day}". Use HH:MM.`);
+    if (!d.timezone.trim()) throw new Error("Timezone is required (ex: America/Los_Angeles).");
+    if (d.cadence === "weekly" && d.days_of_week.length !== 1) throw new Error("Weekly reminder must have exactly one day selected.");
 
-    // 5) Refresh local state
+    // Build RPC args
+    const timeHHMMSS = `${d.time_of_day}:00`; // "HH:MM:SS"
+    const scheduledDays = d.cadence === "daily" ? null : [d.days_of_week[0]];
+
+    const { error } = await supabase.rpc("upsert_task_reminder", {
+      p_task_id: taskId,
+      p_enabled: d.enabled,
+      p_reminder_time: timeHHMMSS,
+      p_tz: d.timezone,
+      p_scheduled_days: scheduledDays,
+    });
+
+    if (error) throw error;
+
     await loadReminders(userId);
   }
 
@@ -1163,8 +629,11 @@ export default function TasksPage() {
       setTasks((prev) => [data as TaskRow, ...prev]);
 
       const newTaskId = (data as TaskRow).id;
-      if (createReminders.length > 0) await upsertRemindersForTask(newTaskId, createReminders);
 
+      // ✅ Save reminder into NEW system (public.reminders) via RPC
+      await upsertRemindersForTask(newTaskId, createReminders);
+
+      // Reset
       setTitle("");
       setType("habit");
       setFreqTimesStr("1");
@@ -1188,7 +657,7 @@ export default function TasksPage() {
     setEditWeeklySkipsStr(String(t.weekly_skips_allowed ?? 0));
 
     const existing = remindersByTask[t.id] ?? [];
-    setEditReminders(existing.map(toDraftFromRow));
+    setEditReminders(existing.length ? [toDraftFromRow(existing[0])] : []);
   }
 
   async function saveEdit(next: TaskRow) {
@@ -1228,6 +697,7 @@ export default function TasksPage() {
       const updated = data as TaskRow;
       setTasks((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
 
+      // ✅ Save reminder into NEW system (public.reminders) via RPC
       await upsertRemindersForTask(updated.id, editReminders);
 
       setEditOpen(false);
@@ -1282,6 +752,9 @@ export default function TasksPage() {
       if (error) throw error;
 
       setTasks((prev) => prev.filter((x) => x.id !== t.id));
+
+      // ✅ Also delete reminder row for this task (new system)
+      await supabase.from("reminders").delete().eq("user_id", userId).eq("task_id", t.id);
 
       setRemindersByTask((prev) => {
         const copy = { ...prev };
@@ -1359,7 +832,6 @@ export default function TasksPage() {
           paddingBottom: 40,
         }}
       >
-        {/* ✅ Top header: removed Home button and removed "Logged in as ..." line */}
         <div>
           <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>Tasks</h1>
         </div>
@@ -1646,7 +1118,7 @@ export default function TasksPage() {
         {/* We keep completions state + loadCompletions() for button flows / other pages */}
       </div>
 
-      {/* Edit modal (unchanged) */}
+      {/* Edit modal */}
       {editOpen && editTask && (
         <div
           style={{
