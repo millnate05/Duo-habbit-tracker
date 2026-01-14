@@ -12,7 +12,7 @@ serve(async (req) => {
   try {
     // Get current UTC timestamp
     const now = new Date().toISOString();
-
+ 
     // Fetch reminders due now or in the past that haven't been processed
     const { data: reminders, error } = await supabase
       .from("reminders")
