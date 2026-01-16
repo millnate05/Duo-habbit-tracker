@@ -311,14 +311,19 @@ export async function POST(req: Request) {
     if (res.failed > 0) failed += 1;
   }
 
-  return NextResponse.json({
-    ok: true,
-    mode: "process_in_send",
-    checked,
-    due: dueCount,
-    sent,
-    failed,
-  });
+ const parts = getZonedParts(nowUtc, "America/Los_Angeles");
+
+return NextResponse.json({
+  ok: true,
+  mode: "process_in_send",
+  nowUtc: nowUtc.toISOString(),
+  nowLA: `${parts.ymd} ${String(parts.hour).padStart(2, "0")}:${String(parts.minute).padStart(2, "0")}`,
+  checked,
+  due: dueCount,
+  sent,
+  failed,
+});
+
 }
 
 async function sendToUser(args: {
