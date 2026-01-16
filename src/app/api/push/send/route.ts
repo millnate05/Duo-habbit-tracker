@@ -184,13 +184,15 @@ function isDueNow(rem: ReminderRow, nowUtc: Date): { due: boolean; reason?: stri
 
   // Window: allow firing if current time is within [targetMinute, targetMinute+2)
   // Example: target 08:00, cron at 08:00 or 08:02 should still fire once.
-  const nowTotal = parts.hour * 60 + parts.minute;
-  const targetTotal = tod.h * 60 + tod.m;
+// Window: allow firing if current time is within the last 10 minutes
+const WINDOW_MINUTES = 10;
 
-  if (nowTotal < targetTotal) return { due: false, reason: "too_early" };
-  if (nowTotal >= targetTotal + 2) return { due: false, reason: "too_late" };
+if (nowTotal < targetTotal) return { due: false, reason: "too_early" };
+if (nowTotal >= targetTotal + WINDOW_MINUTES)
+  return { due: false, reason: "too_late" };
 
-  return { due: true };
+return { due: true };
+
 }
 
 export async function POST(req: Request) {
