@@ -202,7 +202,7 @@ export async function POST(req: Request) {
 }
 
 async function sendToUser(args: {
-  supabase: ReturnType<typeof createClient>;
+  supabase: any;
   user_id: string;
   title: string;
   body: string;
