@@ -45,7 +45,9 @@ export async function POST(req: Request) {
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
 
-  if (!token || token !== serviceKey) {
+const expected = process.env.CRON_PUSH_TOKEN || "";
+if (!token || !expected || token !== expected) {
+
     return NextResponse.json(
       {
         error: "Unauthorized",
