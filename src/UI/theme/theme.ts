@@ -1,14 +1,8 @@
-// theme.ts
 import { UI } from "./tokens";
 
 export const theme = {
-  // Page-level look & feel
   page: {
-    // richer background while keeping your black/orange identity
-    background:
-      "radial-gradient(900px 600px at 18% 8%, rgba(245, 158, 11, 0.12) 0%, rgba(245, 158, 11, 0) 55%)," +
-      "radial-gradient(700px 500px at 82% 18%, rgba(245, 158, 11, 0.08) 0%, rgba(245, 158, 11, 0) 60%)," +
-      "linear-gradient(180deg, rgba(0,0,0,0.96) 0%, rgba(0,0,0,0.92) 40%, rgba(0,0,0,0.96) 100%)",
+    background: "#000000",
     text: UI.text,
   },
 
@@ -16,39 +10,31 @@ export const theme = {
     primary: UI.accent,
   },
 
-  // Surfaces / borders / depth (for cards, pills, etc.)
   surface: {
-    // subtle card fill that still reads as "black"
-    cardBg: "rgba(255,255,255,0.03)",
-    cardBgHover: "rgba(255,255,255,0.045)",
-    // softer border than var(--border) so it looks less “boxy”
+    cardBg: "rgba(255,255,255,0.04)",
+    cardBgHover: "rgba(255,255,255,0.06)",
     border: "rgba(255,255,255,0.10)",
     borderStrong: "rgba(255,255,255,0.16)",
-    shadow: "0 14px 34px rgba(0,0,0,0.45)",
-    shadowHover: "0 18px 44px rgba(0,0,0,0.55)",
+    shadow: "0 14px 34px rgba(0,0,0,0.55)",
+    shadowHover: "0 18px 44px rgba(0,0,0,0.65)",
   },
 
-  // Pills / badges
   pill: {
-    bg: "rgba(255,255,255,0.05)",
+    bg: "rgba(255,255,255,0.06)",
     border: "rgba(255,255,255,0.12)",
     text: UI.text,
-    muted: "rgba(255,255,255,0.70)",
+    muted: "rgba(255,255,255,0.75)",
   },
 
-  // Progress bars
   progress: {
-    track: "rgba(255,255,255,0.06)",
-    // keep orange but make it feel premium
-    fill:
-      "linear-gradient(90deg, rgba(245,158,11,0.95) 0%, rgba(251,191,36,0.90) 100%)",
+    track: "rgba(0,0,0,0.22)",
+    fill: "rgba(0,0,0,0.55)", // will be overridden per-task for contrast
   },
 
-  // Buttons (still optional to use)
   button: {
-    ghostBg: "rgba(255,255,255,0.03)",
-    ghostBgHover: "rgba(255,255,255,0.05)",
-    border: "rgba(255,255,255,0.14)",
+    ghostBg: "rgba(255,255,255,0.06)",
+    ghostBgHover: "rgba(255,255,255,0.10)",
+    border: "rgba(255,255,255,0.20)",
   },
 
   text: {
