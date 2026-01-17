@@ -109,13 +109,60 @@ const TASK_COLORS: TaskColor[] = [
   { bg: "#111827", text: "#fff" }, // near-black slate
 ];
 
-// deterministic hash -> palette index
 function colorIndexFromId(id: string) {
   let h = 0;
-  for (let i = 0; i < id.length; i++) {
-    h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  }
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
   return h % TASK_COLORS.length;
+}
+
+// ---------- Simple icon mapping (emoji “images”) ----------
+function pickTaskIcon(title: string) {
+  const t = title.toLowerCase();
+
+  // hydration
+  if (t.includes("water") || t.includes("hydrate") || t.includes("hydration") || t.includes("drink"))
+    return "💧";
+
+  // lifting / gym
+  if (
+    t.includes("lift") ||
+    t.includes("weights") ||
+    t.includes("weight") ||
+    t.includes("gym") ||
+    t.includes("bench") ||
+    t.includes("squat") ||
+    t.includes("deadlift") ||
+    t.includes("workout") ||
+    t.includes("train")
+  )
+    return "🏋️";
+
+  // run / cardio
+  if (t.includes("run") || t.includes("cardio") || t.includes("jog") || t.includes("walk") || t.includes("steps"))
+    return "🏃";
+
+  // stretching / mobility
+  if (t.includes("stretch") || t.includes("mobility") || t.includes("yoga"))
+    return "🤸";
+
+  // sleep
+  if (t.includes("sleep") || t.includes("bed") || t.includes("nap"))
+    return "😴";
+
+  // reading / studying
+  if (t.includes("read") || t.includes("study") || t.includes("homework") || t.includes("school"))
+    return "📚";
+
+  // meditation / mindfulness
+  if (t.includes("meditate") || t.includes("meditation") || t.includes("breath") || t.includes("mindful"))
+    return "🧘";
+
+  // food / protein
+  if (t.includes("protein") || t.includes("meal") || t.includes("eat") || t.includes("nutrition") || t.includes("macro"))
+    return "🥗";
+
+  // default “task”
+  return "✅";
 }
 
 export default function HomePage() {
@@ -263,16 +310,6 @@ export default function HomePage() {
   const todayStartMs = useMemo(() => startOfDayLocal(now).getTime(), [now]);
   const weekStartMs = useMemo(() => startOfWeekLocal(now).getTime(), [now]);
 
-  // Days left in current week (Mon..Sun)
-  const daysLeftInWeek = useMemo(() => {
-    const start = startOfWeekLocal(now);
-    const endExclusive = new Date(start);
-    endExclusive.setDate(endExclusive.getDate() + 7);
-    const msLeft = endExclusive.getTime() - startOfDayLocal(now).getTime();
-    return clamp(Math.ceil(msLeft / (24 * 60 * 60 * 1000)), 0, 7);
-  }, [now]);
-
-  // Group rows by task
   const completionsByTask = useMemo(() => {
     const m: Record<string, CompletionRow[]> = {};
     for (const c of completions) (m[c.task_id] ??= []).push(c);
@@ -466,9 +503,13 @@ export default function HomePage() {
     if (!userId) return;
 
     const allowed = Math.max(0, Number(task.weekly_skips_allowed ?? 0));
+    if (allowed <= 0) return;
+
     const used = weeklySkipsUsed(task.id);
-    if (used >= allowed) {
-      setStatus("No skips remaining for this task this week.");
+    const left = Math.max(0, allowed - used);
+
+    if (left <= 0) {
+      setStatus("You’re out of skips — you got this!");
       return;
     }
 
@@ -511,17 +552,7 @@ export default function HomePage() {
           />
         ) : null}
 
-        <div
-          style={{
-            maxWidth: 980,
-            margin: "0 auto",
-            display: "flex",
-            flexDirection: "column",
-            gap: 20,
-            alignItems: "center",
-            textAlign: "center",
-          }}
-        >
+        <div style={{ maxWidth: 980, margin: "0 auto" }}>
           <section
             style={{
               width: "100%",
@@ -584,7 +615,7 @@ export default function HomePage() {
           margin: "0 auto",
           display: "flex",
           flexDirection: "column",
-          gap: 10,
+          gap: 12,
         }}
       >
         <input
@@ -599,11 +630,12 @@ export default function HomePage() {
           }}
         />
 
-        <div style={{ padding: "6px 4px" }}>
+        {/* Centered header */}
+        <div style={{ textAlign: "center", padding: "10px 4px 4px" }}>
           <div style={{ fontSize: 20, fontWeight: 900 }}>
             {formatDateHeader(now)}
           </div>
-          <div style={{ opacity: 0.75, marginTop: 2, fontSize: 13 }}>
+          <div style={{ opacity: 0.75, marginTop: 4, fontSize: 13 }}>
             Remaining: <b>{homeTasks.length}</b>
           </div>
         </div>
@@ -631,6 +663,7 @@ export default function HomePage() {
               padding: "12px 14px",
               opacity: 0.85,
               background: theme.surface.cardBg,
+              textAlign: "center",
             }}
           >
             Loading…
@@ -643,6 +676,7 @@ export default function HomePage() {
               padding: "12px 14px",
               opacity: 0.85,
               background: theme.surface.cardBg,
+              textAlign: "center",
             }}
           >
             You’re done for today 🎉
@@ -653,6 +687,8 @@ export default function HomePage() {
               const { bg, text } = TASK_COLORS[colorIndexFromId(t.id)];
               const textIsBlack = text === "#000";
 
+              const wk = weeklyProgress(t);
+
               const skipsAllowed = Math.max(
                 0,
                 Number(t.weekly_skips_allowed ?? 0)
@@ -660,7 +696,7 @@ export default function HomePage() {
               const skipsUsed = weeklySkipsUsed(t.id);
               const skipsLeft = Math.max(0, skipsAllowed - skipsUsed);
 
-              const wk = weeklyProgress(t);
+              const icon = pickTaskIcon(t.title);
 
               return (
                 <div
@@ -672,81 +708,84 @@ export default function HomePage() {
                     color: text,
                     position: "relative",
                     overflow: "hidden",
-                    // ~50% shorter than before
-                    padding: "10px 12px",
+                    padding: "14px 14px", // slightly taller
                     boxShadow: "0 10px 22px rgba(0,0,0,0.45)",
                   }}
                 >
-                  {/* content row */}
                   <div
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: 10,
-                      // keep content from colliding with the bottom bar
-                      paddingBottom: 10,
+                      gap: 12,
+                      paddingBottom: 12, // space for bottom bar
                     }}
                   >
-                    {/* left: title */}
-                    <div
-                      style={{
-                        flex: 1,
-                        minWidth: 0,
-                        fontWeight: 900,
-                        fontSize: 15,
-                        lineHeight: 1.1,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                      title={t.title}
-                    >
-                      {t.title}
+                    {/* Left: title + icon */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontWeight: 900,
+                          fontSize: 16,
+                          lineHeight: 1.1,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                        title={t.title}
+                      >
+                        {t.title}
+                      </div>
+
+                      {/* icon under title */}
+                      <div
+                        style={{
+                          marginTop: 6,
+                          fontSize: 16,
+                          lineHeight: 1,
+                          opacity: 0.95,
+                        }}
+                        aria-label="task icon"
+                      >
+                        {icon}
+                      </div>
                     </div>
 
-                    {/* middle: the 3 stats */}
+                    {/* Middle: ONLY weekly #/# */}
                     <div
                       style={{
                         display: "flex",
-                        gap: 8,
                         alignItems: "center",
+                        gap: 8,
                         flexWrap: "nowrap",
-                        overflow: "hidden",
                       }}
                     >
-                      {[
-                        `${daysLeftInWeek}d left`,
-                        `${skipsLeft} skips`,
-                        `${wk.done}/${wk.required}`,
-                      ].map((label) => (
-                        <span
-                          key={label}
-                          style={{
-                            fontSize: 12,
-                            padding: "6px 10px",
-                            borderRadius: 999,
-                            whiteSpace: "nowrap",
-                            background: textIsBlack
-                              ? "rgba(0,0,0,0.18)"
-                              : "rgba(255,255,255,0.18)",
-                            border: textIsBlack
-                              ? "1px solid rgba(0,0,0,0.22)"
-                              : "1px solid rgba(255,255,255,0.22)",
-                          }}
-                        >
-                          {label}
-                        </span>
-                      ))}
+                      <span
+                        style={{
+                          fontSize: 12,
+                          padding: "7px 10px",
+                          borderRadius: 999,
+                          whiteSpace: "nowrap",
+                          background: textIsBlack
+                            ? "rgba(0,0,0,0.18)"
+                            : "rgba(255,255,255,0.18)",
+                          border: textIsBlack
+                            ? "1px solid rgba(0,0,0,0.22)"
+                            : "1px solid rgba(255,255,255,0.22)",
+                          fontWeight: 900,
+                        }}
+                      >
+                        {wk.done}/{wk.required}
+                      </span>
                     </div>
 
-                    {/* right: buttons */}
+                    {/* Right: Skip + Complete */}
                     <div style={{ display: "flex", gap: 10, flexWrap: "nowrap" }}>
                       {skipsAllowed > 0 ? (
                         <button
                           onClick={() => skipTask(t)}
-                          disabled={busy || skipsLeft <= 0}
+                          disabled={busy}
                           style={{
-                            padding: "9px 12px",
+                            padding: "10px 12px",
                             borderRadius: 999,
                             border: textIsBlack
                               ? "1px solid rgba(0,0,0,0.28)"
@@ -756,11 +795,15 @@ export default function HomePage() {
                               : "rgba(255,255,255,0.18)",
                             color: text,
                             fontWeight: 900,
-                            cursor:
-                              busy || skipsLeft <= 0 ? "not-allowed" : "pointer",
-                            opacity: busy || skipsLeft <= 0 ? 0.6 : 1,
+                            cursor: busy ? "not-allowed" : "pointer",
+                            opacity: busy ? 0.6 : 1,
                           }}
                           type="button"
+                          title={
+                            skipsLeft <= 0
+                              ? "No skips left — tap for motivation"
+                              : "Skip this task"
+                          }
                         >
                           Skip
                         </button>
@@ -770,7 +813,7 @@ export default function HomePage() {
                         onClick={() => openCompleteModal(t)}
                         disabled={busy}
                         style={{
-                          padding: "9px 12px",
+                          padding: "10px 12px",
                           borderRadius: 999,
                           border: textIsBlack
                             ? "1px solid rgba(0,0,0,0.32)"
@@ -819,7 +862,7 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Complete modal */}
+        {/* Complete modal (unchanged) */}
         {completeTask && (
           <div
             style={{
