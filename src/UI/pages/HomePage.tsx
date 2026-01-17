@@ -21,7 +21,7 @@ type TaskRow = {
   created_at: string;
 
   scheduled_days?: number[] | null; // 0=Sun..6=Sat, null => every day
-  weekly_skips_allowed?: number; // default 0
+  weekly_skips_allowed?: number;
 
   is_shared?: boolean;
   assigned_to?: string | null;
@@ -44,11 +44,10 @@ type SkipRow = {
   skipped_at: string;
 };
 
-// ---------- Local time helpers ----------
+// ---------- time helpers ----------
 function startOfDayLocal(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
 }
-// Week starts Monday
 function startOfWeekLocal(d: Date) {
   const day = d.getDay(); // 0 Sun ... 6 Sat
   const diff = (day + 6) % 7; // Monday=0
@@ -70,7 +69,7 @@ function formatDateHeader(d: Date) {
   });
 }
 
-// ---------- Color palette (10) ----------
+// ---------- color palette (10) ----------
 type TaskColor = { bg: string; text: "#000" | "#fff" };
 const TASK_COLORS: TaskColor[] = [
   { bg: "#F59E0B", text: "#000" }, // orange
@@ -91,18 +90,8 @@ function colorIndexFromId(id: string) {
   return h % TASK_COLORS.length;
 }
 
-// ---------- Minimal icons ----------
-type IconKind =
-  | "water"
-  | "lift"
-  | "run"
-  | "stretch"
-  | "sleep"
-  | "read"
-  | "meditate"
-  | "food"
-  | "calendar"
-  | "check";
+// ---------- icon picking ----------
+type IconKind = "water" | "lift" | "run" | "calendar" | "check";
 
 function pickIconKind(title: string): IconKind {
   const t = title.toLowerCase();
@@ -121,88 +110,75 @@ function pickIconKind(title: string): IconKind {
     return "lift";
   if (t.includes("run") || t.includes("cardio") || t.includes("walk") || t.includes("steps"))
     return "run";
-  if (t.includes("stretch") || t.includes("mobility") || t.includes("yoga")) return "stretch";
-  if (t.includes("sleep") || t.includes("bed") || t.includes("nap")) return "sleep";
-  if (t.includes("read") || t.includes("study") || t.includes("homework") || t.includes("school"))
-    return "read";
-  if (t.includes("meditate") || t.includes("breath") || t.includes("mindful")) return "meditate";
-  if (t.includes("protein") || t.includes("meal") || t.includes("eat") || t.includes("macro"))
-    return "food";
   if (t.includes("calendar") || t.includes("schedule") || t.includes("plan")) return "calendar";
   return "check";
 }
 
-function TaskMiniIcon({ kind, stroke }: { kind: IconKind; stroke: string }) {
-  const common = {
-    width: 22,
-    height: 22,
-    viewBox: "0 0 24 24",
-    style: { display: "block" as const },
-  };
-  const stroke2 = "rgba(255,255,255,0.75)";
+/**
+ * Cleaner icons:
+ * - solid shapes (fill=currentColor) rather than thin outlines
+ * - minimal detail so they read clearly at small sizes
+ */
+function MiniIcon({ kind }: { kind: IconKind }) {
+  const common = { width: 26, height: 26, viewBox: "0 0 24 24" };
 
   switch (kind) {
     case "water":
       return (
-        <svg {...common} aria-label="water icon">
+        <svg {...common} aria-label="water">
           <path
-            d="M12 2 C10 6,7 9,7 13 a5 5 0 0 0 10 0 c0-4-3-7-5-11z"
-            fill="none"
-            stroke={stroke}
-            strokeWidth="2"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M9.8 14.2c.6 1.6 2 2.6 3.7 2.6"
-            fill="none"
-            stroke={stroke2}
-            strokeWidth="2"
-            strokeLinecap="round"
+            d="M12 2c-2.2 4.2-6 7.3-6 11.2A6 6 0 0 0 12 19a6 6 0 0 0 6-5.8C18 9.3 14.2 6.2 12 2z"
+            fill="currentColor"
+            opacity="0.92"
           />
         </svg>
       );
 
     case "lift":
       return (
-        <svg {...common} aria-label="dumbbell icon">
-          <path d="M6 10v4M18 10v4" fill="none" stroke={stroke} strokeWidth="2" strokeLinecap="round" />
-          <path d="M8 9v6M16 9v6" fill="none" stroke={stroke} strokeWidth="2" strokeLinecap="round" />
-          <path d="M9 12h6" fill="none" stroke={stroke} strokeWidth="2" strokeLinecap="round" />
+        <svg {...common} aria-label="dumbbell">
+          <rect x="3" y="10" width="3" height="4" rx="1" fill="currentColor" opacity="0.92" />
+          <rect x="6.5" y="9" width="2.5" height="6" rx="1" fill="currentColor" opacity="0.92" />
+          <rect x="9.8" y="11" width="4.4" height="2" rx="1" fill="currentColor" opacity="0.92" />
+          <rect x="15" y="9" width="2.5" height="6" rx="1" fill="currentColor" opacity="0.92" />
+          <rect x="18" y="10" width="3" height="4" rx="1" fill="currentColor" opacity="0.92" />
         </svg>
       );
 
     case "run":
       return (
-        <svg {...common} aria-label="runner icon">
-          <circle cx="15" cy="6.5" r="1.8" fill="none" stroke={stroke} strokeWidth="2" />
+        <svg {...common} aria-label="run">
+          <circle cx="15.6" cy="6.6" r="1.6" fill="currentColor" opacity="0.92" />
           <path
-            d="M10.5 21l2.3-5.2 2.6 1.4 2.2-4.2-3.2-1.8-1.3-2.6-3 1.3 1.1 2.4-2.6 3.4"
+            d="M9.2 20.6l2.1-4.7 2.4 1.2 2-3.8-3-1.7-1.1-2.3-2.7 1.2 1 2.2-2.5 3.1"
             fill="none"
-            stroke={stroke}
-            strokeWidth="2"
-            strokeLinejoin="round"
+            stroke="currentColor"
+            strokeWidth="2.4"
             strokeLinecap="round"
+            strokeLinejoin="round"
+            opacity="0.92"
           />
         </svg>
       );
 
     case "calendar":
       return (
-        <svg {...common} aria-label="calendar icon">
-          <path d="M7 4v3M17 4v3" fill="none" stroke={stroke} strokeWidth="2" strokeLinecap="round" />
-          <rect x="5" y="6" width="14" height="14" rx="3" ry="3" fill="none" stroke={stroke} strokeWidth="2" />
-          <path d="M6 9h12" fill="none" stroke={stroke2} strokeWidth="2" strokeLinecap="round" />
+        <svg {...common} aria-label="calendar">
+          <rect x="5" y="6.5" width="14" height="13" rx="3" fill="currentColor" opacity="0.92" />
+          <rect x="7.2" y="9.1" width="9.6" height="1.8" rx="0.9" fill="rgba(0,0,0,0.25)" />
+          <rect x="7.2" y="12" width="4.2" height="4.2" rx="1.2" fill="rgba(0,0,0,0.25)" />
         </svg>
       );
 
     default:
       return (
-        <svg {...common} aria-label="check icon">
+        <svg {...common} aria-label="check">
+          <circle cx="12" cy="12" r="9" fill="currentColor" opacity="0.92" />
           <path
-            d="M7 12.5l3 3 7-7"
+            d="M8.3 12.4l2.2 2.2 5.2-5.2"
             fill="none"
-            stroke={stroke}
-            strokeWidth="2.4"
+            stroke="rgba(0,0,0,0.28)"
+            strokeWidth="2.6"
             strokeLinecap="round"
             strokeLinejoin="round"
           />
@@ -211,15 +187,15 @@ function TaskMiniIcon({ kind, stroke }: { kind: IconKind; stroke: string }) {
   }
 }
 
-function CheckCircle({ stroke }: { stroke: string }) {
+function CheckCircle({ color }: { color: string }) {
   return (
-    <svg width={26} height={26} viewBox="0 0 24 24" aria-label="completed">
-      <circle cx="12" cy="12" r="9" fill="none" stroke={stroke} strokeWidth="2" />
+    <svg width={28} height={28} viewBox="0 0 24 24" aria-label="completed">
+      <circle cx="12" cy="12" r="9" fill={color} opacity="0.92" />
       <path
-        d="M8 12.3l2.4 2.4L16.5 8.8"
+        d="M8.2 12.4l2.2 2.2 5.4-5.4"
         fill="none"
-        stroke={stroke}
-        strokeWidth="2.4"
+        stroke="rgba(0,0,0,0.28)"
+        strokeWidth="2.6"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -238,14 +214,13 @@ export default function HomePage() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
-  // Complete flow
   const [completeTask, setCompleteTask] = useState<TaskRow | null>(null);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [overrideText, setOverrideText] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Splash page (shows once per browser session)
+  // Splash
   const [showSplash, setShowSplash] = useState(false);
   useEffect(() => {
     const dismissed = sessionStorage.getItem("splashDismissed");
@@ -256,7 +231,7 @@ export default function HomePage() {
     setShowSplash(false);
   }
 
-  // Tick so day rolls without refresh
+  // Tick
   const [todayKey, setTodayKey] = useState<string>(() => new Date().toDateString());
   useEffect(() => {
     const t = setInterval(() => setTodayKey(new Date().toDateString()), 30_000);
@@ -298,9 +273,7 @@ export default function HomePage() {
       .from("tasks")
       .select("*")
       .eq("archived", false)
-      .or(
-        `and(user_id.eq.${uid},is_shared.eq.false),and(assigned_to.eq.${uid},is_shared.eq.true)`
-      )
+      .or(`and(user_id.eq.${uid},is_shared.eq.false),and(assigned_to.eq.${uid},is_shared.eq.true)`)
       .order("created_at", { ascending: false });
 
     if (tasksErr) {
@@ -397,13 +370,6 @@ export default function HomePage() {
     return count;
   }
 
-  function allowedToday(task: TaskRow) {
-    const days = task.scheduled_days ?? null;
-    if (!days || days.length === 0) return true;
-    const dow = now.getDay(); // 0..6
-    return days.includes(dow);
-  }
-
   function weeklySkipsUsed(taskId: string) {
     return countSkipsSince(taskId, weekStartMs);
   }
@@ -421,14 +387,16 @@ export default function HomePage() {
     return { done: weekDone, required, pct };
   }
 
-  // ✅ Home tasks: NEVER hide due to completing/skipping today.
-  // Keep it simple: show tasks due today (scheduled_days) and not archived.
+  function allowedToday(task: TaskRow) {
+    const days = task.scheduled_days ?? null;
+    if (!days || days.length === 0) return true;
+    const dow = now.getDay();
+    return days.includes(dow);
+  }
+
+  // ✅ never hide after completing/skipping today
   const homeTasks = useMemo(() => {
-    return tasks.filter((t) => {
-      if (t.archived) return false;
-      if (!allowedToday(t)) return false;
-      return true;
-    });
+    return tasks.filter((t) => !t.archived && allowedToday(t));
   }, [tasks, todayKey]);
 
   function openCompleteModal(task: TaskRow) {
@@ -529,7 +497,6 @@ export default function HomePage() {
 
     const allowed = Math.max(0, Number(task.weekly_skips_allowed ?? 0));
 
-    // ✅ If no skips assigned to this task, show your message
     if (allowed <= 0) {
       setStatus("No skips assigned — you got this!");
       return;
@@ -571,7 +538,7 @@ export default function HomePage() {
           minHeight: theme.layout.fullHeight,
           background: theme.page.background,
           color: theme.page.text,
-          padding: 24,
+          padding: 18,
         }}
       >
         {showSplash ? (
@@ -585,13 +552,10 @@ export default function HomePage() {
         <div style={{ maxWidth: 980, margin: "0 auto" }}>
           <section
             style={{
-              width: "100%",
-              border: `1px solid ${theme.surface.border}`,
+              border: "1px solid rgba(255,255,255,0.12)",
               borderRadius: 18,
               padding: 16,
-              background: theme.surface.cardBg,
-              boxShadow: theme.surface.shadow,
-              textAlign: "left",
+              background: "rgba(255,255,255,0.03)",
             }}
           >
             <div style={{ fontSize: 22, fontWeight: 900 }}>Welcome</div>
@@ -599,22 +563,20 @@ export default function HomePage() {
               Log in to see your tasks, submit proof, and track completions.
             </div>
             <div style={{ height: 12 }} />
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <Link
-                href="/profile"
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: `1px solid ${theme.accent.primary}`,
-                  color: "var(--text)",
-                  textDecoration: "none",
-                  fontWeight: 900,
-                  background: theme.button.ghostBg,
-                }}
-              >
-                Log in
-              </Link>
-            </div>
+            <Link
+              href="/profile"
+              style={{
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: `1px solid ${theme.accent.primary}`,
+                color: "var(--text)",
+                textDecoration: "none",
+                fontWeight: 900,
+                display: "inline-block",
+              }}
+            >
+              Log in
+            </Link>
           </section>
         </div>
       </main>
@@ -628,7 +590,7 @@ export default function HomePage() {
         minHeight: theme.layout.fullHeight,
         background: theme.page.background,
         color: theme.page.text,
-        padding: 14,
+        padding: 12, // tighter so everything moves up
       }}
     >
       {showSplash ? (
@@ -639,15 +601,7 @@ export default function HomePage() {
         />
       ) : null}
 
-      <div
-        style={{
-          maxWidth: 980,
-          margin: "0 auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-        }}
-      >
+      <div style={{ maxWidth: 980, margin: "0 auto" }}>
         <input
           ref={fileInputRef}
           type="file"
@@ -660,23 +614,19 @@ export default function HomePage() {
           }}
         />
 
-        {/* Centered header */}
-        <div style={{ textAlign: "center", padding: "10px 4px 4px" }}>
+        {/* ✅ Only date. No "remaining". Tighter top spacing. */}
+        <div style={{ textAlign: "center", padding: "6px 0 10px" }}>
           <div style={{ fontSize: 20, fontWeight: 900 }}>{formatDateHeader(now)}</div>
-          <div style={{ opacity: 0.75, marginTop: 4, fontSize: 13 }}>
-            Remaining: <b>{homeTasks.length}</b>
-          </div>
         </div>
 
         {status ? (
           <div
             style={{
-              width: "100%",
-              border: `1px solid ${theme.surface.border}`,
+              marginBottom: 10,
+              border: "1px solid rgba(255,255,255,0.12)",
               borderRadius: 14,
               padding: 12,
-              background: theme.surface.cardBg,
-              boxShadow: theme.surface.shadow,
+              background: "rgba(255,255,255,0.03)",
             }}
           >
             {status}
@@ -686,11 +636,11 @@ export default function HomePage() {
         {loading ? (
           <div
             style={{
-              border: `1px dashed ${theme.surface.border}`,
+              border: "1px dashed rgba(255,255,255,0.14)",
               borderRadius: 18,
               padding: "12px 14px",
               opacity: 0.85,
-              background: theme.surface.cardBg,
+              background: "rgba(255,255,255,0.02)",
               textAlign: "center",
             }}
           >
@@ -699,11 +649,11 @@ export default function HomePage() {
         ) : homeTasks.length === 0 ? (
           <div
             style={{
-              border: `1px dashed ${theme.surface.border}`,
+              border: "1px dashed rgba(255,255,255,0.14)",
               borderRadius: 18,
               padding: "12px 14px",
               opacity: 0.85,
-              background: theme.surface.cardBg,
+              background: "rgba(255,255,255,0.02)",
               textAlign: "center",
             }}
           >
@@ -726,44 +676,46 @@ export default function HomePage() {
 
               const kind = pickIconKind(t.title);
 
-              // icon stroke: use task text color so it looks integrated
-              const iconStroke = textIsBlack ? "rgba(0,0,0,0.92)" : "rgba(255,255,255,0.92)";
-
               return (
                 <div
                   key={t.id}
                   style={{
                     width: "100%",
-                    borderRadius: 28,
+                    borderRadius: 20, // ✅ less severe curve
                     background: bg,
                     color: text,
                     position: "relative",
                     overflow: "hidden",
-                    padding: "12px 14px",
+                    padding: "12px 12px 13px",
                     boxShadow: "0 10px 22px rgba(0,0,0,0.45)",
-                    // ✅ Skipped today: gray out the pill but keep the base color
                     filter: skippedToday ? "grayscale(1)" : "none",
                     opacity: skippedToday ? 0.55 : 1,
                   }}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 12,
-                      paddingBottom: 11, // space for bottom bar
-                    }}
-                  >
-                    {/* Left: icon + title on the same row */}
-                    <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ flex: "0 0 auto" }}>
-                        {completedToday ? (
-                          <CheckCircle stroke={iconStroke} />
-                        ) : (
-                          <TaskMiniIcon kind={kind} stroke={iconStroke} />
-                        )}
-                      </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, paddingBottom: 10 }}>
+                    {/* Icon */}
+                    <div
+                      style={{
+                        flex: "0 0 auto",
+                        width: 34,
+                        height: 34,
+                        borderRadius: 14,
+                        background: textIsBlack ? "rgba(0,0,0,0.12)" : "rgba(255,255,255,0.16)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: text, // icon uses currentColor
+                      }}
+                    >
+                      {completedToday ? (
+                        <CheckCircle color={text} />
+                      ) : (
+                        <MiniIcon kind={kind} />
+                      )}
+                    </div>
 
+                    {/* Title */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       <div
                         style={{
                           fontWeight: 900,
@@ -777,42 +729,26 @@ export default function HomePage() {
                       >
                         {t.title}
                       </div>
+                      {/* middle info (keep simple) */}
+                      <div style={{ marginTop: 6, opacity: 0.9, fontSize: 12, fontWeight: 900 }}>
+                        {wk.done}/{wk.required} this week
+                      </div>
                     </div>
 
-                    {/* Middle: weekly #/# */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span
-                        style={{
-                          fontSize: 12,
-                          padding: "7px 10px",
-                          borderRadius: 999,
-                          whiteSpace: "nowrap",
-                          background: textIsBlack ? "rgba(0,0,0,0.18)" : "rgba(255,255,255,0.18)",
-                          border: textIsBlack
-                            ? "1px solid rgba(0,0,0,0.22)"
-                            : "1px solid rgba(255,255,255,0.22)",
-                          fontWeight: 900,
-                        }}
-                      >
-                        {wk.done}/{wk.required}
-                      </span>
-                    </div>
-
-                    {/* Right: Skip + Complete */}
-                    <div style={{ display: "flex", gap: 10, flexWrap: "nowrap" }}>
-                      {/* ✅ Skip ALWAYS visible */}
+                    {/* Buttons */}
+                    <div style={{ display: "flex", gap: 10 }}>
                       <button
                         onClick={() => skipTask(t)}
                         disabled={busy}
                         style={{
                           padding: "10px 12px",
-                          borderRadius: 18,
-                          border: textIsBlack ? "1px solid rgba(0,0,0,0.28)" : "1px solid rgba(255,255,255,0.28)",
-                          background: textIsBlack ? "rgba(0,0,0,0.18)" : "rgba(255,255,255,0.18)",
+                          borderRadius: 14,
+                          border: textIsBlack ? "1px solid rgba(0,0,0,0.22)" : "1px solid rgba(255,255,255,0.26)",
+                          background: textIsBlack ? "rgba(0,0,0,0.14)" : "rgba(255,255,255,0.16)",
                           color: text,
                           fontWeight: 900,
                           cursor: busy ? "not-allowed" : "pointer",
-                          opacity: busy ? 0.6 : 1,
+                          opacity: busy ? 0.65 : 1,
                         }}
                         type="button"
                         title={
@@ -831,13 +767,13 @@ export default function HomePage() {
                         disabled={busy}
                         style={{
                           padding: "10px 12px",
-                          borderRadius: 18,
-                          border: textIsBlack ? "1px solid rgba(0,0,0,0.32)" : "1px solid rgba(255,255,255,0.32)",
-                          background: textIsBlack ? "rgba(0,0,0,0.24)" : "rgba(255,255,255,0.24)",
+                          borderRadius: 14,
+                          border: textIsBlack ? "1px solid rgba(0,0,0,0.26)" : `1px solid rgba(255,255,255,0.30)`,
+                          background: textIsBlack ? "rgba(0,0,0,0.20)" : "rgba(255,255,255,0.22)",
                           color: text,
                           fontWeight: 900,
                           cursor: busy ? "not-allowed" : "pointer",
-                          opacity: busy ? 0.6 : 1,
+                          opacity: busy ? 0.65 : 1,
                         }}
                         type="button"
                       >
@@ -846,14 +782,14 @@ export default function HomePage() {
                     </div>
                   </div>
 
-                  {/* progress bar attached to bottom, full width */}
+                  {/* Progress bar attached to bottom */}
                   <div
                     style={{
                       position: "absolute",
                       left: 0,
                       right: 0,
                       bottom: 0,
-                      height: 9,
+                      height: 8,
                       background: textIsBlack ? "rgba(0,0,0,0.18)" : "rgba(255,255,255,0.18)",
                     }}
                   >
@@ -871,7 +807,7 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Complete modal (unchanged) */}
+        {/* Complete modal */}
         {completeTask && (
           <div
             style={{
@@ -895,16 +831,17 @@ export default function HomePage() {
               style={{
                 width: "min(720px, 100%)",
                 borderRadius: 18,
-                border: `1px solid ${theme.surface.border}`,
+                border: "1px solid rgba(255,255,255,0.14)",
                 background: "rgba(10,10,10,0.96)",
-                boxShadow: theme.surface.shadowHover,
+                boxShadow: "0 20px 55px rgba(0,0,0,0.55)",
                 padding: 16,
                 textAlign: "left",
-                color: "var(--text)",
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div style={{ fontWeight: 900, fontSize: 18 }}>Complete: {completeTask.title}</div>
+              <div style={{ fontWeight: 900, fontSize: 18 }}>
+                Complete: {completeTask.title}
+              </div>
               <div style={{ opacity: 0.8, marginTop: 6 }}>Choose proof type.</div>
 
               <div style={{ height: 12 }} />
@@ -913,13 +850,13 @@ export default function HomePage() {
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                   <button
                     type="button"
-                    onClick={choosePhoto}
+                    onClick={() => fileInputRef.current?.click()}
                     disabled={busy}
                     style={{
                       padding: "10px 12px",
                       borderRadius: 12,
                       border: `1px solid ${theme.accent.primary}`,
-                      background: theme.button.ghostBg,
+                      background: "transparent",
                       color: "var(--text)",
                       fontWeight: 900,
                       cursor: busy ? "not-allowed" : "pointer",
@@ -939,8 +876,8 @@ export default function HomePage() {
                     style={{
                       padding: "10px 12px",
                       borderRadius: 12,
-                      border: `1px solid ${theme.button.border}`,
-                      background: theme.button.ghostBg,
+                      border: "1px solid rgba(255,255,255,0.18)",
+                      background: "transparent",
                       color: "var(--text)",
                       fontWeight: 900,
                       cursor: busy ? "not-allowed" : "pointer",
@@ -957,8 +894,8 @@ export default function HomePage() {
                     style={{
                       padding: "10px 12px",
                       borderRadius: 12,
-                      border: `1px solid ${theme.button.border}`,
-                      background: theme.button.ghostBg,
+                      border: "1px solid rgba(255,255,255,0.18)",
+                      background: "transparent",
                       color: "var(--text)",
                       fontWeight: 900,
                       cursor: busy ? "not-allowed" : "pointer",
@@ -982,7 +919,7 @@ export default function HomePage() {
                       minHeight: 110,
                       padding: 12,
                       borderRadius: 12,
-                      border: `1px solid ${theme.surface.border}`,
+                      border: "1px solid rgba(255,255,255,0.14)",
                       background: "transparent",
                       color: "var(--text)",
                       outline: "none",
@@ -990,15 +927,7 @@ export default function HomePage() {
                     }}
                   />
 
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "flex-end",
-                      gap: 10,
-                      marginTop: 12,
-                      flexWrap: "wrap",
-                    }}
-                  >
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 12 }}>
                     <button
                       type="button"
                       onClick={() => setOverrideOpen(false)}
@@ -1006,8 +935,8 @@ export default function HomePage() {
                       style={{
                         padding: "10px 12px",
                         borderRadius: 12,
-                        border: `1px solid ${theme.button.border}`,
-                        background: theme.button.ghostBg,
+                        border: "1px solid rgba(255,255,255,0.18)",
+                        background: "transparent",
                         color: "var(--text)",
                         fontWeight: 900,
                         cursor: busy ? "not-allowed" : "pointer",
@@ -1025,7 +954,7 @@ export default function HomePage() {
                         padding: "10px 12px",
                         borderRadius: 12,
                         border: `1px solid ${theme.accent.primary}`,
-                        background: theme.button.ghostBg,
+                        background: "transparent",
                         color: "var(--text)",
                         fontWeight: 900,
                         cursor: busy ? "not-allowed" : "pointer",
