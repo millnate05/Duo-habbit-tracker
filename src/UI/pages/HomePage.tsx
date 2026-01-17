@@ -1,4 +1,3 @@
-// UI/pages/HomePage.tsx
 // FORCE NEW COMMIT: 2026-01-10-FIX-HOME-SHARED-FILTER
 "use client";
 
@@ -24,7 +23,6 @@ type TaskRow = {
   scheduled_days?: number[] | null; // 0=Sun..6=Sat, null => every day
   weekly_skips_allowed?: number; // default 0
 
-  // ✅ needed so home can correctly filter shared tasks
   is_shared?: boolean;
   assigned_to?: string | null;
 };
@@ -65,11 +63,11 @@ function startOfWeekLocal(d: Date) {
   start.setDate(start.getDate() - diff);
   return start;
 }
-function startOfMonthLocal(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
-}
 function startOfYearLocal(d: Date) {
   return new Date(d.getFullYear(), 0, 1, 0, 0, 0, 0);
+}
+function startOfMonthLocal(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
 }
 function periodStart(freq: FrequencyUnit, now: Date) {
   switch (freq) {
@@ -94,6 +92,30 @@ function formatDateHeader(d: Date) {
     month: "long",
     day: "numeric",
   });
+}
+
+// ---------- Color palette (10) ----------
+type TaskColor = { bg: string; text: "#000" | "#fff" };
+const TASK_COLORS: TaskColor[] = [
+  { bg: "#F59E0B", text: "#000" }, // orange
+  { bg: "#3B82F6", text: "#fff" }, // blue
+  { bg: "#22C55E", text: "#000" }, // green
+  { bg: "#EF4444", text: "#fff" }, // red
+  { bg: "#A855F7", text: "#fff" }, // purple
+  { bg: "#06B6D4", text: "#000" }, // cyan
+  { bg: "#F97316", text: "#000" }, // orange2
+  { bg: "#84CC16", text: "#000" }, // lime
+  { bg: "#0EA5E9", text: "#000" }, // sky
+  { bg: "#111827", text: "#fff" }, // near-black slate
+];
+
+// deterministic hash -> palette index
+function colorIndexFromId(id: string) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) {
+    h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  }
+  return h % TASK_COLORS.length;
 }
 
 export default function HomePage() {
@@ -336,14 +358,12 @@ export default function HomePage() {
       if (periodQuotaMet(t)) return false;
 
       const isDaily = t.type === "habit" && (t.freq_per ?? "week") === "day";
-
       if (isDaily) {
         const { done, required } = dailyProgress(t);
         return done < required;
       }
 
       if (didSomethingToday(t.id)) return false;
-
       return true;
     });
   }, [tasks, todayKey, completionsByTask, skipsByTask]);
@@ -547,7 +567,7 @@ export default function HomePage() {
         minHeight: theme.layout.fullHeight,
         background: theme.page.background,
         color: theme.page.text,
-        padding: 18,
+        padding: 14,
       }}
     >
       {showSplash ? (
@@ -564,7 +584,7 @@ export default function HomePage() {
           margin: "0 auto",
           display: "flex",
           flexDirection: "column",
-          gap: 14,
+          gap: 10,
         }}
       >
         <input
@@ -583,7 +603,7 @@ export default function HomePage() {
           <div style={{ fontSize: 20, fontWeight: 900 }}>
             {formatDateHeader(now)}
           </div>
-          <div style={{ opacity: 0.75, marginTop: 4, fontSize: 13 }}>
+          <div style={{ opacity: 0.75, marginTop: 2, fontSize: 13 }}>
             Remaining: <b>{homeTasks.length}</b>
           </div>
         </div>
@@ -593,7 +613,7 @@ export default function HomePage() {
             style={{
               width: "100%",
               border: `1px solid ${theme.surface.border}`,
-              borderRadius: 16,
+              borderRadius: 14,
               padding: 12,
               background: theme.surface.cardBg,
               boxShadow: theme.surface.shadow,
@@ -608,7 +628,7 @@ export default function HomePage() {
             style={{
               border: `1px dashed ${theme.surface.border}`,
               borderRadius: 999,
-              padding: "14px 16px",
+              padding: "12px 14px",
               opacity: 0.85,
               background: theme.surface.cardBg,
             }}
@@ -620,7 +640,7 @@ export default function HomePage() {
             style={{
               border: `1px dashed ${theme.surface.border}`,
               borderRadius: 999,
-              padding: "14px 16px",
+              padding: "12px 14px",
               opacity: 0.85,
               background: theme.surface.cardBg,
             }}
@@ -630,6 +650,9 @@ export default function HomePage() {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {homeTasks.map((t) => {
+              const { bg, text } = TASK_COLORS[colorIndexFromId(t.id)];
+              const textIsBlack = text === "#000";
+
               const skipsAllowed = Math.max(
                 0,
                 Number(t.weekly_skips_allowed ?? 0)
@@ -639,32 +662,39 @@ export default function HomePage() {
 
               const wk = weeklyProgress(t);
 
-              const isDaily =
-                t.type === "habit" && (t.freq_per ?? "week") === "day";
-              const daily = isDaily ? dailyProgress(t) : null;
-
               return (
                 <div
                   key={t.id}
                   style={{
                     width: "100%",
-                    border: `1px solid ${theme.surface.border}`,
                     borderRadius: 999,
-                    padding: "12px 14px",
-                    background: theme.surface.cardBg,
-                    boxShadow: theme.surface.shadow,
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    alignItems: "center",
+                    background: bg,
+                    color: text,
+                    position: "relative",
+                    overflow: "hidden",
+                    // ~50% shorter than before
+                    padding: "10px 12px",
+                    boxShadow: "0 10px 22px rgba(0,0,0,0.45)",
                   }}
                 >
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  {/* content row */}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      // keep content from colliding with the bottom bar
+                      paddingBottom: 10,
+                    }}
+                  >
+                    {/* left: title */}
                     <div
                       style={{
+                        flex: 1,
+                        minWidth: 0,
                         fontWeight: 900,
                         fontSize: 15,
-                        lineHeight: 1.2,
+                        lineHeight: 1.1,
                         whiteSpace: "nowrap",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
@@ -674,135 +704,114 @@ export default function HomePage() {
                       {t.title}
                     </div>
 
+                    {/* middle: the 3 stats */}
                     <div
                       style={{
-                        marginTop: 6,
                         display: "flex",
                         gap: 8,
-                        flexWrap: "wrap",
                         alignItems: "center",
+                        flexWrap: "nowrap",
+                        overflow: "hidden",
                       }}
                     >
-                      <span
-                        style={{
-                          fontSize: 12,
-                          padding: "6px 10px",
-                          borderRadius: 999,
-                          border: `1px solid ${theme.pill.border}`,
-                          background: theme.pill.bg,
-                          color: theme.pill.muted,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {daysLeftInWeek} days left
-                      </span>
-
-                      <span
-                        style={{
-                          fontSize: 12,
-                          padding: "6px 10px",
-                          borderRadius: 999,
-                          border: `1px solid ${theme.accent.primary}`,
-                          background: "rgba(245,158,11,0.08)",
-                          color: "rgba(255,255,255,0.88)",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {skipsLeft} skips left
-                      </span>
-
-                      <span
-                        style={{
-                          fontSize: 12,
-                          padding: "6px 10px",
-                          borderRadius: 999,
-                          border: `1px solid ${theme.pill.border}`,
-                          background: theme.pill.bg,
-                          color: "rgba(255,255,255,0.88)",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {wk.done}/{wk.required} this week
-                      </span>
-
-                      {isDaily && daily ? (
+                      {[
+                        `${daysLeftInWeek}d left`,
+                        `${skipsLeft} skips`,
+                        `${wk.done}/${wk.required}`,
+                      ].map((label) => (
                         <span
+                          key={label}
                           style={{
                             fontSize: 12,
                             padding: "6px 10px",
                             borderRadius: 999,
-                            border: `1px solid ${theme.pill.border}`,
-                            background: theme.pill.bg,
-                            color: theme.pill.muted,
                             whiteSpace: "nowrap",
+                            background: textIsBlack
+                              ? "rgba(0,0,0,0.18)"
+                              : "rgba(255,255,255,0.18)",
+                            border: textIsBlack
+                              ? "1px solid rgba(0,0,0,0.22)"
+                              : "1px solid rgba(255,255,255,0.22)",
                           }}
                         >
-                          today {daily.done}/{daily.required}
+                          {label}
                         </span>
+                      ))}
+                    </div>
+
+                    {/* right: buttons */}
+                    <div style={{ display: "flex", gap: 10, flexWrap: "nowrap" }}>
+                      {skipsAllowed > 0 ? (
+                        <button
+                          onClick={() => skipTask(t)}
+                          disabled={busy || skipsLeft <= 0}
+                          style={{
+                            padding: "9px 12px",
+                            borderRadius: 999,
+                            border: textIsBlack
+                              ? "1px solid rgba(0,0,0,0.28)"
+                              : "1px solid rgba(255,255,255,0.28)",
+                            background: textIsBlack
+                              ? "rgba(0,0,0,0.18)"
+                              : "rgba(255,255,255,0.18)",
+                            color: text,
+                            fontWeight: 900,
+                            cursor:
+                              busy || skipsLeft <= 0 ? "not-allowed" : "pointer",
+                            opacity: busy || skipsLeft <= 0 ? 0.6 : 1,
+                          }}
+                          type="button"
+                        >
+                          Skip
+                        </button>
                       ) : null}
-                    </div>
 
-                    {/* Progress bar at the very bottom of the pill */}
-                    <div
-                      style={{
-                        marginTop: 10,
-                        width: "100%",
-                        height: 7,
-                        borderRadius: 999,
-                        overflow: "hidden",
-                        background: theme.progress.track,
-                        border: `1px solid ${theme.surface.border}`,
-                      }}
-                    >
-                      <div
-                        style={{
-                          height: "100%",
-                          width: `${wk.pct}%`,
-                          background: theme.progress.fill,
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                    {skipsAllowed > 0 ? (
                       <button
-                        onClick={() => skipTask(t)}
-                        disabled={busy || skipsLeft <= 0}
+                        onClick={() => openCompleteModal(t)}
+                        disabled={busy}
                         style={{
-                          padding: "10px 12px",
+                          padding: "9px 12px",
                           borderRadius: 999,
-                          border: `1px solid ${theme.button.border}`,
-                          background: theme.button.ghostBg,
-                          color: "var(--text)",
+                          border: textIsBlack
+                            ? "1px solid rgba(0,0,0,0.32)"
+                            : "1px solid rgba(255,255,255,0.32)",
+                          background: textIsBlack
+                            ? "rgba(0,0,0,0.24)"
+                            : "rgba(255,255,255,0.24)",
+                          color: text,
                           fontWeight: 900,
-                          cursor:
-                            busy || skipsLeft <= 0 ? "not-allowed" : "pointer",
-                          opacity: busy || skipsLeft <= 0 ? 0.6 : 1,
+                          cursor: busy ? "not-allowed" : "pointer",
+                          opacity: busy ? 0.6 : 1,
                         }}
                         type="button"
                       >
-                        Skip
+                        Complete
                       </button>
-                    ) : null}
+                    </div>
+                  </div>
 
-                    <button
-                      onClick={() => openCompleteModal(t)}
-                      disabled={busy}
+                  {/* progress bar attached to bottom, full width */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      height: 9,
+                      background: textIsBlack
+                        ? "rgba(0,0,0,0.18)"
+                        : "rgba(255,255,255,0.18)",
+                    }}
+                  >
+                    <div
                       style={{
-                        padding: "10px 12px",
-                        borderRadius: 999,
-                        border: `1px solid ${theme.accent.primary}`,
-                        background: "rgba(245,158,11,0.08)",
-                        color: "var(--text)",
-                        fontWeight: 900,
-                        cursor: busy ? "not-allowed" : "pointer",
-                        opacity: busy ? 0.6 : 1,
+                        height: "100%",
+                        width: `${wk.pct}%`,
+                        background: textIsBlack
+                          ? "rgba(0,0,0,0.55)"
+                          : "rgba(255,255,255,0.70)",
                       }}
-                      type="button"
-                    >
-                      Complete
-                    </button>
+                    />
                   </div>
                 </div>
               );
@@ -839,6 +848,7 @@ export default function HomePage() {
                 boxShadow: theme.surface.shadowHover,
                 padding: 16,
                 textAlign: "left",
+                color: "var(--text)",
               }}
               onClick={(e) => e.stopPropagation()}
             >
@@ -861,7 +871,7 @@ export default function HomePage() {
                       padding: "10px 12px",
                       borderRadius: 12,
                       border: `1px solid ${theme.accent.primary}`,
-                      background: "rgba(245,158,11,0.08)",
+                      background: theme.button.ghostBg,
                       color: "var(--text)",
                       fontWeight: 900,
                       cursor: busy ? "not-allowed" : "pointer",
@@ -969,7 +979,7 @@ export default function HomePage() {
                         padding: "10px 12px",
                         borderRadius: 12,
                         border: `1px solid ${theme.accent.primary}`,
-                        background: "rgba(245,158,11,0.08)",
+                        background: theme.button.ghostBg,
                         color: "var(--text)",
                         fontWeight: 900,
                         cursor: busy ? "not-allowed" : "pointer",
