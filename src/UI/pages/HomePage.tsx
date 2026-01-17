@@ -1,3 +1,4 @@
+// UI/pages/HomePage.tsx
 // FORCE NEW COMMIT: 2026-01-10-FIX-HOME-SHARED-FILTER
 "use client";
 
@@ -97,7 +98,6 @@ function formatDateHeader(d: Date) {
 
 export default function HomePage() {
   const [userId, setUserId] = useState<string | null>(null);
-  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
 
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [completions, setCompletions] = useState<CompletionRow[]>([]);
@@ -116,23 +116,14 @@ export default function HomePage() {
 
   // Splash page (shows once per browser session)
   const [showSplash, setShowSplash] = useState(false);
-
   useEffect(() => {
     const dismissed = sessionStorage.getItem("splashDismissed");
     setShowSplash(!dismissed);
   }, []);
-
   function dismissSplash() {
     sessionStorage.setItem("splashDismissed", "1");
     setShowSplash(false);
   }
-
-  // photo viewer (currently unused, but kept)
-  const [photoViewer, setPhotoViewer] = useState<{
-    open: boolean;
-    url: string | null;
-    title: string;
-  }>({ open: false, url: null, title: "" });
 
   // Tick so day rolls without refresh
   const [todayKey, setTodayKey] = useState<string>(() => new Date().toDateString());
@@ -151,13 +142,11 @@ export default function HomePage() {
       if (error) setStatus(error.message);
       const u = data.session?.user ?? null;
       setUserId(u?.id ?? null);
-      setSessionEmail(u?.email ?? null);
     })();
 
     const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
       const u = session?.user ?? null;
       setUserId(u?.id ?? null);
-      setSessionEmail(u?.email ?? null);
     });
 
     return () => {
@@ -516,11 +505,11 @@ export default function HomePage() {
           <section
             style={{
               width: "100%",
-              border: "1px solid var(--border)",
-              borderRadius: 16,
+              border: `1px solid ${theme.surface.border}`,
+              borderRadius: 18,
               padding: 16,
-              background: "rgba(255,255,255,0.02)",
-              boxShadow: "0 10px 24px rgba(0,0,0,0.20)",
+              background: theme.surface.cardBg,
+              boxShadow: theme.surface.shadow,
               textAlign: "left",
             }}
           >
@@ -539,22 +528,10 @@ export default function HomePage() {
                   color: "var(--text)",
                   textDecoration: "none",
                   fontWeight: 900,
+                  background: theme.button.ghostBg,
                 }}
               >
                 Log in
-              </Link>
-              <Link
-                href="/completed"
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid var(--border)",
-                  color: "var(--text)",
-                  textDecoration: "none",
-                  fontWeight: 900,
-                }}
-              >
-                Completed
               </Link>
             </div>
           </section>
@@ -570,7 +547,7 @@ export default function HomePage() {
         minHeight: theme.layout.fullHeight,
         background: theme.page.background,
         color: theme.page.text,
-        padding: 24,
+        padding: 18,
       }}
     >
       {showSplash ? (
@@ -587,9 +564,7 @@ export default function HomePage() {
           margin: "0 auto",
           display: "flex",
           flexDirection: "column",
-          gap: 20,
-          alignItems: "center",
-          textAlign: "center",
+          gap: 14,
         }}
       >
         <input
@@ -604,243 +579,236 @@ export default function HomePage() {
           }}
         />
 
+        <div style={{ padding: "6px 4px" }}>
+          <div style={{ fontSize: 20, fontWeight: 900 }}>
+            {formatDateHeader(now)}
+          </div>
+          <div style={{ opacity: 0.75, marginTop: 4, fontSize: 13 }}>
+            Remaining: <b>{homeTasks.length}</b>
+          </div>
+        </div>
+
         {status ? (
           <div
             style={{
               width: "100%",
-              border: "1px solid var(--border)",
-              borderRadius: 14,
+              border: `1px solid ${theme.surface.border}`,
+              borderRadius: 16,
               padding: 12,
-              background: "rgba(255,255,255,0.02)",
-              textAlign: "left",
+              background: theme.surface.cardBg,
+              boxShadow: theme.surface.shadow,
             }}
           >
             {status}
           </div>
         ) : null}
 
-        <section
-          style={{
-            width: "100%",
-            border: "1px solid var(--border)",
-            borderRadius: 16,
-            padding: 16,
-            background: "rgba(255,255,255,0.02)",
-            boxShadow: "0 10px 24px rgba(0,0,0,0.20)",
-            textAlign: "left",
-          }}
-        >
+        {loading ? (
           <div
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "flex-end",
-              gap: 12,
-              flexWrap: "wrap",
+              border: `1px dashed ${theme.surface.border}`,
+              borderRadius: 999,
+              padding: "14px 16px",
+              opacity: 0.85,
+              background: theme.surface.cardBg,
             }}
           >
-            <div>
-              <div style={{ fontSize: 22, fontWeight: 900 }}>
-                {formatDateHeader(now)}
-              </div>
-              <div style={{ opacity: 0.8, marginTop: 4 }}>
-                Remaining: <b>{homeTasks.length}</b>
-              </div>
-            </div>
-
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <Link
-                href="/tasks"
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: `1px solid ${theme.accent.primary}`,
-                  color: "var(--text)",
-                  textDecoration: "none",
-                  fontWeight: 900,
-                }}
-              >
-                Manage Tasks
-              </Link>
-              <Link
-                href="/completed"
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid var(--border)",
-                  color: "var(--text)",
-                  textDecoration: "none",
-                  fontWeight: 900,
-                }}
-              >
-                Completed
-              </Link>
-            </div>
+            Loading…
           </div>
+        ) : homeTasks.length === 0 ? (
+          <div
+            style={{
+              border: `1px dashed ${theme.surface.border}`,
+              borderRadius: 999,
+              padding: "14px 16px",
+              opacity: 0.85,
+              background: theme.surface.cardBg,
+            }}
+          >
+            You’re done for today 🎉
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {homeTasks.map((t) => {
+              const skipsAllowed = Math.max(
+                0,
+                Number(t.weekly_skips_allowed ?? 0)
+              );
+              const skipsUsed = weeklySkipsUsed(t.id);
+              const skipsLeft = Math.max(0, skipsAllowed - skipsUsed);
 
-          <div style={{ height: 12 }} />
+              const wk = weeklyProgress(t);
 
-          {loading ? (
-            <div
-              style={{
-                border: "1px dashed var(--border)",
-                borderRadius: 16,
-                padding: 14,
-                opacity: 0.85,
-              }}
-            >
-              Loading…
-            </div>
-          ) : homeTasks.length === 0 ? (
-            <div
-              style={{
-                border: "1px dashed var(--border)",
-                borderRadius: 16,
-                padding: 14,
-                opacity: 0.85,
-              }}
-            >
-              You’re done for today 🎉
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {homeTasks.map((t) => {
-                const skipsAllowed = Math.max(
-                  0,
-                  Number(t.weekly_skips_allowed ?? 0)
-                );
-                const skipsUsed = weeklySkipsUsed(t.id);
-                const skipsLeft = Math.max(0, skipsAllowed - skipsUsed);
+              const isDaily =
+                t.type === "habit" && (t.freq_per ?? "week") === "day";
+              const daily = isDaily ? dailyProgress(t) : null;
 
-                const wk = weeklyProgress(t);
-
-                const isDaily =
-                  t.type === "habit" && (t.freq_per ?? "week") === "day";
-                const daily = isDaily ? dailyProgress(t) : null;
-
-                return (
-                  <div
-                    key={t.id}
-                    style={{
-                      border: "1px solid var(--border)",
-                      borderRadius: 14,
-                      padding: 12,
-                      background: "rgba(255,255,255,0.02)",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 12,
-                      flexWrap: "wrap",
-                      alignItems: "center",
-                    }}
-                  >
-                    <div style={{ minWidth: 260, flex: 1 }}>
-                      <div style={{ fontWeight: 900, fontSize: 16 }}>
-                        {t.title}
-                      </div>
-
-                      <div style={{ opacity: 0.85, marginTop: 6, fontSize: 13 }}>
-                        <span>
-                          Days left this week: <b>{daysLeftInWeek}</b>
-                        </span>
-                        <span> • </span>
-                        <span>
-                          Skips left: <b>{skipsLeft}</b>
-                        </span>
-                        <span> • </span>
-                        <span>
-                          This week:{" "}
-                          <b>
-                            {wk.done}/{wk.required}
-                          </b>
-                        </span>
-                      </div>
-
-                      <div style={{ marginTop: 10 }}>
-                        <div
-                          style={{
-                            width: "min(420px, 100%)",
-                            height: 10,
-                            borderRadius: 999,
-                            border: "1px solid var(--border)",
-                            overflow: "hidden",
-                            background: "rgba(255,255,255,0.04)",
-                          }}
-                        >
-                          <div
-                            style={{
-                              height: "100%",
-                              width: `${wk.pct}%`,
-                              background: "var(--text)",
-                              opacity: 0.65,
-                            }}
-                          />
-                        </div>
-
-                        <div style={{ opacity: 0.7, fontSize: 12, marginTop: 6 }}>
-                          {t.type === "habit" ? (
-                            <>Target: {formatFrequency(t)}</>
-                          ) : (
-                            <>Single task</>
-                          )}
-                          {isDaily && daily ? (
-                            <>
-                              {" "}
-                              • Today:{" "}
-                              <b>
-                                {daily.done}/{daily.required}
-                              </b>
-                            </>
-                          ) : null}
-                        </div>
-                      </div>
+              return (
+                <div
+                  key={t.id}
+                  style={{
+                    width: "100%",
+                    border: `1px solid ${theme.surface.border}`,
+                    borderRadius: 999,
+                    padding: "12px 14px",
+                    background: theme.surface.cardBg,
+                    boxShadow: theme.surface.shadow,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    alignItems: "center",
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontWeight: 900,
+                        fontSize: 15,
+                        lineHeight: 1.2,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                      title={t.title}
+                    >
+                      {t.title}
                     </div>
 
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                      {skipsAllowed > 0 ? (
-                        <button
-                          onClick={() => skipTask(t)}
-                          disabled={busy || skipsLeft <= 0}
-                          style={{
-                            padding: "10px 12px",
-                            borderRadius: 12,
-                            border: "1px solid var(--border)",
-                            background: "transparent",
-                            color: "var(--text)",
-                            fontWeight: 900,
-                            cursor:
-                              busy || skipsLeft <= 0 ? "not-allowed" : "pointer",
-                            opacity: busy || skipsLeft <= 0 ? 0.6 : 1,
-                          }}
-                          type="button"
-                        >
-                          Skip
-                        </button>
-                      ) : null}
+                    <div
+                      style={{
+                        marginTop: 6,
+                        display: "flex",
+                        gap: 8,
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 12,
+                          padding: "6px 10px",
+                          borderRadius: 999,
+                          border: `1px solid ${theme.pill.border}`,
+                          background: theme.pill.bg,
+                          color: theme.pill.muted,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {daysLeftInWeek} days left
+                      </span>
 
+                      <span
+                        style={{
+                          fontSize: 12,
+                          padding: "6px 10px",
+                          borderRadius: 999,
+                          border: `1px solid ${theme.accent.primary}`,
+                          background: "rgba(245,158,11,0.08)",
+                          color: "rgba(255,255,255,0.88)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {skipsLeft} skips left
+                      </span>
+
+                      <span
+                        style={{
+                          fontSize: 12,
+                          padding: "6px 10px",
+                          borderRadius: 999,
+                          border: `1px solid ${theme.pill.border}`,
+                          background: theme.pill.bg,
+                          color: "rgba(255,255,255,0.88)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {wk.done}/{wk.required} this week
+                      </span>
+
+                      {isDaily && daily ? (
+                        <span
+                          style={{
+                            fontSize: 12,
+                            padding: "6px 10px",
+                            borderRadius: 999,
+                            border: `1px solid ${theme.pill.border}`,
+                            background: theme.pill.bg,
+                            color: theme.pill.muted,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          today {daily.done}/{daily.required}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    {/* Progress bar at the very bottom of the pill */}
+                    <div
+                      style={{
+                        marginTop: 10,
+                        width: "100%",
+                        height: 7,
+                        borderRadius: 999,
+                        overflow: "hidden",
+                        background: theme.progress.track,
+                        border: `1px solid ${theme.surface.border}`,
+                      }}
+                    >
+                      <div
+                        style={{
+                          height: "100%",
+                          width: `${wk.pct}%`,
+                          background: theme.progress.fill,
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    {skipsAllowed > 0 ? (
                       <button
-                        onClick={() => openCompleteModal(t)}
-                        disabled={busy}
+                        onClick={() => skipTask(t)}
+                        disabled={busy || skipsLeft <= 0}
                         style={{
                           padding: "10px 12px",
-                          borderRadius: 12,
-                          border: `1px solid ${theme.accent.primary}`,
-                          background: "transparent",
+                          borderRadius: 999,
+                          border: `1px solid ${theme.button.border}`,
+                          background: theme.button.ghostBg,
                           color: "var(--text)",
                           fontWeight: 900,
-                          cursor: busy ? "not-allowed" : "pointer",
-                          opacity: busy ? 0.6 : 1,
+                          cursor:
+                            busy || skipsLeft <= 0 ? "not-allowed" : "pointer",
+                          opacity: busy || skipsLeft <= 0 ? 0.6 : 1,
                         }}
                         type="button"
                       >
-                        Complete
+                        Skip
                       </button>
-                    </div>
+                    ) : null}
+
+                    <button
+                      onClick={() => openCompleteModal(t)}
+                      disabled={busy}
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: 999,
+                        border: `1px solid ${theme.accent.primary}`,
+                        background: "rgba(245,158,11,0.08)",
+                        color: "var(--text)",
+                        fontWeight: 900,
+                        cursor: busy ? "not-allowed" : "pointer",
+                        opacity: busy ? 0.6 : 1,
+                      }}
+                      type="button"
+                    >
+                      Complete
+                    </button>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Complete modal */}
         {completeTask && (
@@ -848,7 +816,7 @@ export default function HomePage() {
             style={{
               position: "fixed",
               inset: 0,
-              background: "rgba(0,0,0,0.55)",
+              background: "rgba(0,0,0,0.62)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -865,10 +833,10 @@ export default function HomePage() {
             <div
               style={{
                 width: "min(720px, 100%)",
-                borderRadius: 16,
-                border: "1px solid var(--border)",
-                background: "var(--bg)",
-                boxShadow: "0 18px 40px rgba(0,0,0,0.5)",
+                borderRadius: 18,
+                border: `1px solid ${theme.surface.border}`,
+                background: "rgba(10,10,10,0.96)",
+                boxShadow: theme.surface.shadowHover,
                 padding: 16,
                 textAlign: "left",
               }}
@@ -893,7 +861,7 @@ export default function HomePage() {
                       padding: "10px 12px",
                       borderRadius: 12,
                       border: `1px solid ${theme.accent.primary}`,
-                      background: "transparent",
+                      background: "rgba(245,158,11,0.08)",
                       color: "var(--text)",
                       fontWeight: 900,
                       cursor: busy ? "not-allowed" : "pointer",
@@ -913,8 +881,8 @@ export default function HomePage() {
                     style={{
                       padding: "10px 12px",
                       borderRadius: 12,
-                      border: "1px solid var(--border)",
-                      background: "transparent",
+                      border: `1px solid ${theme.button.border}`,
+                      background: theme.button.ghostBg,
                       color: "var(--text)",
                       fontWeight: 900,
                       cursor: busy ? "not-allowed" : "pointer",
@@ -931,8 +899,8 @@ export default function HomePage() {
                     style={{
                       padding: "10px 12px",
                       borderRadius: 12,
-                      border: "1px solid var(--border)",
-                      background: "transparent",
+                      border: `1px solid ${theme.button.border}`,
+                      background: theme.button.ghostBg,
                       color: "var(--text)",
                       fontWeight: 900,
                       cursor: busy ? "not-allowed" : "pointer",
@@ -958,7 +926,7 @@ export default function HomePage() {
                       minHeight: 110,
                       padding: 12,
                       borderRadius: 12,
-                      border: "1px solid var(--border)",
+                      border: `1px solid ${theme.surface.border}`,
                       background: "transparent",
                       color: "var(--text)",
                       outline: "none",
@@ -982,8 +950,8 @@ export default function HomePage() {
                       style={{
                         padding: "10px 12px",
                         borderRadius: 12,
-                        border: "1px solid var(--border)",
-                        background: "transparent",
+                        border: `1px solid ${theme.button.border}`,
+                        background: theme.button.ghostBg,
                         color: "var(--text)",
                         fontWeight: 900,
                         cursor: busy ? "not-allowed" : "pointer",
@@ -1001,7 +969,7 @@ export default function HomePage() {
                         padding: "10px 12px",
                         borderRadius: 12,
                         border: `1px solid ${theme.accent.primary}`,
-                        background: "transparent",
+                        background: "rgba(245,158,11,0.08)",
                         color: "var(--text)",
                         fontWeight: 900,
                         cursor: busy ? "not-allowed" : "pointer",
