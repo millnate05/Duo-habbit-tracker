@@ -88,7 +88,6 @@ function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n));
 }
 function formatDateHeader(d: Date) {
-  // e.g. "Friday, January 16"
   return d.toLocaleDateString(undefined, {
     weekday: "long",
     month: "long",
@@ -484,7 +483,7 @@ export default function HomePage() {
     }
   }
 
-  // Logged out: show hero, NO tasks
+  // Logged out
   if (!userId) {
     return (
       <main
@@ -514,27 +513,6 @@ export default function HomePage() {
             textAlign: "center",
           }}
         >
-          <img
-            src="/chris-bumstead-3.jpg.webp"
-            alt="Chris Bumstead"
-            style={{
-              width: "clamp(220px, 60vw, 520px)",
-              height: "auto",
-              maxWidth: "90vw",
-              borderRadius: 12,
-              border: `1px solid ${theme.accent.primary}`,
-            }}
-          />
-          <h1
-            style={{
-              fontSize: "clamp(28px, 6vw, 40px)",
-              fontWeight: 900,
-              margin: 0,
-            }}
-          >
-            “pain is privilege”
-          </h1>
-
           <section
             style={{
               width: "100%",
@@ -585,7 +563,7 @@ export default function HomePage() {
     );
   }
 
-  // Logged in: show tasks card
+  // Logged in
   return (
     <main
       style={{
@@ -603,7 +581,6 @@ export default function HomePage() {
         />
       ) : null}
 
-      {/* ...rest of your logged-in JSX stays the same... */}
       <div
         style={{
           maxWidth: 980,
@@ -615,31 +592,430 @@ export default function HomePage() {
           textAlign: "center",
         }}
       >
-        {/* NOTE: you can remove the image + quote below if you want them ONLY on the splash */}
-        <img
-          src="/chris-bumstead-3.jpg.webp"
-          alt="Chris Bumstead"
-          style={{
-            width: "clamp(220px, 60vw, 520px)",
-            height: "auto",
-            maxWidth: "90vw",
-            borderRadius: 12,
-            border: `1px solid ${theme.accent.primary}`,
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const f = e.target.files?.[0] ?? null;
+            if (f) uploadPhotoAndComplete(f);
           }}
         />
 
-        <h1
+        {status ? (
+          <div
+            style={{
+              width: "100%",
+              border: "1px solid var(--border)",
+              borderRadius: 14,
+              padding: 12,
+              background: "rgba(255,255,255,0.02)",
+              textAlign: "left",
+            }}
+          >
+            {status}
+          </div>
+        ) : null}
+
+        <section
           style={{
-            fontSize: "clamp(28px, 6vw, 40px)",
-            fontWeight: 900,
-            margin: 0,
+            width: "100%",
+            border: "1px solid var(--border)",
+            borderRadius: 16,
+            padding: 16,
+            background: "rgba(255,255,255,0.02)",
+            boxShadow: "0 10px 24px rgba(0,0,0,0.20)",
+            textAlign: "left",
           }}
         >
-          “pain is privilege”
-        </h1>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-end",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 22, fontWeight: 900 }}>
+                {formatDateHeader(now)}
+              </div>
+              <div style={{ opacity: 0.8, marginTop: 4 }}>
+                Remaining: <b>{homeTasks.length}</b>
+              </div>
+            </div>
 
-        {/* keep the rest of your file unchanged from here */}
-        {/* ... */}
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <Link
+                href="/tasks"
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: `1px solid ${theme.accent.primary}`,
+                  color: "var(--text)",
+                  textDecoration: "none",
+                  fontWeight: 900,
+                }}
+              >
+                Manage Tasks
+              </Link>
+              <Link
+                href="/completed"
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid var(--border)",
+                  color: "var(--text)",
+                  textDecoration: "none",
+                  fontWeight: 900,
+                }}
+              >
+                Completed
+              </Link>
+            </div>
+          </div>
+
+          <div style={{ height: 12 }} />
+
+          {loading ? (
+            <div
+              style={{
+                border: "1px dashed var(--border)",
+                borderRadius: 16,
+                padding: 14,
+                opacity: 0.85,
+              }}
+            >
+              Loading…
+            </div>
+          ) : homeTasks.length === 0 ? (
+            <div
+              style={{
+                border: "1px dashed var(--border)",
+                borderRadius: 16,
+                padding: 14,
+                opacity: 0.85,
+              }}
+            >
+              You’re done for today 🎉
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {homeTasks.map((t) => {
+                const skipsAllowed = Math.max(
+                  0,
+                  Number(t.weekly_skips_allowed ?? 0)
+                );
+                const skipsUsed = weeklySkipsUsed(t.id);
+                const skipsLeft = Math.max(0, skipsAllowed - skipsUsed);
+
+                const wk = weeklyProgress(t);
+
+                const isDaily =
+                  t.type === "habit" && (t.freq_per ?? "week") === "day";
+                const daily = isDaily ? dailyProgress(t) : null;
+
+                return (
+                  <div
+                    key={t.id}
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 14,
+                      padding: 12,
+                      background: "rgba(255,255,255,0.02)",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div style={{ minWidth: 260, flex: 1 }}>
+                      <div style={{ fontWeight: 900, fontSize: 16 }}>
+                        {t.title}
+                      </div>
+
+                      <div style={{ opacity: 0.85, marginTop: 6, fontSize: 13 }}>
+                        <span>
+                          Days left this week: <b>{daysLeftInWeek}</b>
+                        </span>
+                        <span> • </span>
+                        <span>
+                          Skips left: <b>{skipsLeft}</b>
+                        </span>
+                        <span> • </span>
+                        <span>
+                          This week:{" "}
+                          <b>
+                            {wk.done}/{wk.required}
+                          </b>
+                        </span>
+                      </div>
+
+                      <div style={{ marginTop: 10 }}>
+                        <div
+                          style={{
+                            width: "min(420px, 100%)",
+                            height: 10,
+                            borderRadius: 999,
+                            border: "1px solid var(--border)",
+                            overflow: "hidden",
+                            background: "rgba(255,255,255,0.04)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              height: "100%",
+                              width: `${wk.pct}%`,
+                              background: "var(--text)",
+                              opacity: 0.65,
+                            }}
+                          />
+                        </div>
+
+                        <div style={{ opacity: 0.7, fontSize: 12, marginTop: 6 }}>
+                          {t.type === "habit" ? (
+                            <>Target: {formatFrequency(t)}</>
+                          ) : (
+                            <>Single task</>
+                          )}
+                          {isDaily && daily ? (
+                            <>
+                              {" "}
+                              • Today:{" "}
+                              <b>
+                                {daily.done}/{daily.required}
+                              </b>
+                            </>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      {skipsAllowed > 0 ? (
+                        <button
+                          onClick={() => skipTask(t)}
+                          disabled={busy || skipsLeft <= 0}
+                          style={{
+                            padding: "10px 12px",
+                            borderRadius: 12,
+                            border: "1px solid var(--border)",
+                            background: "transparent",
+                            color: "var(--text)",
+                            fontWeight: 900,
+                            cursor:
+                              busy || skipsLeft <= 0 ? "not-allowed" : "pointer",
+                            opacity: busy || skipsLeft <= 0 ? 0.6 : 1,
+                          }}
+                          type="button"
+                        >
+                          Skip
+                        </button>
+                      ) : null}
+
+                      <button
+                        onClick={() => openCompleteModal(t)}
+                        disabled={busy}
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: 12,
+                          border: `1px solid ${theme.accent.primary}`,
+                          background: "transparent",
+                          color: "var(--text)",
+                          fontWeight: 900,
+                          cursor: busy ? "not-allowed" : "pointer",
+                          opacity: busy ? 0.6 : 1,
+                        }}
+                        type="button"
+                      >
+                        Complete
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* Complete modal */}
+        {completeTask && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.55)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 18,
+              zIndex: 999,
+            }}
+            onClick={() => {
+              if (busy) return;
+              setCompleteTask(null);
+              setOverrideOpen(false);
+              setOverrideText("");
+            }}
+          >
+            <div
+              style={{
+                width: "min(720px, 100%)",
+                borderRadius: 16,
+                border: "1px solid var(--border)",
+                background: "var(--bg)",
+                boxShadow: "0 18px 40px rgba(0,0,0,0.5)",
+                padding: 16,
+                textAlign: "left",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ fontWeight: 900, fontSize: 18 }}>
+                Complete: {completeTask.title}
+              </div>
+              <div style={{ opacity: 0.8, marginTop: 6 }}>
+                Choose proof type.
+              </div>
+
+              <div style={{ height: 12 }} />
+
+              {!overrideOpen ? (
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={choosePhoto}
+                    disabled={busy}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      border: `1px solid ${theme.accent.primary}`,
+                      background: "transparent",
+                      color: "var(--text)",
+                      fontWeight: 900,
+                      cursor: busy ? "not-allowed" : "pointer",
+                      opacity: busy ? 0.6 : 1,
+                    }}
+                  >
+                    Photo proof
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOverrideText("");
+                      setOverrideOpen(true);
+                    }}
+                    disabled={busy}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      border: "1px solid var(--border)",
+                      background: "transparent",
+                      color: "var(--text)",
+                      fontWeight: 900,
+                      cursor: busy ? "not-allowed" : "pointer",
+                      opacity: busy ? 0.6 : 1,
+                    }}
+                  >
+                    Override
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setCompleteTask(null)}
+                    disabled={busy}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      border: "1px solid var(--border)",
+                      background: "transparent",
+                      color: "var(--text)",
+                      fontWeight: 900,
+                      cursor: busy ? "not-allowed" : "pointer",
+                      opacity: busy ? 0.6 : 1,
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div style={{ opacity: 0.8, marginTop: 6 }}>
+                    Override requires a note.
+                  </div>
+
+                  <textarea
+                    value={overrideText}
+                    onChange={(e) => setOverrideText(e.target.value)}
+                    placeholder="Explain the override…"
+                    style={{
+                      marginTop: 12,
+                      width: "100%",
+                      minHeight: 110,
+                      padding: 12,
+                      borderRadius: 12,
+                      border: "1px solid var(--border)",
+                      background: "transparent",
+                      color: "var(--text)",
+                      outline: "none",
+                      resize: "vertical",
+                    }}
+                  />
+
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "flex-end",
+                      gap: 10,
+                      marginTop: 12,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setOverrideOpen(false)}
+                      disabled={busy}
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: 12,
+                        border: "1px solid var(--border)",
+                        background: "transparent",
+                        color: "var(--text)",
+                        fontWeight: 900,
+                        cursor: busy ? "not-allowed" : "pointer",
+                        opacity: busy ? 0.6 : 1,
+                      }}
+                    >
+                      Back
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={submitOverride}
+                      disabled={busy}
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: 12,
+                        border: `1px solid ${theme.accent.primary}`,
+                        background: "transparent",
+                        color: "var(--text)",
+                        fontWeight: 900,
+                        cursor: busy ? "not-allowed" : "pointer",
+                        opacity: busy ? 0.6 : 1,
+                      }}
+                    >
+                      Submit override
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );
