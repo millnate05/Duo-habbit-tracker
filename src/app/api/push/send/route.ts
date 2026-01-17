@@ -18,17 +18,12 @@ type ReminderRow = {
   user_id: string;
   task_id: string;
   enabled: boolean;
-  timezone: string | null;
-  time_of_day: string | null; // "HH:MM" (expected)
-  cadence: string | null; // "daily" | "weekly" | "monthly" | "yearly" (we’ll handle these)
-  days_of_week: number[] | null; // ARRAY of 0-6 (Sun=0)
-  day_of_month: number | null;
-  week_of_month: number | null;
-  weekday: number | null; // 0-6
-  month_of_year: number | null; // 1-12
-  day_of_year_month: number | null;
-  start_date: string | null; // "YYYY-MM-DD"
-  end_date: string | null; // "YYYY-MM-DD"
+
+  // actual schema in public.reminders
+  reminder_time: string | null; // "HH:MM:SS"
+  tz: string | null; // IANA timezone
+  scheduled_days: number[] | null; // optional; assume 0-6 (Sun=0)
+  next_fire_at: string | null; // timestamptz (optional; computed by app)
   tasks?: { title?: string | null } | null;
 };
 
@@ -45,19 +40,21 @@ function getCronTokenExpected() {
   return process.env.CRON_PUSH_TOKEN || "";
 }
 
-// Convert "HH:MM" -> {h,m} or null
+// Convert "HH:MM" or "HH:MM:SS" -> {h,m} or null
 function parseTimeOfDay(s: string | null): { h: number; m: number } | null {
   if (!s) return null;
-  const match = /^(\d{1,2}):(\d{2})$/.exec(s.trim());
+  const trimmed = s.trim();
+  const match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(trimmed);
   if (!match) return null;
+
   const h = Number(match[1]);
   const m = Number(match[2]);
   if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
   if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+
   return { h, m };
 }
 
-// Get date/time parts in a specific IANA timezone
 function getZonedParts(date: Date, timeZone: string) {
   const dtf = new Intl.DateTimeFormat("en-US", {
     timeZone,
@@ -79,7 +76,6 @@ function getZonedParts(date: Date, timeZone: string) {
   const hour = Number(get("hour"));
   const minute = Number(get("minute"));
 
-  // weekday mapping (Sun=0..Sat=6)
   const wd = get("weekday");
   const dowMap: Record<string, number> = {
     Sun: 0,
@@ -93,82 +89,17 @@ function getZonedParts(date: Date, timeZone: string) {
   const dow = wd && wd in dowMap ? dowMap[wd] : new Date(date).getUTCDay();
 
   const ymd = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-
   return { year, month, day, hour, minute, dow, ymd };
 }
 
-function isWithinDateWindow(rem: ReminderRow, zonedYmd: string) {
-  // Compare as strings "YYYY-MM-DD" safely since same format
-  if (rem.start_date && zonedYmd < rem.start_date) return false;
-  if (rem.end_date && zonedYmd > rem.end_date) return false;
-  return true;
-}
-
-// Minimal cadence rules using your schema:
-// - daily: every day (optionally restricted by days_of_week if provided)
-// - weekly: only on days_of_week (if provided); otherwise use weekday column if present
-// - monthly: if day_of_month set, must match; else if week_of_month+weekday set, must match
-// - yearly: if month_of_year + day_of_month set, must match (basic)
-function cadenceAllowsToday(rem: ReminderRow, parts: ReturnType<typeof getZonedParts>): boolean {
-  const cadence = (rem.cadence || "daily").toLowerCase();
-
-  if (cadence === "daily") {
-    // If days_of_week provided, treat it as allowed-days filter
-    if (Array.isArray(rem.days_of_week) && rem.days_of_week.length > 0) {
-      return rem.days_of_week.includes(parts.dow);
-    }
-    return true;
-  }
-
-  if (cadence === "weekly") {
-    if (Array.isArray(rem.days_of_week) && rem.days_of_week.length > 0) {
-      return rem.days_of_week.includes(parts.dow);
-    }
-    if (typeof rem.weekday === "number") return rem.weekday === parts.dow;
-    return true; // fallback
-  }
-
-  if (cadence === "monthly") {
-    if (typeof rem.day_of_month === "number" && rem.day_of_month >= 1 && rem.day_of_month <= 31) {
-      return parts.day === rem.day_of_month;
-    }
-    // Week-of-month + weekday (e.g., 2nd Monday)
-    if (
-      typeof rem.week_of_month === "number" &&
-      rem.week_of_month >= 1 &&
-      rem.week_of_month <= 5 &&
-      typeof rem.weekday === "number"
-    ) {
-      const weekIndex = Math.floor((parts.day - 1) / 7) + 1; // 1..5
-      return weekIndex === rem.week_of_month && parts.dow === rem.weekday;
-    }
-    return false;
-  }
-
-  if (cadence === "yearly") {
-    if (
-      typeof rem.month_of_year === "number" &&
-      rem.month_of_year >= 1 &&
-      rem.month_of_year <= 12 &&
-      typeof rem.day_of_month === "number" &&
-      rem.day_of_month >= 1 &&
-      rem.day_of_month <= 31
-    ) {
-      return parts.month === rem.month_of_year && parts.day === rem.day_of_month;
-    }
-    return false;
-  }
-
-  // Unknown cadence -> do nothing
-  return false;
-}
-
-// Decide if it’s time to fire *right now*.
-// Cron runs every 2 minutes, so we allow a small window (2 minutes).
+// Due logic for your current reminders table:
+// - daily at reminder_time in tz
+// - optional scheduled_days filter (if provided)
+// - 10 minute window after target time
 function isDueNow(rem: ReminderRow, nowUtc: Date): { due: boolean; reason?: string } {
   if (!rem.enabled) return { due: false, reason: "disabled" };
 
-  const tz = rem.timezone || "UTC";
+  const tz = rem.tz || "UTC";
   let parts: ReturnType<typeof getZonedParts>;
   try {
     parts = getZonedParts(nowUtc, tz);
@@ -176,28 +107,22 @@ function isDueNow(rem: ReminderRow, nowUtc: Date): { due: boolean; reason?: stri
     return { due: false, reason: "bad_timezone" };
   }
 
-  if (!isWithinDateWindow(rem, parts.ymd)) return { due: false, reason: "outside_date_window" };
-  if (!cadenceAllowsToday(rem, parts)) return { due: false, reason: "cadence_not_today" };
+  // scheduled_days filter if set
+  if (Array.isArray(rem.scheduled_days) && rem.scheduled_days.length > 0) {
+    if (!rem.scheduled_days.includes(parts.dow)) return { due: false, reason: "day_not_allowed" };
+  }
 
-  const tod = parseTimeOfDay(rem.time_of_day);
+  const tod = parseTimeOfDay(rem.reminder_time);
   if (!tod) return { due: false, reason: "bad_time_of_day" };
 
-  // Window: allow firing if current time is within [targetMinute, targetMinute+2)
-  // Example: target 08:00, cron at 08:00 or 08:02 should still fire once.
+  const nowTotal = parts.hour * 60 + parts.minute;
+  const targetTotal = tod.h * 60 + tod.m;
 
-const nowTotal = parts.hour * 60 + parts.minute;
-const targetTotal = tod.h * 60 + tod.m;
+  const WINDOW_MINUTES = 10;
+  if (nowTotal < targetTotal) return { due: false, reason: "too_early" };
+  if (nowTotal >= targetTotal + WINDOW_MINUTES) return { due: false, reason: "too_late" };
 
-// Window: allow firing if current time is within the last 10 minutes
-  
-const WINDOW_MINUTES = 10;
-
-if (nowTotal < targetTotal) return { due: false, reason: "too_early" };
-if (nowTotal >= targetTotal + WINDOW_MINUTES)
-  return { due: false, reason: "too_late" };
-
-return { due: true };
-
+  return { due: true };
 }
 
 export async function POST(req: Request) {
@@ -224,7 +149,7 @@ export async function POST(req: Request) {
     );
   }
 
-  // Auth (cron + manual tests)
+  // Auth
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
   const expected = getCronTokenExpected();
@@ -254,8 +179,8 @@ export async function POST(req: Request) {
   webpush.setVapidDetails(vapidSubject, vapidPublic, vapidPrivate);
   const supabase = createClient(supabaseUrl, serviceKey);
 
+  // Direct-send mode
   const isDirectSend = !!(body?.user_id && body?.title && body?.body);
-
   if (isDirectSend) {
     const result = await sendToUser({
       supabase,
@@ -264,18 +189,15 @@ export async function POST(req: Request) {
       body: body.body!,
       url: body.url || "/tasks",
     });
-
     return NextResponse.json({ ok: true, mode: "direct", ...result });
   }
 
-  // CRON MODE: read schedules from task_reminders and compute due reminders
+  // CRON MODE: read schedules from public.reminders
   const nowUtc = new Date();
 
   const { data: reminders, error: remErr } = await supabase
-    .from("task_reminders")
-    .select(
-      "id,user_id,task_id,enabled,timezone,time_of_day,cadence,days_of_week,day_of_month,week_of_month,weekday,month_of_year,day_of_year_month,start_date,end_date,tasks:tasks(title)"
-    )
+    .from("reminders")
+    .select("id,user_id,task_id,enabled,reminder_time,tz,scheduled_days,next_fire_at,tasks:tasks(title)")
     .eq("enabled", true)
     .limit(500);
 
@@ -290,9 +212,9 @@ export async function POST(req: Request) {
 
   for (const rem of (reminders as ReminderRow[]) || []) {
     checked++;
-
     const due = isDueNow(rem, nowUtc);
     if (!due.due) continue;
+
     dueCount++;
 
     const title = rem.tasks?.title || "Reminder";
@@ -311,18 +233,14 @@ export async function POST(req: Request) {
     if (res.failed > 0) failed += 1;
   }
 
- const parts = getZonedParts(nowUtc, "America/Los_Angeles");
-
-return NextResponse.json({
-  ok: true,
-  mode: "process_in_send",
-  checked,
-  due: dueCount,
-  sent,
-  failed,
-});
-
-
+  return NextResponse.json({
+    ok: true,
+    mode: "process_in_send",
+    checked,
+    due: dueCount,
+    sent,
+    failed,
+  });
 }
 
 async function sendToUser(args: {
@@ -340,7 +258,8 @@ async function sendToUser(args: {
     .eq("user_id", user_id);
 
   if (error) return { sent: 0, failed: 1, cleaned: 0, status: 500, error: error.message };
-  if (!subs || subs.length === 0) return { sent: 0, failed: 1, cleaned: 0, status: 404, error: "No subscriptions for user" };
+  if (!subs || subs.length === 0)
+    return { sent: 0, failed: 1, cleaned: 0, status: 404, error: "No subscriptions for user" };
 
   const payload = JSON.stringify({ title, body, url });
 
