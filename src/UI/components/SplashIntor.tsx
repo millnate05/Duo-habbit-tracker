@@ -1,0 +1,117 @@
+"use client";
+
+import React, { useEffect, useRef, useState } from "react";
+import { theme } from "@/UI/theme";
+
+type Props = {
+  imageSrc: string;
+  quote: string;
+  onDismiss: () => void;
+};
+
+export default function SplashIntro({ imageSrc, quote, onDismiss }: Props) {
+  const startRef = useRef<{ x: number; y: number; t: number } | null>(null);
+  const [exiting, setExiting] = useState(false);
+
+  function dismiss() {
+    if (exiting) return;
+    setExiting(true);
+    // match transition duration below
+    window.setTimeout(() => onDismiss(), 260);
+  }
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" || e.key === "Enter" || e.key === " ") dismiss();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exiting]);
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 2000,
+        background: theme.page.background,
+        color: theme.page.text,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 24,
+        // slide out on dismiss
+        transform: exiting ? "translateX(-110%)" : "translateX(0)",
+        transition: "transform 260ms ease",
+        touchAction: "pan-y pan-x",
+      }}
+      onTouchStart={(e) => {
+        const t = e.touches[0];
+        startRef.current = { x: t.clientX, y: t.clientY, t: Date.now() };
+      }}
+      onTouchMove={(e) => {
+        // optional: you can add live dragging here later if you want
+      }}
+      onTouchEnd={(e) => {
+        const start = startRef.current;
+        startRef.current = null;
+        if (!start) return;
+
+        const t = e.changedTouches[0];
+        const dx = t.clientX - start.x;
+        const dy = t.clientY - start.y;
+
+        // swipe threshold
+        const absX = Math.abs(dx);
+        const absY = Math.abs(dy);
+
+        // swipe left OR swipe up triggers dismiss
+        if (dx < -60 && absX > absY) dismiss();
+        else if (dy < -70 && absY > absX) dismiss();
+      }}
+      // bonus: click/tap anywhere also dismisses (feels good on desktop)
+      onClick={dismiss}
+      role="button"
+      aria-label="Dismiss intro"
+    >
+      <div
+        style={{
+          width: "min(980px, 100%)",
+          display: "flex",
+          flexDirection: "column",
+          gap: 18,
+          alignItems: "center",
+          textAlign: "center",
+        }}
+      >
+        <img
+          src={imageSrc}
+          alt="Intro"
+          style={{
+            width: "min(92vw, 620px)",
+            height: "auto",
+            borderRadius: 16,
+            border: `1px solid ${theme.accent.primary}`,
+            boxShadow: "0 18px 48px rgba(0,0,0,0.45)",
+          }}
+        />
+
+        <div
+          style={{
+            fontSize: "clamp(26px, 5vw, 44px)",
+            fontWeight: 900,
+            margin: 0,
+            lineHeight: 1.05,
+          }}
+        >
+          {quote}
+        </div>
+
+        <div style={{ opacity: 0.75, fontWeight: 800, marginTop: 6 }}>
+          Swipe left or up to begin
+        </div>
+      </div>
+    </div>
+  );
+}
