@@ -44,13 +44,6 @@ type SkipRow = {
   skipped_at: string;
 };
 
-function formatFrequency(t: TaskRow) {
-  if (t.type !== "habit") return "";
-  const times = Math.max(1, Number(t.freq_times ?? 1));
-  const per = (t.freq_per ?? "week") as FrequencyUnit;
-  return `${times}x per ${per}`;
-}
-
 // ---------- Local time helpers ----------
 function startOfDayLocal(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
@@ -115,15 +108,32 @@ function colorIndexFromId(id: string) {
   return h % TASK_COLORS.length;
 }
 
-// ---------- Simple icon mapping (emoji “images”) ----------
-function pickTaskIcon(title: string) {
+// ---------- Minimal “Apple Fitness-ish” icons (white outline SVG) ----------
+type IconKind =
+  | "water"
+  | "lift"
+  | "run"
+  | "stretch"
+  | "sleep"
+  | "read"
+  | "meditate"
+  | "food"
+  | "calendar"
+  | "check";
+
+function pickIconKind(title: string): IconKind {
   const t = title.toLowerCase();
 
-  // hydration
-  if (t.includes("water") || t.includes("hydrate") || t.includes("hydration") || t.includes("drink"))
-    return "💧";
+  // water / hydration
+  if (
+    t.includes("water") ||
+    t.includes("hydrate") ||
+    t.includes("hydration") ||
+    t.includes("drink")
+  )
+    return "water";
 
-  // lifting / gym
+  // lifting
   if (
     t.includes("lift") ||
     t.includes("weights") ||
@@ -135,34 +145,336 @@ function pickTaskIcon(title: string) {
     t.includes("workout") ||
     t.includes("train")
   )
-    return "🏋️";
+    return "lift";
 
   // run / cardio
-  if (t.includes("run") || t.includes("cardio") || t.includes("jog") || t.includes("walk") || t.includes("steps"))
-    return "🏃";
+  if (
+    t.includes("run") ||
+    t.includes("cardio") ||
+    t.includes("jog") ||
+    t.includes("walk") ||
+    t.includes("steps")
+  )
+    return "run";
 
-  // stretching / mobility
+  // stretch / mobility / yoga
   if (t.includes("stretch") || t.includes("mobility") || t.includes("yoga"))
-    return "🤸";
+    return "stretch";
 
   // sleep
   if (t.includes("sleep") || t.includes("bed") || t.includes("nap"))
-    return "😴";
+    return "sleep";
 
   // reading / studying
-  if (t.includes("read") || t.includes("study") || t.includes("homework") || t.includes("school"))
-    return "📚";
+  if (
+    t.includes("read") ||
+    t.includes("study") ||
+    t.includes("homework") ||
+    t.includes("school")
+  )
+    return "read";
 
   // meditation / mindfulness
-  if (t.includes("meditate") || t.includes("meditation") || t.includes("breath") || t.includes("mindful"))
-    return "🧘";
+  if (
+    t.includes("meditate") ||
+    t.includes("meditation") ||
+    t.includes("breath") ||
+    t.includes("mindful")
+  )
+    return "meditate";
 
   // food / protein
-  if (t.includes("protein") || t.includes("meal") || t.includes("eat") || t.includes("nutrition") || t.includes("macro"))
-    return "🥗";
+  if (
+    t.includes("protein") ||
+    t.includes("meal") ||
+    t.includes("eat") ||
+    t.includes("nutrition") ||
+    t.includes("macro")
+  )
+    return "food";
 
-  // default “task”
-  return "✅";
+  // date/calendar-ish reminders
+  if (t.includes("calendar") || t.includes("schedule") || t.includes("plan"))
+    return "calendar";
+
+  return "check";
+}
+
+function TaskMiniIcon({ kind }: { kind: IconKind }) {
+  // White outline, simple shapes. Small and minimal.
+  const common = {
+    width: 22,
+    height: 22,
+    viewBox: "0 0 24 24",
+    style: { display: "block" as const },
+  };
+
+  const stroke = "rgba(255,255,255,0.95)";
+  const stroke2 = "rgba(255,255,255,0.75)";
+
+  switch (kind) {
+    case "water":
+      return (
+        <svg {...common} aria-label="water icon">
+          <path
+            d="M12 2 C10 6,7 9,7 13 a5 5 0 0 0 10 0 c0-4-3-7-5-11z"
+            fill="none"
+            stroke={stroke}
+            strokeWidth="2"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M9.8 14.2c.6 1.6 2 2.6 3.7 2.6"
+            fill="none"
+            stroke={stroke2}
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+        </svg>
+      );
+
+    case "lift":
+      return (
+        <svg {...common} aria-label="dumbbell icon">
+          <path
+            d="M6 10v4M18 10v4"
+            fill="none"
+            stroke={stroke}
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+          <path
+            d="M8 9v6M16 9v6"
+            fill="none"
+            stroke={stroke}
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+          <path
+            d="M9 12h6"
+            fill="none"
+            stroke={stroke}
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+          <path
+            d="M5 11h2M17 11h2"
+            fill="none"
+            stroke={stroke2}
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+        </svg>
+      );
+
+    case "run":
+      return (
+        <svg {...common} aria-label="runner icon">
+          <circle
+            cx="15"
+            cy="6.5"
+            r="1.8"
+            fill="none"
+            stroke={stroke}
+            strokeWidth="2"
+          />
+          <path
+            d="M10.5 21l2.3-5.2 2.6 1.4 2.2-4.2-3.2-1.8-1.3-2.6-3 1.3 1.1 2.4-2.6 3.4"
+            fill="none"
+            stroke={stroke}
+            strokeWidth="2"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+          <path
+            d="M7 13.5l3.2-1.3"
+            fill="none"
+            stroke={stroke2}
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+        </svg>
+      );
+
+    case "stretch":
+      return (
+        <svg {...common} aria-label="stretch icon">
+          <path
+            d="M6 18c2-2 4-3 6-3s4 1 6 3"
+            fill="none"
+            stroke={stroke}
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+          <path
+            d="M8 12c1.2-2 2.6-3 4-3s2.8 1 4 3"
+            fill="none"
+            stroke={stroke2}
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+          <path
+            d="M12 7V4"
+            fill="none"
+            stroke={stroke}
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+        </svg>
+      );
+
+    case "sleep":
+      return (
+        <svg {...common} aria-label="sleep icon">
+          <path
+            d="M8 9c.7 4 3.2 7 7 7-1.2 1.2-2.8 2-4.7 2-3.6 0-6.3-2.9-6.3-6.4 0-1.9.8-3.5 2-4.6z"
+            fill="none"
+            stroke={stroke}
+            strokeWidth="2"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M15.5 7.2h3M16 5h2.5"
+            fill="none"
+            stroke={stroke2}
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+        </svg>
+      );
+
+    case "read":
+      return (
+        <svg {...common} aria-label="book icon">
+          <path
+            d="M6 6.5c2-1 4-1 6 0v13c-2-1-4-1-6 0v-13z"
+            fill="none"
+            stroke={stroke}
+            strokeWidth="2"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M18 6.5c-2-1-4-1-6 0v13c2-1 4-1 6 0v-13z"
+            fill="none"
+            stroke={stroke}
+            strokeWidth="2"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M9 9.2h2.5"
+            fill="none"
+            stroke={stroke2}
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+        </svg>
+      );
+
+    case "meditate":
+      return (
+        <svg {...common} aria-label="meditation icon">
+          <path
+            d="M12 8.2c1 0 1.8-.8 1.8-1.8S13 4.6 12 4.6s-1.8.8-1.8 1.8.8 1.8 1.8 1.8z"
+            fill="none"
+            stroke={stroke}
+            strokeWidth="2"
+          />
+          <path
+            d="M8 19c1.2-2.5 2.6-3.8 4-3.8s2.8 1.3 4 3.8"
+            fill="none"
+            stroke={stroke}
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+          <path
+            d="M6.2 14.2c1.7-.9 3.5-1.3 5.8-1.3s4.1.4 5.8 1.3"
+            fill="none"
+            stroke={stroke2}
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+        </svg>
+      );
+
+    case "food":
+      return (
+        <svg {...common} aria-label="food icon">
+          <path
+            d="M7 6c1.2 1.4 1.2 3.2 0 4.6-1.2-1.4-1.2-3.2 0-4.6z"
+            fill="none"
+            stroke={stroke}
+            strokeWidth="2"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M12 6c1.2 1.4 1.2 3.2 0 4.6-1.2-1.4-1.2-3.2 0-4.6z"
+            fill="none"
+            stroke={stroke2}
+            strokeWidth="2"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M17 7v9c0 2-1.8 3.4-5 3.4S7 18 7 16V12"
+            fill="none"
+            stroke={stroke}
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+        </svg>
+      );
+
+    case "calendar":
+      return (
+        <svg {...common} aria-label="calendar icon">
+          <path
+            d="M7 4v3M17 4v3"
+            fill="none"
+            stroke={stroke}
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+          <path
+            d="M6 7h12"
+            fill="none"
+            stroke={stroke2}
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+          <rect
+            x="5"
+            y="6"
+            width="14"
+            height="14"
+            rx="3"
+            ry="3"
+            fill="none"
+            stroke={stroke}
+            strokeWidth="2"
+          />
+          <path
+            d="M8.5 11.2h3.2"
+            fill="none"
+            stroke={stroke2}
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+        </svg>
+      );
+
+    default:
+      return (
+        <svg {...common} aria-label="check icon">
+          <path
+            d="M7 12.5l3 3 7-7"
+            fill="none"
+            stroke={stroke}
+            strokeWidth="2.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      );
+  }
 }
 
 export default function HomePage() {
@@ -305,7 +617,6 @@ export default function HomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todayKey, userId]);
 
-  // Derived time markers
   const now = useMemo(() => new Date(), [todayKey]);
   const todayStartMs = useMemo(() => startOfDayLocal(now).getTime(), [now]);
   const weekStartMs = useMemo(() => startOfWeekLocal(now).getTime(), [now]);
@@ -659,7 +970,7 @@ export default function HomePage() {
           <div
             style={{
               border: `1px dashed ${theme.surface.border}`,
-              borderRadius: 999,
+              borderRadius: 18,
               padding: "12px 14px",
               opacity: 0.85,
               background: theme.surface.cardBg,
@@ -672,7 +983,7 @@ export default function HomePage() {
           <div
             style={{
               border: `1px dashed ${theme.surface.border}`,
-              borderRadius: 999,
+              borderRadius: 18,
               padding: "12px 14px",
               opacity: 0.85,
               background: theme.surface.cardBg,
@@ -696,19 +1007,19 @@ export default function HomePage() {
               const skipsUsed = weeklySkipsUsed(t.id);
               const skipsLeft = Math.max(0, skipsAllowed - skipsUsed);
 
-              const icon = pickTaskIcon(t.title);
+              const kind = pickIconKind(t.title);
 
               return (
                 <div
                   key={t.id}
                   style={{
                     width: "100%",
-                    borderRadius: 999,
+                    borderRadius: 28, // ✅ less severe than full pill
                     background: bg,
                     color: text,
                     position: "relative",
                     overflow: "hidden",
-                    padding: "14px 14px", // slightly taller
+                    padding: "12px 14px", // ✅ slightly shorter (~5% less)
                     boxShadow: "0 10px 22px rgba(0,0,0,0.45)",
                   }}
                 >
@@ -717,7 +1028,7 @@ export default function HomePage() {
                       display: "flex",
                       alignItems: "center",
                       gap: 12,
-                      paddingBottom: 12, // space for bottom bar
+                      paddingBottom: 11, // space for bottom bar
                     }}
                   >
                     {/* Left: title + icon */}
@@ -736,29 +1047,14 @@ export default function HomePage() {
                         {t.title}
                       </div>
 
-                      {/* icon under title */}
-                      <div
-                        style={{
-                          marginTop: 6,
-                          fontSize: 16,
-                          lineHeight: 1,
-                          opacity: 0.95,
-                        }}
-                        aria-label="task icon"
-                      >
-                        {icon}
+                      {/* minimalist icon under title */}
+                      <div style={{ marginTop: 6 }}>
+                        <TaskMiniIcon kind={kind} />
                       </div>
                     </div>
 
-                    {/* Middle: ONLY weekly #/# */}
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        flexWrap: "nowrap",
-                      }}
-                    >
+                    {/* Middle: weekly #/# */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span
                         style={{
                           fontSize: 12,
@@ -780,13 +1076,15 @@ export default function HomePage() {
 
                     {/* Right: Skip + Complete */}
                     <div style={{ display: "flex", gap: 10, flexWrap: "nowrap" }}>
+                      {/* ✅ Skip button back (only if task has skips enabled).
+                          If skipsLeft=0, tapping shows the motivational message. */}
                       {skipsAllowed > 0 ? (
                         <button
                           onClick={() => skipTask(t)}
                           disabled={busy}
                           style={{
                             padding: "10px 12px",
-                            borderRadius: 999,
+                            borderRadius: 18, // match less severe shape
                             border: textIsBlack
                               ? "1px solid rgba(0,0,0,0.28)"
                               : "1px solid rgba(255,255,255,0.28)",
@@ -814,7 +1112,7 @@ export default function HomePage() {
                         disabled={busy}
                         style={{
                           padding: "10px 12px",
-                          borderRadius: 999,
+                          borderRadius: 18,
                           border: textIsBlack
                             ? "1px solid rgba(0,0,0,0.32)"
                             : "1px solid rgba(255,255,255,0.32)",
