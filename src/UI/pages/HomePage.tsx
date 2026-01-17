@@ -8,7 +8,7 @@ import { supabase } from "@/lib/supabaseClient";
 
 type TaskType = "habit" | "single";
 type FrequencyUnit = "day" | "week" | "month" | "year";
- 
+
 type TaskRow = {
   id: string;
   user_id: string;
@@ -85,6 +85,14 @@ function periodStart(freq: FrequencyUnit, now: Date) {
 }
 function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n));
+}
+function formatDateHeader(d: Date) {
+  // e.g. "Friday, January 16"
+  return d.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
 }
 
 export default function HomePage() {
@@ -237,6 +245,15 @@ export default function HomePage() {
   const todayStartMs = useMemo(() => startOfDayLocal(now).getTime(), [now]);
   const weekStartMs = useMemo(() => startOfWeekLocal(now).getTime(), [now]);
 
+  // Days left in current week (Mon..Sun)
+  const daysLeftInWeek = useMemo(() => {
+    const start = startOfWeekLocal(now);
+    const endExclusive = new Date(start);
+    endExclusive.setDate(endExclusive.getDate() + 7);
+    const msLeft = endExclusive.getTime() - startOfDayLocal(now).getTime();
+    return clamp(Math.ceil(msLeft / (24 * 60 * 60 * 1000)), 0, 7);
+  }, [now]);
+
   // Group rows by task
   const completionsByTask = useMemo(() => {
     const m: Record<string, CompletionRow[]> = {};
@@ -302,6 +319,21 @@ export default function HomePage() {
 
   function weeklySkipsUsed(taskId: string) {
     return countSkipsSince(taskId, weekStartMs);
+  }
+
+  function weeklyProgress(task: TaskRow) {
+    // Always compute "out of the week" progress for the home gamification.
+    // For non-week habits, this still gives a simple weekly meter.
+    const weekDone = countCompletionsSince(task.id, weekStartMs);
+    const required =
+      task.type === "habit" && (task.freq_per ?? "week") === "week"
+        ? Math.max(1, Number(task.freq_times ?? 1))
+        : task.type === "habit"
+        ? Math.max(1, Number(task.freq_times ?? 1))
+        : 1;
+
+    const pct = clamp((weekDone / required) * 100, 0, 100);
+    return { done: weekDone, required, pct };
   }
 
   // ✅ Tasks shown on home (core logic)
@@ -636,10 +668,14 @@ export default function HomePage() {
             }}
           >
             <div>
-              <div style={{ fontSize: 22, fontWeight: 900 }}>Today</div>
+              {/* ✅ Replace "Today" with actual date */}
+              <div style={{ fontSize: 22, fontWeight: 900 }}>
+                {formatDateHeader(now)}
+              </div>
+
+              {/* ✅ Remove "Logged in as ..." completely */}
               <div style={{ opacity: 0.8, marginTop: 4 }}>
-                Logged in as <b>{sessionEmail}</b> • Remaining:{" "}
-                <b>{homeTasks.length}</b>
+                Remaining: <b>{homeTasks.length}</b>
               </div>
             </div>
 
@@ -711,6 +747,8 @@ export default function HomePage() {
                 const skipsUsed = weeklySkipsUsed(t.id);
                 const skipsLeft = Math.max(0, skipsAllowed - skipsUsed);
 
+                const wk = weeklyProgress(t);
+
                 return (
                   <div
                     key={t.id}
@@ -726,52 +764,67 @@ export default function HomePage() {
                       alignItems: "center",
                     }}
                   >
-                    <div style={{ minWidth: 240 }}>
-                      <div style={{ fontWeight: 900 }}>{t.title}</div>
-                      <div style={{ opacity: 0.8, marginTop: 4 }}>
-                        {t.type === "habit" ? (
-                          <>Habit • {formatFrequency(t)}</>
-                        ) : (
-                          <>Single</>
-                        )}
-                        {skipsAllowed > 0 ? (
-                          <>
-                            {" "}
-                            • Skips left this week: <b>{skipsLeft}</b>
-                          </>
-                        ) : null}
+                    <div style={{ minWidth: 260, flex: 1 }}>
+                      <div style={{ fontWeight: 900, fontSize: 16 }}>
+                        {t.title}
                       </div>
 
-                      {daily ? (
-                        <div style={{ marginTop: 10 }}>
-                          <div style={{ opacity: 0.8, fontSize: 13 }}>
-                            Today:{" "}
-                            <b>
-                              {daily.done}/{daily.required}
-                            </b>{" "}
-                            ({Math.round(daily.pct)}%)
-                          </div>
+                      {/* ✅ Clean “days left”, “skips left”, and weekly progress */}
+                      <div style={{ opacity: 0.85, marginTop: 6, fontSize: 13 }}>
+                        <span>
+                          Days left this week: <b>{daysLeftInWeek}</b>
+                        </span>
+                        <span> • </span>
+                        <span>
+                          Skips left: <b>{skipsLeft}</b>
+                        </span>
+                        <span> • </span>
+                        <span>
+                          This week:{" "}
+                          <b>
+                            {wk.done}/{wk.required}
+                          </b>
+                        </span>
+                      </div>
+
+                      {/* ✅ Weekly progress bar (always shown) */}
+                      <div style={{ marginTop: 10 }}>
+                        <div
+                          style={{
+                            width: "min(420px, 100%)",
+                            height: 10,
+                            borderRadius: 999,
+                            border: "1px solid var(--border)",
+                            overflow: "hidden",
+                            background: "rgba(255,255,255,0.04)",
+                          }}
+                        >
                           <div
                             style={{
-                              marginTop: 6,
-                              width: "min(320px, 100%)",
-                              height: 10,
-                              borderRadius: 999,
-                              border: "1px solid var(--border)",
-                              overflow: "hidden",
-                              background: "rgba(255,255,255,0.04)",
+                              height: "100%",
+                              width: `${wk.pct}%`,
+                              background: "var(--text)",
+                              opacity: 0.65,
                             }}
-                          >
-                            <div
-                              style={{
-                                height: "100%",
-                                width: `${daily.pct}%`,
-                                background: "#f59e0b",
-                              }}
-                            />
-                          </div>
+                          />
                         </div>
-                      ) : null}
+                        <div style={{ opacity: 0.7, fontSize: 12, marginTop: 6 }}>
+                          {t.type === "habit" ? (
+                            <>Target: {formatFrequency(t)}</>
+                          ) : (
+                            <>Single task</>
+                          )}
+                          {isDaily && daily ? (
+                            <>
+                              {" "}
+                              • Today:{" "}
+                              <b>
+                                {daily.done}/{daily.required}
+                              </b>
+                            </>
+                          ) : null}
+                        </div>
+                      </div>
                     </div>
 
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -787,9 +840,7 @@ export default function HomePage() {
                             color: "var(--text)",
                             fontWeight: 900,
                             cursor:
-                              busy || skipsLeft <= 0
-                                ? "not-allowed"
-                                : "pointer",
+                              busy || skipsLeft <= 0 ? "not-allowed" : "pointer",
                             opacity: busy || skipsLeft <= 0 ? 0.6 : 1,
                           }}
                           type="button"
