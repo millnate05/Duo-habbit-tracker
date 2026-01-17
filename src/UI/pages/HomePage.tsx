@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { theme } from "@/UI/theme";
 import { supabase } from "@/lib/supabaseClient";
+import SplashIntro from "@/UI/components/SplashIntro";
 
 type TaskType = "habit" | "single";
 type FrequencyUnit = "day" | "week" | "month" | "year";
@@ -113,6 +114,20 @@ export default function HomePage() {
   const [overrideText, setOverrideText] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  //Splash page 
+const [showSplash, setShowSplash] = useState(false);
+
+useEffect(() => {
+  // show once per "app open" session
+  const dismissed = sessionStorage.getItem("splashDismissed");
+  setShowSplash(!dismissed);
+}, []);
+
+function dismissSplash() {
+  sessionStorage.setItem("splashDismissed", "1");
+  setShowSplash(false);
+}
 
   // photo viewer
   const [photoViewer, setPhotoViewer] = useState<{
@@ -488,6 +503,14 @@ export default function HomePage() {
   if (!userId) {
     return (
       <main
+        {showSplash ? (
+  <SplashIntro
+    imageSrc="/chris-bumstead-3.jpg.webp"
+    quote="“pain is privilege”"
+    onDismiss={dismissSplash}
+  />
+) : null}
+
         style={{
           minHeight: theme.layout.fullHeight,
           background: theme.page.background,
