@@ -59,23 +59,6 @@ function startOfWeekLocal(d: Date) {
 function startOfYearLocal(d: Date) {
   return new Date(d.getFullYear(), 0, 1, 0, 0, 0, 0);
 }
-function startOfMonthLocal(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
-}
-function periodStart(freq: FrequencyUnit, now: Date) {
-  switch (freq) {
-    case "day":
-      return startOfDayLocal(now);
-    case "week":
-      return startOfWeekLocal(now);
-    case "month":
-      return startOfMonthLocal(now);
-    case "year":
-      return startOfYearLocal(now);
-    default:
-      return startOfWeekLocal(now);
-  }
-}
 function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n));
 }
@@ -108,7 +91,7 @@ function colorIndexFromId(id: string) {
   return h % TASK_COLORS.length;
 }
 
-// ---------- Minimal “Apple Fitness-ish” icons (white outline SVG) ----------
+// ---------- Minimal icons ----------
 type IconKind =
   | "water"
   | "lift"
@@ -123,17 +106,7 @@ type IconKind =
 
 function pickIconKind(title: string): IconKind {
   const t = title.toLowerCase();
-
-  // water / hydration
-  if (
-    t.includes("water") ||
-    t.includes("hydrate") ||
-    t.includes("hydration") ||
-    t.includes("drink")
-  )
-    return "water";
-
-  // lifting
+  if (t.includes("water") || t.includes("hydrate") || t.includes("drink")) return "water";
   if (
     t.includes("lift") ||
     t.includes("weights") ||
@@ -146,70 +119,26 @@ function pickIconKind(title: string): IconKind {
     t.includes("train")
   )
     return "lift";
-
-  // run / cardio
-  if (
-    t.includes("run") ||
-    t.includes("cardio") ||
-    t.includes("jog") ||
-    t.includes("walk") ||
-    t.includes("steps")
-  )
+  if (t.includes("run") || t.includes("cardio") || t.includes("walk") || t.includes("steps"))
     return "run";
-
-  // stretch / mobility / yoga
-  if (t.includes("stretch") || t.includes("mobility") || t.includes("yoga"))
-    return "stretch";
-
-  // sleep
-  if (t.includes("sleep") || t.includes("bed") || t.includes("nap"))
-    return "sleep";
-
-  // reading / studying
-  if (
-    t.includes("read") ||
-    t.includes("study") ||
-    t.includes("homework") ||
-    t.includes("school")
-  )
+  if (t.includes("stretch") || t.includes("mobility") || t.includes("yoga")) return "stretch";
+  if (t.includes("sleep") || t.includes("bed") || t.includes("nap")) return "sleep";
+  if (t.includes("read") || t.includes("study") || t.includes("homework") || t.includes("school"))
     return "read";
-
-  // meditation / mindfulness
-  if (
-    t.includes("meditate") ||
-    t.includes("meditation") ||
-    t.includes("breath") ||
-    t.includes("mindful")
-  )
-    return "meditate";
-
-  // food / protein
-  if (
-    t.includes("protein") ||
-    t.includes("meal") ||
-    t.includes("eat") ||
-    t.includes("nutrition") ||
-    t.includes("macro")
-  )
+  if (t.includes("meditate") || t.includes("breath") || t.includes("mindful")) return "meditate";
+  if (t.includes("protein") || t.includes("meal") || t.includes("eat") || t.includes("macro"))
     return "food";
-
-  // date/calendar-ish reminders
-  if (t.includes("calendar") || t.includes("schedule") || t.includes("plan"))
-    return "calendar";
-
+  if (t.includes("calendar") || t.includes("schedule") || t.includes("plan")) return "calendar";
   return "check";
 }
 
-function TaskMiniIcon({ kind }: { kind: IconKind }) {
-  // White outline, simple shapes. Small and minimal.
+function TaskMiniIcon({ kind, stroke }: { kind: IconKind; stroke: string }) {
   const common = {
     width: 22,
     height: 22,
     viewBox: "0 0 24 24",
     style: { display: "block" as const },
   };
-
-  const stroke = "rgba(255,255,255,0.95)";
   const stroke2 = "rgba(255,255,255,0.75)";
 
   switch (kind) {
@@ -236,48 +165,16 @@ function TaskMiniIcon({ kind }: { kind: IconKind }) {
     case "lift":
       return (
         <svg {...common} aria-label="dumbbell icon">
-          <path
-            d="M6 10v4M18 10v4"
-            fill="none"
-            stroke={stroke}
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-          <path
-            d="M8 9v6M16 9v6"
-            fill="none"
-            stroke={stroke}
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-          <path
-            d="M9 12h6"
-            fill="none"
-            stroke={stroke}
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-          <path
-            d="M5 11h2M17 11h2"
-            fill="none"
-            stroke={stroke2}
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
+          <path d="M6 10v4M18 10v4" fill="none" stroke={stroke} strokeWidth="2" strokeLinecap="round" />
+          <path d="M8 9v6M16 9v6" fill="none" stroke={stroke} strokeWidth="2" strokeLinecap="round" />
+          <path d="M9 12h6" fill="none" stroke={stroke} strokeWidth="2" strokeLinecap="round" />
         </svg>
       );
 
     case "run":
       return (
         <svg {...common} aria-label="runner icon">
-          <circle
-            cx="15"
-            cy="6.5"
-            r="1.8"
-            fill="none"
-            stroke={stroke}
-            strokeWidth="2"
-          />
+          <circle cx="15" cy="6.5" r="1.8" fill="none" stroke={stroke} strokeWidth="2" />
           <path
             d="M10.5 21l2.3-5.2 2.6 1.4 2.2-4.2-3.2-1.8-1.3-2.6-3 1.3 1.1 2.4-2.6 3.4"
             fill="none"
@@ -286,178 +183,15 @@ function TaskMiniIcon({ kind }: { kind: IconKind }) {
             strokeLinejoin="round"
             strokeLinecap="round"
           />
-          <path
-            d="M7 13.5l3.2-1.3"
-            fill="none"
-            stroke={stroke2}
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-        </svg>
-      );
-
-    case "stretch":
-      return (
-        <svg {...common} aria-label="stretch icon">
-          <path
-            d="M6 18c2-2 4-3 6-3s4 1 6 3"
-            fill="none"
-            stroke={stroke}
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-          <path
-            d="M8 12c1.2-2 2.6-3 4-3s2.8 1 4 3"
-            fill="none"
-            stroke={stroke2}
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-          <path
-            d="M12 7V4"
-            fill="none"
-            stroke={stroke}
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-        </svg>
-      );
-
-    case "sleep":
-      return (
-        <svg {...common} aria-label="sleep icon">
-          <path
-            d="M8 9c.7 4 3.2 7 7 7-1.2 1.2-2.8 2-4.7 2-3.6 0-6.3-2.9-6.3-6.4 0-1.9.8-3.5 2-4.6z"
-            fill="none"
-            stroke={stroke}
-            strokeWidth="2"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M15.5 7.2h3M16 5h2.5"
-            fill="none"
-            stroke={stroke2}
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-        </svg>
-      );
-
-    case "read":
-      return (
-        <svg {...common} aria-label="book icon">
-          <path
-            d="M6 6.5c2-1 4-1 6 0v13c-2-1-4-1-6 0v-13z"
-            fill="none"
-            stroke={stroke}
-            strokeWidth="2"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M18 6.5c-2-1-4-1-6 0v13c2-1 4-1 6 0v-13z"
-            fill="none"
-            stroke={stroke}
-            strokeWidth="2"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M9 9.2h2.5"
-            fill="none"
-            stroke={stroke2}
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-        </svg>
-      );
-
-    case "meditate":
-      return (
-        <svg {...common} aria-label="meditation icon">
-          <path
-            d="M12 8.2c1 0 1.8-.8 1.8-1.8S13 4.6 12 4.6s-1.8.8-1.8 1.8.8 1.8 1.8 1.8z"
-            fill="none"
-            stroke={stroke}
-            strokeWidth="2"
-          />
-          <path
-            d="M8 19c1.2-2.5 2.6-3.8 4-3.8s2.8 1.3 4 3.8"
-            fill="none"
-            stroke={stroke}
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-          <path
-            d="M6.2 14.2c1.7-.9 3.5-1.3 5.8-1.3s4.1.4 5.8 1.3"
-            fill="none"
-            stroke={stroke2}
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-        </svg>
-      );
-
-    case "food":
-      return (
-        <svg {...common} aria-label="food icon">
-          <path
-            d="M7 6c1.2 1.4 1.2 3.2 0 4.6-1.2-1.4-1.2-3.2 0-4.6z"
-            fill="none"
-            stroke={stroke}
-            strokeWidth="2"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M12 6c1.2 1.4 1.2 3.2 0 4.6-1.2-1.4-1.2-3.2 0-4.6z"
-            fill="none"
-            stroke={stroke2}
-            strokeWidth="2"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M17 7v9c0 2-1.8 3.4-5 3.4S7 18 7 16V12"
-            fill="none"
-            stroke={stroke}
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
         </svg>
       );
 
     case "calendar":
       return (
         <svg {...common} aria-label="calendar icon">
-          <path
-            d="M7 4v3M17 4v3"
-            fill="none"
-            stroke={stroke}
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-          <path
-            d="M6 7h12"
-            fill="none"
-            stroke={stroke2}
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-          <rect
-            x="5"
-            y="6"
-            width="14"
-            height="14"
-            rx="3"
-            ry="3"
-            fill="none"
-            stroke={stroke}
-            strokeWidth="2"
-          />
-          <path
-            d="M8.5 11.2h3.2"
-            fill="none"
-            stroke={stroke2}
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
+          <path d="M7 4v3M17 4v3" fill="none" stroke={stroke} strokeWidth="2" strokeLinecap="round" />
+          <rect x="5" y="6" width="14" height="14" rx="3" ry="3" fill="none" stroke={stroke} strokeWidth="2" />
+          <path d="M6 9h12" fill="none" stroke={stroke2} strokeWidth="2" strokeLinecap="round" />
         </svg>
       );
 
@@ -475,6 +209,22 @@ function TaskMiniIcon({ kind }: { kind: IconKind }) {
         </svg>
       );
   }
+}
+
+function CheckCircle({ stroke }: { stroke: string }) {
+  return (
+    <svg width={26} height={26} viewBox="0 0 24 24" aria-label="completed">
+      <circle cx="12" cy="12" r="9" fill="none" stroke={stroke} strokeWidth="2" />
+      <path
+        d="M8 12.3l2.4 2.4L16.5 8.8"
+        fill="none"
+        stroke={stroke}
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 export default function HomePage() {
@@ -636,18 +386,14 @@ export default function HomePage() {
   function countCompletionsSince(taskId: string, startMs: number) {
     const list = completionsByTask[taskId] ?? [];
     let count = 0;
-    for (const c of list) {
-      if (new Date(c.completed_at).getTime() >= startMs) count++;
-    }
+    for (const c of list) if (new Date(c.completed_at).getTime() >= startMs) count++;
     return count;
   }
 
   function countSkipsSince(taskId: string, startMs: number) {
     const list = skipsByTask[taskId] ?? [];
     let count = 0;
-    for (const s of list) {
-      if (new Date(s.skipped_at).getTime() >= startMs) count++;
-    }
+    for (const s of list) if (new Date(s.skipped_at).getTime() >= startMs) count++;
     return count;
   }
 
@@ -656,30 +402,6 @@ export default function HomePage() {
     if (!days || days.length === 0) return true;
     const dow = now.getDay(); // 0..6
     return days.includes(dow);
-  }
-
-  function didSomethingToday(taskId: string) {
-    const done = countCompletionsSince(taskId, todayStartMs) > 0;
-    const skipped = countSkipsSince(taskId, todayStartMs) > 0;
-    return done || skipped;
-  }
-
-  function dailyProgress(task: TaskRow) {
-    const required = Math.max(1, Number(task.freq_times ?? 1));
-    const done = countCompletionsSince(task.id, todayStartMs);
-    const pct = clamp((done / required) * 100, 0, 100);
-    return { done, required, pct };
-  }
-
-  function periodQuotaMet(task: TaskRow) {
-    if (task.type === "single") {
-      return (completionsByTask[task.id]?.length ?? 0) > 0;
-    }
-    const freq = (task.freq_per ?? "week") as FrequencyUnit;
-    const required = Math.max(1, Number(task.freq_times ?? 1));
-    const start = periodStart(freq, now).getTime();
-    const done = countCompletionsSince(task.id, start);
-    return done >= required;
   }
 
   function weeklySkipsUsed(taskId: string) {
@@ -699,22 +421,15 @@ export default function HomePage() {
     return { done: weekDone, required, pct };
   }
 
+  // ✅ Home tasks: NEVER hide due to completing/skipping today.
+  // Keep it simple: show tasks due today (scheduled_days) and not archived.
   const homeTasks = useMemo(() => {
     return tasks.filter((t) => {
       if (t.archived) return false;
       if (!allowedToday(t)) return false;
-      if (periodQuotaMet(t)) return false;
-
-      const isDaily = t.type === "habit" && (t.freq_per ?? "week") === "day";
-      if (isDaily) {
-        const { done, required } = dailyProgress(t);
-        return done < required;
-      }
-
-      if (didSomethingToday(t.id)) return false;
       return true;
     });
-  }, [tasks, todayKey, completionsByTask, skipsByTask]);
+  }, [tasks, todayKey]);
 
   function openCompleteModal(task: TaskRow) {
     setCompleteTask(task);
@@ -739,9 +454,9 @@ export default function HomePage() {
       const safeName = file.name.replace(/[^\w.\-()]+/g, "_");
       const path = `${userId}/${completing.id}/${Date.now()}_${safeName}`;
 
-      const { error: upErr } = await supabase.storage
-        .from("proofs")
-        .upload(path, file, { upsert: false });
+      const { error: upErr } = await supabase.storage.from("proofs").upload(path, file, {
+        upsert: false,
+      });
       if (upErr) throw upErr;
 
       const { data, error } = await supabase
@@ -762,8 +477,7 @@ export default function HomePage() {
       setCompleteTask(null);
     } catch (e: any) {
       setStatus(
-        e?.message ??
-          'Photo upload failed. Ensure the Storage bucket "proofs" exists.'
+        e?.message ?? 'Photo upload failed. Ensure the Storage bucket "proofs" exists.'
       );
     } finally {
       setBusy(false);
@@ -814,7 +528,12 @@ export default function HomePage() {
     if (!userId) return;
 
     const allowed = Math.max(0, Number(task.weekly_skips_allowed ?? 0));
-    if (allowed <= 0) return;
+
+    // ✅ If no skips assigned to this task, show your message
+    if (allowed <= 0) {
+      setStatus("No skips assigned — you got this!");
+      return;
+    }
 
     const used = weeklySkipsUsed(task.id);
     const left = Math.max(0, allowed - used);
@@ -943,9 +662,7 @@ export default function HomePage() {
 
         {/* Centered header */}
         <div style={{ textAlign: "center", padding: "10px 4px 4px" }}>
-          <div style={{ fontSize: 20, fontWeight: 900 }}>
-            {formatDateHeader(now)}
-          </div>
+          <div style={{ fontSize: 20, fontWeight: 900 }}>{formatDateHeader(now)}</div>
           <div style={{ opacity: 0.75, marginTop: 4, fontSize: 13 }}>
             Remaining: <b>{homeTasks.length}</b>
           </div>
@@ -1000,27 +717,33 @@ export default function HomePage() {
 
               const wk = weeklyProgress(t);
 
-              const skipsAllowed = Math.max(
-                0,
-                Number(t.weekly_skips_allowed ?? 0)
-              );
+              const skipsAllowed = Math.max(0, Number(t.weekly_skips_allowed ?? 0));
               const skipsUsed = weeklySkipsUsed(t.id);
               const skipsLeft = Math.max(0, skipsAllowed - skipsUsed);
 
+              const completedToday = countCompletionsSince(t.id, todayStartMs) > 0;
+              const skippedToday = countSkipsSince(t.id, todayStartMs) > 0;
+
               const kind = pickIconKind(t.title);
+
+              // icon stroke: use task text color so it looks integrated
+              const iconStroke = textIsBlack ? "rgba(0,0,0,0.92)" : "rgba(255,255,255,0.92)";
 
               return (
                 <div
                   key={t.id}
                   style={{
                     width: "100%",
-                    borderRadius: 28, // ✅ less severe than full pill
+                    borderRadius: 28,
                     background: bg,
                     color: text,
                     position: "relative",
                     overflow: "hidden",
-                    padding: "12px 14px", // ✅ slightly shorter (~5% less)
+                    padding: "12px 14px",
                     boxShadow: "0 10px 22px rgba(0,0,0,0.45)",
+                    // ✅ Skipped today: gray out the pill but keep the base color
+                    filter: skippedToday ? "grayscale(1)" : "none",
+                    opacity: skippedToday ? 0.55 : 1,
                   }}
                 >
                   <div
@@ -1031,8 +754,16 @@ export default function HomePage() {
                       paddingBottom: 11, // space for bottom bar
                     }}
                   >
-                    {/* Left: title + icon */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
+                    {/* Left: icon + title on the same row */}
+                    <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ flex: "0 0 auto" }}>
+                        {completedToday ? (
+                          <CheckCircle stroke={iconStroke} />
+                        ) : (
+                          <TaskMiniIcon kind={kind} stroke={iconStroke} />
+                        )}
+                      </div>
+
                       <div
                         style={{
                           fontWeight: 900,
@@ -1046,11 +777,6 @@ export default function HomePage() {
                       >
                         {t.title}
                       </div>
-
-                      {/* minimalist icon under title */}
-                      <div style={{ marginTop: 6 }}>
-                        <TaskMiniIcon kind={kind} />
-                      </div>
                     </div>
 
                     {/* Middle: weekly #/# */}
@@ -1061,9 +787,7 @@ export default function HomePage() {
                           padding: "7px 10px",
                           borderRadius: 999,
                           whiteSpace: "nowrap",
-                          background: textIsBlack
-                            ? "rgba(0,0,0,0.18)"
-                            : "rgba(255,255,255,0.18)",
+                          background: textIsBlack ? "rgba(0,0,0,0.18)" : "rgba(255,255,255,0.18)",
                           border: textIsBlack
                             ? "1px solid rgba(0,0,0,0.22)"
                             : "1px solid rgba(255,255,255,0.22)",
@@ -1076,36 +800,31 @@ export default function HomePage() {
 
                     {/* Right: Skip + Complete */}
                     <div style={{ display: "flex", gap: 10, flexWrap: "nowrap" }}>
-                      {/* ✅ Skip button back (only if task has skips enabled).
-                          If skipsLeft=0, tapping shows the motivational message. */}
-                      {skipsAllowed > 0 ? (
-                        <button
-                          onClick={() => skipTask(t)}
-                          disabled={busy}
-                          style={{
-                            padding: "10px 12px",
-                            borderRadius: 18, // match less severe shape
-                            border: textIsBlack
-                              ? "1px solid rgba(0,0,0,0.28)"
-                              : "1px solid rgba(255,255,255,0.28)",
-                            background: textIsBlack
-                              ? "rgba(0,0,0,0.18)"
-                              : "rgba(255,255,255,0.18)",
-                            color: text,
-                            fontWeight: 900,
-                            cursor: busy ? "not-allowed" : "pointer",
-                            opacity: busy ? 0.6 : 1,
-                          }}
-                          type="button"
-                          title={
-                            skipsLeft <= 0
-                              ? "No skips left — tap for motivation"
-                              : "Skip this task"
-                          }
-                        >
-                          Skip
-                        </button>
-                      ) : null}
+                      {/* ✅ Skip ALWAYS visible */}
+                      <button
+                        onClick={() => skipTask(t)}
+                        disabled={busy}
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: 18,
+                          border: textIsBlack ? "1px solid rgba(0,0,0,0.28)" : "1px solid rgba(255,255,255,0.28)",
+                          background: textIsBlack ? "rgba(0,0,0,0.18)" : "rgba(255,255,255,0.18)",
+                          color: text,
+                          fontWeight: 900,
+                          cursor: busy ? "not-allowed" : "pointer",
+                          opacity: busy ? 0.6 : 1,
+                        }}
+                        type="button"
+                        title={
+                          skipsAllowed <= 0
+                            ? "No skips assigned"
+                            : skipsLeft <= 0
+                            ? "Out of skips"
+                            : "Skip this task"
+                        }
+                      >
+                        Skip
+                      </button>
 
                       <button
                         onClick={() => openCompleteModal(t)}
@@ -1113,12 +832,8 @@ export default function HomePage() {
                         style={{
                           padding: "10px 12px",
                           borderRadius: 18,
-                          border: textIsBlack
-                            ? "1px solid rgba(0,0,0,0.32)"
-                            : "1px solid rgba(255,255,255,0.32)",
-                          background: textIsBlack
-                            ? "rgba(0,0,0,0.24)"
-                            : "rgba(255,255,255,0.24)",
+                          border: textIsBlack ? "1px solid rgba(0,0,0,0.32)" : "1px solid rgba(255,255,255,0.32)",
+                          background: textIsBlack ? "rgba(0,0,0,0.24)" : "rgba(255,255,255,0.24)",
                           color: text,
                           fontWeight: 900,
                           cursor: busy ? "not-allowed" : "pointer",
@@ -1139,18 +854,14 @@ export default function HomePage() {
                       right: 0,
                       bottom: 0,
                       height: 9,
-                      background: textIsBlack
-                        ? "rgba(0,0,0,0.18)"
-                        : "rgba(255,255,255,0.18)",
+                      background: textIsBlack ? "rgba(0,0,0,0.18)" : "rgba(255,255,255,0.18)",
                     }}
                   >
                     <div
                       style={{
                         height: "100%",
                         width: `${wk.pct}%`,
-                        background: textIsBlack
-                          ? "rgba(0,0,0,0.55)"
-                          : "rgba(255,255,255,0.70)",
+                        background: textIsBlack ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.70)",
                       }}
                     />
                   </div>
@@ -1193,12 +904,8 @@ export default function HomePage() {
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div style={{ fontWeight: 900, fontSize: 18 }}>
-                Complete: {completeTask.title}
-              </div>
-              <div style={{ opacity: 0.8, marginTop: 6 }}>
-                Choose proof type.
-              </div>
+              <div style={{ fontWeight: 900, fontSize: 18 }}>Complete: {completeTask.title}</div>
+              <div style={{ opacity: 0.8, marginTop: 6 }}>Choose proof type.</div>
 
               <div style={{ height: 12 }} />
 
@@ -1263,9 +970,7 @@ export default function HomePage() {
                 </div>
               ) : (
                 <>
-                  <div style={{ opacity: 0.8, marginTop: 6 }}>
-                    Override requires a note.
-                  </div>
+                  <div style={{ opacity: 0.8, marginTop: 6 }}>Override requires a note.</div>
 
                   <textarea
                     value={overrideText}
