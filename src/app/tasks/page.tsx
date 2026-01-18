@@ -596,542 +596,31 @@ export default function TasksPage() {
         .eq("user_id", uid)
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
-      setTasks((data ?? []) as TaskRow[]);
-    } catch (e: any) {
-      console.error(e);
-      setStatus(e?.message ?? "Failed to load tasks.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function loadCompletions(uid: string) {
-    setLoadingCompleted(true);
-    try {
-      const { data, error } = await supabase
-        .from("completions")
-        .select("*, tasks(title)")
-        .eq("user_id", uid)
-        .order("completed_at", { ascending: false })
-        .limit(50);
-
-      if (error) throw error;
-      setCompletions((data ?? []) as CompletionRow[]);
-    } catch (e: any) {
-      console.error(e);
-      // don't spam status; completions are secondary
-    } finally {
-      setLoadingCompleted(false);
-    }
-  }
-
-  async function loadReminders(uid: string) {
-    try {
-      const { data, error } = await supabase.from("reminders").select("*").eq("user_id", uid);
-      if (error) throw error;
-
-      const byTask: Record<string, ReminderRow[]> = {};
-      for (const r of (data ?? []) as ReminderRow[]) {
-        if (!byTask[r.task_id]) byTask[r.task_id] = [];
-        byTask[r.task_id].push(r);
-      }
-      setRemindersByTask(byTask);
-    } catch (e) {
-      console.error(e);
-    }
-  }
-
-  // -----------------------------
-  // reminders save
-  // -----------------------------
-  async function upsertRemindersForTask(taskId: string, drafts: ReminderDraft[]) {
-    if (!userId) return;
-
-    if (!drafts || drafts.length === 0) {
-      const { error: delErr } = await supabase.from("reminders").delete().eq("user_id", userId).eq("task_id", taskId);
-      if (delErr) throw delErr;
-      await loadReminders(userId);
-      return;
-    }
-
-    const d = drafts[0];
-
-    if (!isTimeStringValidHHMM(d.time_of_day)) throw new Error(`Invalid time format: "${d.time_of_day}". Use HH:MM.`);
-    if (!d.timezone.trim()) throw new Error("Timezone is required (ex: America/Los_Angeles).");
-    if (d.cadence === "weekly" && d.days_of_week.length !== 1)
-      throw new Error("Weekly reminder must have exactly one day selected.");
-
-    const timeHHMMSS = `${d.time_of_day}:00`;
-    const scheduledDays = d.cadence === "daily" ? null : [d.days_of_week[0]];
-
-    const { error } = await supabase.rpc("upsert_task_reminder", {
-      p_task_id: taskId,
-      p_enabled: d.enabled,
-      p_reminder_time: timeHHMMSS,
-      p_tz: d.timezone,
-      p_scheduled_days: scheduledDays,
-    });
-
-    if (error) throw error;
-
-    await loadReminders(userId);
-  }
-
-  // -----------------------------
-  // create task
-  // -----------------------------
-  function resetCreateForm() {
-    setTitle("");
-    setType("habit");
-    setFreqTimesStr("1");
-    setFreqPer("week");
-    setScheduledDays(null);
-    setWeeklySkipsAllowedStr("0");
-    setCreateReminders([]);
-    setCreateStep(0);
-  }
-
-  function openCreate() {
-    if (busy) return;
-    setStatus(null);
-    setCreateOpen(true);
-    setCreateStep(0);
-    setTimeout(() => createTitleRef.current?.focus(), 50);
-  }
-
-  function closeCreate() {
-    if (busy) return;
-    setCreateOpen(false);
-  }
-
-  function canGoNextFromStep(step: 0 | 1 | 2) {
-    if (step === 0) return title.trim().length > 0;
-    if (step === 1) {
-      if (type === "habit") {
-        const n = parseBoundedInt(freqTimesStr, { min: 1, max: 999, fallback: 1 });
-        return n >= 1 && !!freqPer;
-      }
-      return true;
-    }
-    return true;
-  }
-
-  async function createTask() {
-    if (!userId) return;
-
-    const t = title.trim();
-    if (!t) {
-      setStatus("Task title is required.");
-      return;
-    }
-
-    setBusy(true);
-    setStatus(null);
-
-    try {
-      const freqTimes = parseBoundedInt(freqTimesStr, { min: 1, max: 999, fallback: 1 });
-      const weeklySkipsAllowed = parseBoundedInt(weeklySkipsAllowedStr, { min: 0, max: 7, fallback: 0 });
-
-      const base: any = {
-        user_id: userId,
-        created_by: userId,
-        assigned_to: userId,
-        is_shared: false,
-
-        title: t,
-        type,
-        archived: false,
-        scheduled_days: scheduledDays,
-        weekly_skips_allowed: weeklySkipsAllowed,
-
-        freq_times: null as number | null,
-        freq_per: null as FrequencyUnit | null,
-      };
-
-      if (type === "habit") {
-        base.freq_times = freqTimes;
-        base.freq_per = freqPer;
-      }
-
-      const { data, error } = await supabase.from("tasks").insert(base).select("*").single();
-      if (error) throw error;
-
-      setTasks((prev) => [data as TaskRow, ...prev]);
-
-      const newTaskId = (data as TaskRow).id;
-      await upsertRemindersForTask(newTaskId, createReminders);
-
-      setStatus("✅ Task created.");
-      resetCreateForm();
-      setCreateOpen(false);
-    } catch (e: any) {
-      console.error(e);
-      setStatus(e?.message ?? "Failed to create task.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // -----------------------------
-  // edit + archive + delete
-  // -----------------------------
-  function openEdit(t: TaskRow) {
-    setEditTask(t);
-    setEditOpen(true);
-    setStatus(null);
-    setEditFreqTimesStr(String(t.freq_times ?? 1));
-    setEditWeeklySkipsStr(String(t.weekly_skips_allowed ?? 0));
-
-    const existing = remindersByTask[t.id] ?? [];
-    setEditReminders(existing.length ? [toDraftFromRow(existing[0])] : []);
-  }
-
-  function closeEdit() {
-    if (busy) return;
-    setEditOpen(false);
-    setEditTask(null);
-    setEditReminders([]);
-  }
-
-  async function saveEdit(next: TaskRow) {
-    if (!userId) return;
-
-    const trimmed = next.title.trim();
-    if (!trimmed) {
-      setStatus("Title is required.");
-      return;
-    }
-
-    setBusy(true);
-    setStatus(null);
-
-    try {
-      const freqTimes = parseBoundedInt(editFreqTimesStr, { min: 1, max: 999, fallback: 1 });
-      const weeklySkipsAllowed = parseBoundedInt(editWeeklySkipsStr, { min: 0, max: 7, fallback: 0 });
-
-      const { data, error } = await supabase
-        .from("tasks")
-        .update({
-          title: trimmed,
-          type: next.type,
-          freq_times: next.type === "habit" ? freqTimes : null,
-          freq_per: next.type === "habit" ? (next.freq_per ?? "week") : null,
-          scheduled_days: next.scheduled_days,
-          weekly_skips_allowed: weeklySkipsAllowed,
-          archived: next.archived,
-        })
-        .eq("id", next.id)
-        .eq("user_id", userId)
-        .select("*")
-        .single();
-
-      if (error) throw error;
-
-      const updated = data as TaskRow;
-      setTasks((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
-
-      await upsertRemindersForTask(updated.id, editReminders);
-
-      closeEdit();
-    } catch (e: any) {
-      console.error(e);
-      setStatus(e?.message ?? "Failed to save.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function toggleArchive(t: TaskRow) {
-    if (!userId) return;
-    setBusy(true);
-    setStatus(null);
-
-    try {
-      const { data, error } = await supabase
-        .from("tasks")
-        .update({ archived: !t.archived })
-        .eq("id", t.id)
-        .eq("user_id", userId)
-        .select("*")
-        .single();
-
-      if (error) throw error;
-
-      const updated = data as TaskRow;
-      setTasks((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
-    } catch (e: any) {
-      console.error(e);
-      setStatus(e?.message ?? "Failed to update task.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function deleteTask(t: TaskRow) {
-    if (!userId) return;
-    if (busy) return;
-
-    const ok = window.confirm(`Delete "${t.title}"?\n\nThis cannot be undone.`);
-    if (!ok) return;
-
-    setBusy(true);
-    setStatus(null);
-
-    try {
-      // delete reminders first (avoid FK issues)
-      await supabase.from("reminders").delete().eq("user_id", userId).eq("task_id", t.id);
-
-      const { error } = await supabase.from("tasks").delete().eq("id", t.id).eq("user_id", userId);
-      if (error) throw error;
-
-      setTasks((prev) => prev.filter((x) => x.id !== t.id));
-
-      setRemindersByTask((prev) => {
-        const copy = { ...prev };
-        delete copy[t.id];
-        return copy;
-      });
-
-      if (editTask?.id === t.id) closeEdit();
-    } catch (e: any) {
-      console.error(e);
-      setStatus(e?.message ?? "Failed to delete task.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // -----------------------------
-  // overlay behavior (esc + body scroll lock)
-  // -----------------------------
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        if (createOpen) closeCreate();
-        if (editOpen && !busy) closeEdit();
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [createOpen, editOpen, busy]);
-
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    if (createOpen || editOpen) document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [createOpen, editOpen]);
-
-  // -----------------------------
-  // UI pieces
-  // -----------------------------
-  function StepChip({ label, active }: { label: string; active: boolean }) {
-    return (
-      <div
-        className="dht-anim"
-        style={{
-          padding: "8px 10px",
-          borderRadius: 999,
-          border: `1px solid ${active ? theme.accent.primary : "var(--border)"}`,
-          background: active ? "rgba(255,255,255,0.04)" : "transparent",
-          fontWeight: 900,
-          fontSize: 12,
-          opacity: active ? 1 : 0.75,
-          transition: "all 220ms ease",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {label}
-      </div>
-    );
-  }
-
-  function OverlayShell({
-    open,
-    title,
-    onClose,
-    children,
-    footer,
-  }: {
-    open: boolean;
-    title: string;
-    onClose: () => void;
-    children: React.ReactNode;
-    footer?: React.ReactNode;
-  }) {
-    return (
-      <div
-        className="dht-anim"
-        style={{
-          position: "fixed",
-          inset: 0,
-          pointerEvents: open ? "auto" : "none",
-          zIndex: 1000,
-        }}
-        aria-hidden={!open}
-      >
-        <div
-          className="dht-anim"
-          onClick={onClose}
-          style={{
-            position: "absolute",
-            inset: 0,
-            background: "#000",
-            opacity: open ? 1 : 0,
-            transition: "opacity 220ms ease",
-          }}
-        />
-
-        <div
-          className="dht-anim"
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: "absolute",
-            inset: 0,
-            margin: 0,
-            width: "100%",
-            height: "100%",
-            borderRadius: 0,
-            border: "none",
-            background: "var(--bg)",
-            boxShadow: "none",
-            transform: open ? "translateY(0)" : "translateY(10px)",
-            opacity: open ? 1 : 0,
-            transition: "transform 240ms ease, opacity 240ms ease",
-            overflow: "hidden",
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div style={{ padding: 16, borderBottom: "1px solid var(--border)" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-              <div style={{ fontWeight: 900, fontSize: 18 }}>{title}</div>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={onClose}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid var(--border)",
-                  background: "transparent",
-                  color: "var(--text)",
-                  fontWeight: 900,
-                  cursor: busy ? "not-allowed" : "pointer",
-                  opacity: busy ? 0.6 : 1,
-                }}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-
-          <div style={{ padding: 16, overflowY: "auto", height: "calc(100% - 74px - 78px)" }}>{children}</div>
-
-          <div style={{ padding: 16, borderTop: "1px solid var(--border)", background: "rgba(255,255,255,0.02)" }}>
-            {footer ?? null}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  function IconPencil({ size = 16 }: { size?: number }) {
-    return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M12 20h9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        <path
-          d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    );
-  }
-
-  function BigPlusButton({ onClick }: { onClick: () => void }) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        disabled={busy}
-        className="dht-anim"
-        style={{
-          position: "fixed",
-          left: "50%",
-          transform: "translateX(-50%)",
-          bottom: 18,
-          zIndex: 40,
-          width: 64,
-          height: 64,
-          borderRadius: 999,
-          border: `1px solid ${theme.accent.primary}`,
-          background: "rgba(255,255,255,0.04)",
-          backdropFilter: "blur(8px)",
-          color: "var(--text)",
-          fontSize: 34,
-          fontWeight: 900,
-          display: "grid",
-          placeItems: "center",
-          cursor: busy ? "not-allowed" : "pointer",
-          opacity: busy ? 0.65 : 1,
-          boxShadow: "0 14px 35px rgba(0,0,0,0.45)",
-          transition: "transform 160ms ease, opacity 160ms ease",
-        }}
-        aria-label="Create task"
-        title="Create task"
-      >
-        +
-      </button>
-    );
-  }
-
-  // -----------------------------
-  // RENDER (not logged in)
-  // -----------------------------
-  if (!userId) {
-    return (
-      <main style={{ minHeight: theme.layout.fullHeight, background: theme.page.background, color: theme.page.text, padding: 24 }}>
-        <style>{globalFixesCSS}</style>
-        <div style={{ maxWidth: 980, margin: "0 auto" }}>
-          <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>Tasks</h1>
-          <p style={{ margin: "8px 0 0 0", opacity: 0.8 }}>Log in to manage tasks.</p>
-
-          <div style={{ height: 14 }} />
-
-          <Link
-            href="/profile"
-            style={{
-              display: "inline-block",
-              padding: "12px 14px",
-              borderRadius: 12,
-              border: `1px solid ${theme.accent.primary}`,
-              color: "var(--text)",
-              textDecoration: "none",
-              fontWeight: 900,
-            }}
-          >
-            Go to Profile (Log in)
-          </Link>
-        </div>
-      </main>
-    );
-  }
-
-  // -----------------------------
+        // -----------------------------
   // RENDER (logged in)
   // -----------------------------
   return (
-    <main style={{ minHeight: theme.layout.fullHeight, background: theme.page.background, color: theme.page.text, padding: 24, paddingBottom: 110 }}>
+    <main
+      style={{
+        minHeight: theme.layout.fullHeight,
+        background: theme.page.background,
+        color: theme.page.text,
+        padding: 24,
+        paddingBottom: 110,
+      }}
+    >
       <style>{globalFixesCSS}</style>
 
       <div style={{ maxWidth: 980, margin: "0 auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "baseline",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
           <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>Tasks</h1>
 
           <Link
@@ -1151,7 +640,11 @@ export default function TasksPage() {
           </Link>
         </div>
 
-        {status ? <div style={{ marginTop: 12, padding: 12, border: "1px solid var(--border)", borderRadius: 14 }}>{status}</div> : null}
+        {status ? (
+          <div style={{ marginTop: 12, padding: 12, border: "1px solid var(--border)", borderRadius: 14 }}>
+            {status}
+          </div>
+        ) : null}
 
         <div style={{ height: 16 }} />
 
@@ -1160,171 +653,121 @@ export default function TasksPage() {
         ) : activeTasks.length === 0 ? (
           <div style={{ opacity: 0.8 }}>No tasks yet. Tap + to create one.</div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14 }}>
+          // ✅ Match Home layout: single vertical list
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {activeTasks.map((t) => {
-              const c = TASK_COLORS[colorIndexFromId(t.id)];
+              const { bg, text } = TASK_COLORS[colorIndexFromId(t.id)];
+              const textIsBlack = text === "#000";
+
               const icon = pickIconKind(t.title);
               const rem = remindersByTask[t.id]?.[0] ?? null;
 
               const remText = rem
-                ? `${rem.enabled ? "🔔" : "🔕"} ${fmtScheduledDays(rem.scheduled_days)} @ ${rem.reminder_time.slice(0, 5)} (${rem.tz})`
+                ? `${rem.enabled ? "🔔" : "🔕"} ${fmtScheduledDays(rem.scheduled_days)} @ ${rem.reminder_time.slice(
+                    0,
+                    5
+                  )} (${rem.tz})`
                 : "No reminder";
 
+              const subLine =
+                t.type === "habit"
+                  ? `${t.freq_times ?? 1} / ${t.freq_per ?? "week"} · Days: ${fmtScheduledDays(t.scheduled_days)}`
+                  : `Single task · Days: ${fmtScheduledDays(t.scheduled_days)}`;
+
               return (
-                <button
+                <div
                   key={t.id}
-                  type="button"
-                  onClick={() => openEdit(t)}
+                  role="button"
+                  tabIndex={0}
                   className="dht-anim"
+                  onClick={() => openEdit(t)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") openEdit(t);
+                  }}
                   style={{
-                    textAlign: "left",
-                    padding: 16,
-                    borderRadius: 18,
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    background: `linear-gradient(135deg, ${c.bg} 0%, rgba(0,0,0,0.25) 100%)`,
-                    color: c.text === "#fff" ? "white" : "black",
+                    width: "100%",
+                    borderRadius: 20,
+                    background: bg,
+                    color: text,
+                    position: "relative",
+                    overflow: "hidden",
+                    padding: "12px 12px 13px",
+                    boxShadow: "0 10px 22px rgba(0,0,0,0.45)",
                     cursor: "pointer",
-                    boxShadow: "0 16px 40px rgba(0,0,0,0.35)",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 10,
                   }}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                      <div
-                        style={{
-                          width: 42,
-                          height: 42,
-                          borderRadius: 14,
-                          display: "grid",
-                          placeItems: "center",
-                          background: "rgba(255,255,255,0.18)",
-                          color: c.text === "#fff" ? "white" : "black",
-                        }}
-                      >
-                        <MiniIcon kind={icon} />
-                      </div>
-                      <div>
-                        <div style={{ fontWeight: 900, fontSize: 18, lineHeight: 1.15 }}>{t.title}</div>
-                        <div style={{ fontSize: 12, opacity: 0.9 }}>
-                          {t.type === "habit" ? `${t.freq_times ?? 1} / ${t.freq_per ?? "week"}` : "Single task"}
-                          {" · "}
-                          Days: {fmtScheduledDays(t.scheduled_days)}
-                        </div>
-                      </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, paddingBottom: 10 }}>
+                    {/* Icon (match Home sizing) */}
+                    <div
+                      style={{
+                        flex: "0 0 auto",
+                        width: 34,
+                        height: 34,
+                        borderRadius: 14,
+                        background: textIsBlack ? "rgba(0,0,0,0.12)" : "rgba(255,255,255,0.16)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: text,
+                      }}
+                    >
+                      <MiniIcon kind={icon} />
                     </div>
 
-                    <div style={{ opacity: 0.9 }}>
-                      <IconPencil />
+                    {/* Title + subline */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontWeight: 900,
+                          fontSize: 16,
+                          lineHeight: 1.1,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                        title={t.title}
+                      >
+                        {t.title}
+                      </div>
+
+                      <div style={{ marginTop: 6, opacity: 0.9, fontSize: 12, fontWeight: 900 }}>{subLine}</div>
+                    </div>
+
+                    {/* Right-side control styled like Home buttons */}
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEdit(t);
+                        }}
+                        disabled={busy}
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: 14,
+                          border: textIsBlack
+                            ? "1px solid rgba(0,0,0,0.22)"
+                            : "1px solid rgba(255,255,255,0.26)",
+                          background: textIsBlack ? "rgba(0,0,0,0.14)" : "rgba(255,255,255,0.16)",
+                          color: text,
+                          fontWeight: 900,
+                          cursor: busy ? "not-allowed" : "pointer",
+                          opacity: busy ? 0.65 : 1,
+                        }}
+                        title="Edit task"
+                      >
+                        Edit
+                      </button>
                     </div>
                   </div>
 
-                  <div style={{ fontSize: 12, opacity: 0.92 }}>{remText}</div>
-                </button>
+                  {/* Reminder line (kept, but styled to fit Home density) */}
+                  <div style={{ fontSize: 12, opacity: 0.92, fontWeight: 900 }}>{remText}</div>
+                </div>
               );
             })}
           </div>
         )}
-
-        <div style={{ height: 22 }} />
-
-        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 18 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
-            <div style={{ fontWeight: 900, fontSize: 16 }}>Archived</div>
-            <div style={{ opacity: 0.75, fontSize: 13 }}>{archivedTasks.length} total</div>
-          </div>
-
-          <div style={{ height: 10 }} />
-
-          {archivedTasks.length === 0 ? (
-            <div style={{ opacity: 0.75 }}>No archived tasks.</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {archivedTasks.map((t) => (
-                <div
-                  key={t.id}
-                  style={{
-                    border: "1px solid var(--border)",
-                    borderRadius: 14,
-                    padding: 12,
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 10,
-                    alignItems: "center",
-                  }}
-                >
-                  <div style={{ fontWeight: 900 }}>{t.title}</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => toggleArchive(t)}
-                      style={{
-                        padding: "8px 10px",
-                        borderRadius: 12,
-                        border: `1px solid ${theme.accent.primary}`,
-                        background: "transparent",
-                        color: "var(--text)",
-                        fontWeight: 900,
-                        cursor: busy ? "not-allowed" : "pointer",
-                        opacity: busy ? 0.6 : 1,
-                      }}
-                    >
-                      Unarchive
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => deleteTask(t)}
-                      style={{
-                        padding: "8px 10px",
-                        borderRadius: 12,
-                        border: "1px solid rgba(255, 99, 99, 0.65)",
-                        background: "transparent",
-                        color: "var(--text)",
-                        fontWeight: 900,
-                        cursor: busy ? "not-allowed" : "pointer",
-                        opacity: busy ? 0.6 : 1,
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* (Optional) show recent completions - safe read-only */}
-        <div style={{ height: 22 }} />
-        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 18, opacity: 0.95 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
-            <div style={{ fontWeight: 900, fontSize: 16 }}>Recent completions</div>
-            <div style={{ opacity: 0.75, fontSize: 13 }}>{loadingCompleted ? "Loading…" : `${completions.length} shown`}</div>
-          </div>
-
-          <div style={{ height: 10 }} />
-
-          {loadingCompleted ? (
-            <div style={{ opacity: 0.75 }}>Loading…</div>
-          ) : completions.length === 0 ? (
-            <div style={{ opacity: 0.75 }}>No completions yet.</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {completions.slice(0, 10).map((c) => (
-                <div key={c.id} style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 10 }}>
-                  <div style={{ fontWeight: 900 }}>{c.tasks?.[0]?.title ?? "Task"}</div>
-                  <div style={{ fontSize: 12, opacity: 0.8 }}>
-                    {new Date(c.completed_at).toLocaleString()} • {c.proof_type}
-                    {c.proof_note ? ` • ${c.proof_note}` : ""}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
 
       {/* Floating create */}
@@ -1440,7 +883,12 @@ export default function TasksPage() {
                 </div>
                 <div>
                   <div style={{ fontWeight: 900, marginBottom: 6 }}>Per</div>
-                  <select value={freqPer} onChange={(e) => setFreqPer(e.target.value as FrequencyUnit)} style={cleanSelect} disabled={busy}>
+                  <select
+                    value={freqPer}
+                    onChange={(e) => setFreqPer(e.target.value as FrequencyUnit)}
+                    style={cleanSelect}
+                    disabled={busy}
+                  >
                     <option value="day">Day</option>
                     <option value="week">Week</option>
                     <option value="month">Month</option>
@@ -1688,9 +1136,7 @@ export default function TasksPage() {
                   style={cleanNumber}
                 />
               </div>
-              <div style={{ opacity: 0.75, fontSize: 13, alignSelf: "end" }}>
-                Skips allowed per week (0–7).
-              </div>
+              <div style={{ opacity: 0.75, fontSize: 13, alignSelf: "end" }}>Skips allowed per week (0–7).</div>
             </div>
 
             <div style={{ height: 6 }} />
