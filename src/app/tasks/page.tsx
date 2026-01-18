@@ -1250,129 +1250,173 @@ export default function TasksPage() {
   }
 
   // --- Home-screen style task row (you can tweak this to match your home exactly) ---
-  function TaskRowHomeStyle({
-    t,
-    isArchived,
-  }: {
-    t: TaskRow;
-    isArchived: boolean;
-  }) {
-    const rCount = (remindersByTask[t.id] ?? []).length;
+ function TaskCardHomeLook({
+  t,
+  isArchived,
+}: {
+  t: TaskRow;
+  isArchived: boolean;
+}) {
+  const { bg, text } = TASK_COLORS[colorIndexFromId(t.id)];
+  const textIsBlack = text === "#000";
 
-    return (
-      <div
-        style={{
-          border: "1px solid var(--border)",
-          borderRadius: 16,
-          padding: 14,
-          background: "rgba(255,255,255,0.02)",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 12,
-          flexWrap: "wrap",
-        }}
-      >
-        <div style={{ minWidth: 220 }}>
-          <div style={{ fontWeight: 900, fontSize: 16 }}>{t.title}</div>
-          <div style={{ opacity: 0.78, marginTop: 6, fontSize: 13 }}>
-            {t.type === "habit" ? (
-              <>
-                <b>{t.freq_times ?? 1}x</b> / <b>{t.freq_per ?? "week"}</b>
-              </>
-            ) : (
-              <>Single</>
-            )}
-            {"  "}
-            • <b>{fmtScheduledDays(t.scheduled_days)}</b>
-            {"  "}
-            • Reminders: <b>{rCount}</b>
+  const rCount = (remindersByTask[t.id] ?? []).length;
+  const kind = pickIconKind(t.title);
+
+  return (
+    <div
+      style={{
+        width: "100%",
+        borderRadius: 20,
+        background: bg,
+        color: text,
+        position: "relative",
+        overflow: "hidden",
+        padding: "12px 12px 13px",
+        boxShadow: "0 10px 22px rgba(0,0,0,0.45)",
+        opacity: isArchived ? 0.65 : 1,
+        filter: isArchived ? "grayscale(1)" : "none",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10, paddingBottom: 10 }}>
+        {/* Icon */}
+        <div
+          style={{
+            flex: "0 0 auto",
+            width: 34,
+            height: 34,
+            borderRadius: 14,
+            background: textIsBlack ? "rgba(0,0,0,0.12)" : "rgba(255,255,255,0.16)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: text,
+          }}
+        >
+          <MiniIcon kind={kind} />
+        </div>
+
+        {/* Title */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              fontWeight: 900,
+              fontSize: 16,
+              lineHeight: 1.1,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+            title={t.title}
+          >
+            {t.title}
+          </div>
+
+          {/* Same middle line position as Home */}
+          <div style={{ marginTop: 6, opacity: 0.9, fontSize: 12, fontWeight: 900 }}>
+            {fmtScheduledDays(t.scheduled_days)} • Reminders: {rCount}
           </div>
         </div>
 
-        {/* Actions: Edit (left), then (your home has Skip here), then Archive/Delete */}
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        {/* Actions (Home layout, Tasks actions) */}
+        <div style={{ display: "flex", gap: 10 }}>
           <button
-            type="button"
             onClick={() => openEdit(t)}
             disabled={busy}
-            title="Edit"
             style={{
+              padding: "10px 12px",
+              borderRadius: 14,
+              border: textIsBlack
+                ? "1px solid rgba(0,0,0,0.22)"
+                : "1px solid rgba(255,255,255,0.26)",
+              background: textIsBlack
+                ? "rgba(0,0,0,0.14)"
+                : "rgba(255,255,255,0.16)",
+              color: text,
+              fontWeight: 900,
+              cursor: busy ? "not-allowed" : "pointer",
+              opacity: busy ? 0.65 : 1,
               display: "inline-flex",
               alignItems: "center",
               gap: 8,
-              padding: "10px 12px",
-              borderRadius: 999,
-              border: `1px solid ${theme.accent.primary}`,
-              background: "transparent",
-              color: "var(--text)",
-              fontWeight: 900,
-              cursor: busy ? "not-allowed" : "pointer",
-              opacity: busy ? 0.6 : 1,
             }}
+            type="button"
           >
             <IconPencil />
             Edit
           </button>
 
-          {/* Placeholder for your existing "Skip" button spot (since you said “left of the skip”).
-              If you already have a real Skip button elsewhere, paste it here and remove this stub. */}
           <button
-            type="button"
-            disabled
-            style={{
-              padding: "10px 12px",
-              borderRadius: 999,
-              border: "1px solid var(--border)",
-              background: "transparent",
-              color: "var(--text)",
-              fontWeight: 900,
-              opacity: 0.35,
-            }}
-            title="(wire in your Skip action here)"
-          >
-            Skip
-          </button>
-
-          <button
-            type="button"
             onClick={() => toggleArchive(t)}
             disabled={busy}
             style={{
               padding: "10px 12px",
-              borderRadius: 999,
-              border: "1px solid var(--border)",
-              background: "transparent",
-              color: "var(--text)",
+              borderRadius: 14,
+              border: textIsBlack
+                ? "1px solid rgba(0,0,0,0.22)"
+                : "1px solid rgba(255,255,255,0.26)",
+              background: textIsBlack
+                ? "rgba(0,0,0,0.14)"
+                : "rgba(255,255,255,0.16)",
+              color: text,
               fontWeight: 900,
               cursor: busy ? "not-allowed" : "pointer",
-              opacity: busy ? 0.6 : 1,
+              opacity: busy ? 0.65 : 1,
             }}
+            type="button"
           >
             {isArchived ? "Unarchive" : "Archive"}
           </button>
 
           <button
-            type="button"
             onClick={() => deleteTask(t)}
             disabled={busy}
             style={{
               padding: "10px 12px",
-              borderRadius: 999,
-              border: "1px solid rgba(255, 99, 99, 0.65)",
-              background: "transparent",
-              color: "var(--text)",
+              borderRadius: 14,
+              border: textIsBlack
+                ? "1px solid rgba(0,0,0,0.22)"
+                : "1px solid rgba(255,255,255,0.26)",
+              background: textIsBlack
+                ? "rgba(0,0,0,0.14)"
+                : "rgba(255,255,255,0.16)",
+              color: text,
               fontWeight: 900,
               cursor: busy ? "not-allowed" : "pointer",
-              opacity: busy ? 0.6 : 1,
+              opacity: busy ? 0.65 : 1,
             }}
+            type="button"
           >
             Delete
           </button>
         </div>
       </div>
-    );
-  }
+
+      {/* Bottom progress bar (visual parity with Home) */}
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: 8,
+          background: textIsBlack ? "rgba(0,0,0,0.18)" : "rgba(255,255,255,0.18)",
+        }}
+      >
+        <div
+          style={{
+            height: "100%",
+            width: "100%",
+            background: textIsBlack
+              ? "rgba(0,0,0,0.55)"
+              : "rgba(255,255,255,0.70)",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 
   return (
     <main
@@ -1419,7 +1463,8 @@ export default function TasksPage() {
               No active tasks. Tap <b>+</b> to create one.
             </div>
           ) : (
-            activeTasks.map((t) => <TaskRowHomeStyle key={t.id} t={t} isArchived={false} />)
+            activeTasks.map((t) => <TaskCardHomeLook key={t.id} t={t} isArchived={false} />)
+
           )}
         </section>
 
@@ -1427,9 +1472,10 @@ export default function TasksPage() {
           <section style={{ marginTop: 10 }}>
             <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 10 }}>Archived</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {archivedTasks.map((t) => (
-                <TaskRowHomeStyle key={t.id} t={t} isArchived={true} />
-              ))}
+              archivedTasks.map((t) => (
+  <TaskCardHomeLook key={t.id} t={t} isArchived={true} />
+))}
+
             </div>
           </section>
         ) : null}
