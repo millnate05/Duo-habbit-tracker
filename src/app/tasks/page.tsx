@@ -240,7 +240,7 @@ input[type="number"] { -moz-appearance: textfield; }
 }
 `;
 
-
+export default function TasksPage() {
   useEffect(() => {
     if (!userId) {
       setTasks([]);
@@ -723,7 +723,7 @@ input[type="number"] { -moz-appearance: textfield; }
     }
   }
 
-  async function deleteTask(t: TaskRow) {
+   async function deleteTask(t: TaskRow) {
     if (!userId) return;
     if (busy) return;
 
@@ -898,6 +898,22 @@ input[type="number"] { -moz-appearance: textfield; }
           </div>
         </div>
       </div>
+    );
+  }
+
+  // --- tiny icon buttons (no deps) ---
+  function IconPencil({ size = 16 }: { size?: number }) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M12 20h9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        <path
+          d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
     );
   }
 
@@ -1119,9 +1135,7 @@ input[type="number"] { -moz-appearance: textfield; }
                 </div>
               </div>
             ) : (
-              <div style={{ opacity: 0.8, fontSize: 13 }}>
-                Single tasks can still have scheduled days + reminders.
-              </div>
+              <div style={{ opacity: 0.8, fontSize: 13 }}>Single tasks can still have scheduled days + reminders.</div>
             )}
           </div>
         ) : null}
@@ -1195,173 +1209,157 @@ input[type="number"] { -moz-appearance: textfield; }
   }
 
   // --- Home-screen style task row (you can tweak this to match your home exactly) ---
- function TaskCardHomeLook({
-  t,
-  isArchived,
-}: {
-  t: TaskRow;
-  isArchived: boolean;
-}) {
-  const { bg, text } = TASK_COLORS[colorIndexFromId(t.id)];
-  const textIsBlack = text === "#000";
+  function TaskCardHomeLook({
+    t,
+    isArchived,
+  }: {
+    t: TaskRow;
+    isArchived: boolean;
+  }) {
+    const { bg, text } = TASK_COLORS[colorIndexFromId(t.id)];
+    const textIsBlack = text === "#000";
 
-  const rCount = (remindersByTask[t.id] ?? []).length;
-  const kind = pickIconKind(t.title);
+    const rCount = (remindersByTask[t.id] ?? []).length;
+    const kind = pickIconKind(t.title);
 
-  return (
-    <div
-      style={{
-        width: "100%",
-        borderRadius: 20,
-        background: bg,
-        color: text,
-        position: "relative",
-        overflow: "hidden",
-        padding: "12px 12px 13px",
-        boxShadow: "0 10px 22px rgba(0,0,0,0.45)",
-        opacity: isArchived ? 0.65 : 1,
-        filter: isArchived ? "grayscale(1)" : "none",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 10, paddingBottom: 10 }}>
-        {/* Icon */}
-        <div
-          style={{
-            flex: "0 0 auto",
-            width: 34,
-            height: 34,
-            borderRadius: 14,
-            background: textIsBlack ? "rgba(0,0,0,0.12)" : "rgba(255,255,255,0.16)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: text,
-          }}
-        >
-          <MiniIcon kind={kind} />
-        </div>
-
-        {/* Title */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              fontWeight: 900,
-              fontSize: 16,
-              lineHeight: 1.1,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-            title={t.title}
-          >
-            {t.title}
-          </div>
-
-          {/* Same middle line position as Home */}
-          <div style={{ marginTop: 6, opacity: 0.9, fontSize: 12, fontWeight: 900 }}>
-            {fmtScheduledDays(t.scheduled_days)} • Reminders: {rCount}
-          </div>
-        </div>
-
-        {/* Actions (Home layout, Tasks actions) */}
-        <div style={{ display: "flex", gap: 10 }}>
-          <button
-            onClick={() => openEdit(t)}
-            disabled={busy}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 14,
-              border: textIsBlack
-                ? "1px solid rgba(0,0,0,0.22)"
-                : "1px solid rgba(255,255,255,0.26)",
-              background: textIsBlack
-                ? "rgba(0,0,0,0.14)"
-                : "rgba(255,255,255,0.16)",
-              color: text,
-              fontWeight: 900,
-              cursor: busy ? "not-allowed" : "pointer",
-              opacity: busy ? 0.65 : 1,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-            }}
-            type="button"
-          >
-            <IconPencil />
-            Edit
-          </button>
-
-          <button
-            onClick={() => toggleArchive(t)}
-            disabled={busy}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 14,
-              border: textIsBlack
-                ? "1px solid rgba(0,0,0,0.22)"
-                : "1px solid rgba(255,255,255,0.26)",
-              background: textIsBlack
-                ? "rgba(0,0,0,0.14)"
-                : "rgba(255,255,255,0.16)",
-              color: text,
-              fontWeight: 900,
-              cursor: busy ? "not-allowed" : "pointer",
-              opacity: busy ? 0.65 : 1,
-            }}
-            type="button"
-          >
-            {isArchived ? "Unarchive" : "Archive"}
-          </button>
-
-          <button
-            onClick={() => deleteTask(t)}
-            disabled={busy}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 14,
-              border: textIsBlack
-                ? "1px solid rgba(0,0,0,0.22)"
-                : "1px solid rgba(255,255,255,0.26)",
-              background: textIsBlack
-                ? "rgba(0,0,0,0.14)"
-                : "rgba(255,255,255,0.16)",
-              color: text,
-              fontWeight: 900,
-              cursor: busy ? "not-allowed" : "pointer",
-              opacity: busy ? 0.65 : 1,
-            }}
-            type="button"
-          >
-            Delete
-          </button>
-        </div>
-      </div>
-
-      {/* Bottom progress bar (visual parity with Home) */}
+    return (
       <div
         style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          bottom: 0,
-          height: 8,
-          background: textIsBlack ? "rgba(0,0,0,0.18)" : "rgba(255,255,255,0.18)",
+          width: "100%",
+          borderRadius: 20,
+          background: bg,
+          color: text,
+          position: "relative",
+          overflow: "hidden",
+          padding: "12px 12px 13px",
+          boxShadow: "0 10px 22px rgba(0,0,0,0.45)",
+          opacity: isArchived ? 0.65 : 1,
+          filter: isArchived ? "grayscale(1)" : "none",
         }}
       >
+        <div style={{ display: "flex", alignItems: "center", gap: 10, paddingBottom: 10 }}>
+          {/* Icon */}
+          <div
+            style={{
+              flex: "0 0 auto",
+              width: 34,
+              height: 34,
+              borderRadius: 14,
+              background: textIsBlack ? "rgba(0,0,0,0.12)" : "rgba(255,255,255,0.16)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: text,
+            }}
+          >
+            <MiniIcon kind={kind} />
+          </div>
+
+          {/* Title */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontWeight: 900,
+                fontSize: 16,
+                lineHeight: 1.1,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+              title={t.title}
+            >
+              {t.title}
+            </div>
+
+            <div style={{ marginTop: 6, opacity: 0.9, fontSize: 12, fontWeight: 900 }}>
+              {fmtScheduledDays(t.scheduled_days)} • Reminders: {rCount}
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: "flex", gap: 10 }}>
+            <button
+              onClick={() => openEdit(t)}
+              disabled={busy}
+              style={{
+                padding: "10px 12px",
+                borderRadius: 14,
+                border: textIsBlack ? "1px solid rgba(0,0,0,0.22)" : "1px solid rgba(255,255,255,0.26)",
+                background: textIsBlack ? "rgba(0,0,0,0.14)" : "rgba(255,255,255,0.16)",
+                color: text,
+                fontWeight: 900,
+                cursor: busy ? "not-allowed" : "pointer",
+                opacity: busy ? 0.65 : 1,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+              type="button"
+            >
+              <IconPencil />
+              Edit
+            </button>
+
+            <button
+              onClick={() => toggleArchive(t)}
+              disabled={busy}
+              style={{
+                padding: "10px 12px",
+                borderRadius: 14,
+                border: textIsBlack ? "1px solid rgba(0,0,0,0.22)" : "1px solid rgba(255,255,255,0.26)",
+                background: textIsBlack ? "rgba(0,0,0,0.14)" : "rgba(255,255,255,0.16)",
+                color: text,
+                fontWeight: 900,
+                cursor: busy ? "not-allowed" : "pointer",
+                opacity: busy ? 0.65 : 1,
+              }}
+              type="button"
+            >
+              {isArchived ? "Unarchive" : "Archive"}
+            </button>
+
+            <button
+              onClick={() => deleteTask(t)}
+              disabled={busy}
+              style={{
+                padding: "10px 12px",
+                borderRadius: 14,
+                border: textIsBlack ? "1px solid rgba(0,0,0,0.22)" : "1px solid rgba(255,255,255,0.26)",
+                background: textIsBlack ? "rgba(0,0,0,0.14)" : "rgba(255,255,255,0.16)",
+                color: text,
+                fontWeight: 900,
+                cursor: busy ? "not-allowed" : "pointer",
+                opacity: busy ? 0.65 : 1,
+              }}
+              type="button"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+
+        {/* Bottom bar */}
         <div
           style={{
-            height: "100%",
-            width: "100%",
-            background: textIsBlack
-              ? "rgba(0,0,0,0.55)"
-              : "rgba(255,255,255,0.70)",
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: 8,
+            background: textIsBlack ? "rgba(0,0,0,0.18)" : "rgba(255,255,255,0.18)",
           }}
-        />
+        >
+          <div
+            style={{
+              height: "100%",
+              width: "100%",
+              background: textIsBlack ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.70)",
+            }}
+          />
+        </div>
       </div>
-    </div>
-  );
-}
-
+    );
+  }
 
   return (
     <main
@@ -1409,7 +1407,6 @@ input[type="number"] { -moz-appearance: textfield; }
             </div>
           ) : (
             activeTasks.map((t) => <TaskCardHomeLook key={t.id} t={t} isArchived={false} />)
-
           )}
         </section>
 
@@ -1417,10 +1414,9 @@ input[type="number"] { -moz-appearance: textfield; }
           <section style={{ marginTop: 10 }}>
             <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 10 }}>Archived</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              archivedTasks.map((t) => (
-  <TaskCardHomeLook key={t.id} t={t} isArchived={true} />
-))}
-
+              {archivedTasks.map((t) => (
+                <TaskCardHomeLook key={t.id} t={t} isArchived={true} />
+              ))}
             </div>
           </section>
         ) : null}
@@ -1430,7 +1426,7 @@ input[type="number"] { -moz-appearance: textfield; }
       <CreateOverlay />
 
       {/* NOTE: keeping your existing edit modal code from your previous file.
-         If you want it to match the same full-screen create overlay style too, say so and I’ll convert it. */}
+          If you want it to match the same full-screen create overlay style too, say so and I’ll convert it. */}
     </main>
   );
 }
