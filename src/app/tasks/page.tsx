@@ -72,10 +72,7 @@ function fmtScheduledDays(days: number[] | null) {
   return sorted.map((d) => DOW.find((x) => x.n === d)?.label ?? "?").join(", ");
 }
 
-function parseBoundedInt(
-  raw: string,
-  { min, max, fallback }: { min: number; max: number; fallback: number }
-) {
+function parseBoundedInt(raw: string, { min, max, fallback }: { min: number; max: number; fallback: number }) {
   const s = raw.trim();
   if (s === "") return fallback;
   const n = Number(s);
@@ -241,7 +238,6 @@ input[type="number"] { -moz-appearance: textfield; }
 `;
 
 export default function TasksPage() {
-  export default function TasksPage() {
   const [userId, setUserId] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -324,8 +320,9 @@ export default function TasksPage() {
     };
   }, []);
 
-  useEffect(() => {
-
+  // -----------------------------
+  // Load data when user changes
+  // -----------------------------
   useEffect(() => {
     if (!userId) {
       setTasks([]);
@@ -398,6 +395,10 @@ export default function TasksPage() {
     drafts: ReminderDraft[];
     setDrafts: (v: ReminderDraft[]) => void;
   }) {
+    // (rest of your file continues...)
+    return null as any;
+  }
+
     const hasOne = drafts.length >= 1;
 
     return (
