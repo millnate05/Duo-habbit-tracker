@@ -12,17 +12,19 @@ type FrequencyUnit = "day" | "week" | "month" | "year";
 type TaskRow = {
   id: string;
   user_id: string;
-
   title: string;
   type: TaskType;
   freq_times: number | null;
   freq_per: FrequencyUnit | null;
-
   archived: boolean;
   created_at: string;
 
   scheduled_days: number[] | null; // null => every day
   weekly_skips_allowed: number;
+
+  // optional fields in your DB
+  is_shared?: boolean;
+  assigned_to?: string | null;
 };
 
 type CompletionRow = {
@@ -311,7 +313,7 @@ export default function TasksPage() {
         .select("id,user_id,task_id,completed_at")
         .eq("user_id", uid)
         .order("completed_at", { ascending: false })
-        .limit(1200);
+        .limit(1500);
 
       if (error) throw error;
       setCompletions((data ?? []) as CompletionRow[]);
@@ -327,7 +329,7 @@ export default function TasksPage() {
         background: theme.page.background,
         color: theme.page.text,
         padding: 24,
-        paddingBottom: 60,
+        paddingBottom: 80,
       }}
     >
       <div style={{ maxWidth: 980, margin: "0 auto" }}>
@@ -384,12 +386,6 @@ export default function TasksPage() {
               return (
                 <div
                   key={t.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => router.push(`/tasks/${t.id}`)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") router.push(`/tasks/${t.id}`);
-                  }}
                   style={{
                     width: "100%",
                     borderRadius: 18,
@@ -397,17 +393,17 @@ export default function TasksPage() {
                     color: text,
                     position: "relative",
                     overflow: "hidden",
-                    padding: "10px 12px", // ✅ shorter card height
+                    // ✅ ~5% taller than the previous compact version:
+                    padding: "11px 12px", // was 10px 12px
                     boxShadow: "0 10px 22px rgba(0,0,0,0.45)",
-                    cursor: "pointer",
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <div
                       style={{
                         flex: "0 0 auto",
-                        width: 30,
-                        height: 30,
+                        width: 31, // was 30
+                        height: 31, // was 30
                         borderRadius: 12,
                         background: textIsBlack ? "rgba(0,0,0,0.12)" : "rgba(255,255,255,0.16)",
                         display: "flex",
@@ -434,10 +430,10 @@ export default function TasksPage() {
                         {t.title}
                       </div>
 
-                      {/* Progress bar only (no % line) */}
+                      {/* Progress bar only (no % text) */}
                       <div
                         style={{
-                          marginTop: 8,
+                          marginTop: 9, // slightly more space
                           height: 9,
                           borderRadius: 999,
                           background: textIsBlack ? "rgba(0,0,0,0.16)" : "rgba(255,255,255,0.22)",
@@ -457,6 +453,27 @@ export default function TasksPage() {
                       </div>
                     </div>
 
+                    {/* ✅ Edit button on task cards */}
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/tasks/${t.id}`)}
+                      style={{
+                        padding: "9px 12px",
+                        borderRadius: 14,
+                        border: textIsBlack
+                          ? "1px solid rgba(0,0,0,0.22)"
+                          : "1px solid rgba(255,255,255,0.26)",
+                        background: textIsBlack ? "rgba(0,0,0,0.14)" : "rgba(255,255,255,0.16)",
+                        color: text,
+                        fontWeight: 900,
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                      }}
+                      aria-label={`Edit ${t.title}`}
+                    >
+                      Edit
+                    </button>
+
                     <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.95, whiteSpace: "nowrap" }}>
                       {done}/{target}
                     </div>
@@ -467,7 +484,7 @@ export default function TasksPage() {
           </div>
         )}
 
-        {/* ✅ ALWAYS render the create button (even if 0 tasks) */}
+        {/* ✅ Create button centered under tasks (always rendered) */}
         <div style={{ display: "flex", justifyContent: "center", marginTop: 18 }}>
           <button
             type="button"
@@ -510,7 +527,7 @@ export default function TasksPage() {
           </button>
         </div>
 
-        {/* Archived list (unchanged, compact) */}
+        {/* Archived list */}
         {!loading && archivedTasks.length > 0 ? (
           <div style={{ marginTop: 22 }}>
             <div style={{ fontWeight: 900, opacity: 0.9, marginBottom: 10 }}>Archived</div>
