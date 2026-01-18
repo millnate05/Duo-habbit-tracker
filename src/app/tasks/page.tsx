@@ -19,10 +19,9 @@ type TaskRow = {
   archived: boolean;
   created_at: string;
 
-  scheduled_days: number[] | null; // null => every day
+  scheduled_days: number[] | null;
   weekly_skips_allowed: number;
 
-  // optional fields in your DB
   is_shared?: boolean;
   assigned_to?: string | null;
 };
@@ -92,7 +91,6 @@ function MiniIcon({ kind }: { kind: IconKind }) {
           />
         </svg>
       );
-
     case "lift":
       return (
         <svg {...common} aria-label="dumbbell">
@@ -103,7 +101,6 @@ function MiniIcon({ kind }: { kind: IconKind }) {
           <rect x="18" y="10" width="3" height="4" rx="1" fill="currentColor" opacity="0.92" />
         </svg>
       );
-
     case "run":
       return (
         <svg {...common} aria-label="run">
@@ -119,7 +116,6 @@ function MiniIcon({ kind }: { kind: IconKind }) {
           />
         </svg>
       );
-
     case "calendar":
       return (
         <svg {...common} aria-label="calendar">
@@ -128,7 +124,6 @@ function MiniIcon({ kind }: { kind: IconKind }) {
           <rect x="7.2" y="12" width="4.2" height="4.2" rx="1.2" fill="rgba(0,0,0,0.25)" />
         </svg>
       );
-
     default:
       return (
         <svg {...common} aria-label="check">
@@ -139,7 +134,6 @@ function MiniIcon({ kind }: { kind: IconKind }) {
             stroke="rgba(0,0,0,0.28)"
             strokeWidth="2.6"
             strokeLinecap="round"
-            strokeLinejoin="round"
           />
         </svg>
       );
@@ -214,7 +208,6 @@ export default function TasksPage() {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [completions, setCompletions] = useState<CompletionRow[]>([]);
 
-  // Auth
   useEffect(() => {
     let alive = true;
 
@@ -235,7 +228,6 @@ export default function TasksPage() {
     };
   }, []);
 
-  // Load when user changes
   useEffect(() => {
     if (!userId) {
       setTasks([]);
@@ -251,7 +243,6 @@ export default function TasksPage() {
   const activeTasks = useMemo(() => tasks.filter((t) => !t.archived), [tasks]);
   const archivedTasks = useMemo(() => tasks.filter((t) => t.archived), [tasks]);
 
-  // completion map
   const completionMap = useMemo(() => {
     const m = new Map<string, number[]>();
     for (const c of completions) {
@@ -322,6 +313,44 @@ export default function TasksPage() {
     }
   }
 
+  // Super-visible fixed button (bottom-center). If THIS doesn't show, your layout is covering/clipping the page.
+  function FixedCreateFab() {
+    return (
+      <div
+        style={{
+          position: "fixed",
+          left: "50%",
+          bottom: 18,
+          transform: "translateX(-50%)",
+          zIndex: 999999,
+          pointerEvents: "auto",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => router.push("/tasks/create")}
+          style={{
+            width: 66,
+            height: 66,
+            borderRadius: 999,
+            border: `2px solid ${theme.accent.primary}`,
+            background: theme.accent.primary,
+            color: "#000",
+            fontWeight: 900,
+            fontSize: 34,
+            lineHeight: "66px",
+            textAlign: "center",
+            cursor: "pointer",
+            boxShadow: "0 18px 40px rgba(0,0,0,0.6)",
+          }}
+          aria-label="Create new task"
+        >
+          +
+        </button>
+      </div>
+    );
+  }
+
   return (
     <main
       style={{
@@ -329,19 +358,11 @@ export default function TasksPage() {
         background: theme.page.background,
         color: theme.page.text,
         padding: 24,
-        paddingBottom: 80,
+        paddingBottom: 120, // leave room so the fixed button doesn't cover content
       }}
     >
       <div style={{ maxWidth: 980, margin: "0 auto" }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "baseline",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
           <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>Tasks</h1>
 
           <Link
@@ -391,25 +412,24 @@ export default function TasksPage() {
                     borderRadius: 18,
                     background: bg,
                     color: text,
-                    position: "relative",
                     overflow: "hidden",
-                    // ✅ ~5% taller than the previous compact version:
-                    padding: "11px 12px", // was 10px 12px
+                    padding: "12px 12px", // ~5% taller than before
                     boxShadow: "0 10px 22px rgba(0,0,0,0.45)",
+                    position: "relative",
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <div
                       style={{
-                        flex: "0 0 auto",
-                        width: 31, // was 30
-                        height: 31, // was 30
+                        width: 32,
+                        height: 32,
                         borderRadius: 12,
                         background: textIsBlack ? "rgba(0,0,0,0.12)" : "rgba(255,255,255,0.16)",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
                         color: text,
+                        flex: "0 0 auto",
                       }}
                     >
                       <MiniIcon kind={icon} />
@@ -430,16 +450,14 @@ export default function TasksPage() {
                         {t.title}
                       </div>
 
-                      {/* Progress bar only (no % text) */}
                       <div
                         style={{
-                          marginTop: 9, // slightly more space
+                          marginTop: 9,
                           height: 9,
                           borderRadius: 999,
                           background: textIsBlack ? "rgba(0,0,0,0.16)" : "rgba(255,255,255,0.22)",
                           overflow: "hidden",
                         }}
-                        aria-label="progress"
                       >
                         <div
                           style={{
@@ -453,29 +471,29 @@ export default function TasksPage() {
                       </div>
                     </div>
 
-                    {/* ✅ Edit button on task cards */}
-                    <button
-                      type="button"
-                      onClick={() => router.push(`/tasks/${t.id}`)}
-                      style={{
-                        padding: "9px 12px",
-                        borderRadius: 14,
-                        border: textIsBlack
-                          ? "1px solid rgba(0,0,0,0.22)"
-                          : "1px solid rgba(255,255,255,0.26)",
-                        background: textIsBlack ? "rgba(0,0,0,0.14)" : "rgba(255,255,255,0.16)",
-                        color: text,
-                        fontWeight: 900,
-                        cursor: "pointer",
-                        whiteSpace: "nowrap",
-                      }}
-                      aria-label={`Edit ${t.title}`}
-                    >
-                      Edit
-                    </button>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/tasks/${t.id}`)}
+                        style={{
+                          padding: "9px 12px",
+                          borderRadius: 14,
+                          border: textIsBlack
+                            ? "1px solid rgba(0,0,0,0.22)"
+                            : "1px solid rgba(255,255,255,0.26)",
+                          background: textIsBlack ? "rgba(0,0,0,0.14)" : "rgba(255,255,255,0.16)",
+                          color: text,
+                          fontWeight: 900,
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        Edit
+                      </button>
 
-                    <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.95, whiteSpace: "nowrap" }}>
-                      {done}/{target}
+                      <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.95, whiteSpace: "nowrap" }}>
+                        {done}/{target}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -484,50 +502,48 @@ export default function TasksPage() {
           </div>
         )}
 
-        {/* ✅ Create button centered under tasks (always rendered) */}
+        {/* Normal-flow create button under the list (Link fallback) */}
         <div style={{ display: "flex", justifyContent: "center", marginTop: 18 }}>
-          <button
-            type="button"
-            onClick={() => router.push("/tasks/create")}
+          <Link
+            href="/tasks/create"
             style={{
               width: "min(520px, 100%)",
               padding: "14px 16px",
               borderRadius: 16,
-              border: `1px solid ${theme.accent.primary}`,
-              background: theme.accent.primary,
-              color: "#000",
+              border: `2px solid ${theme.accent.primary}`,
+              background: "rgba(255,255,255,0.04)",
+              color: "var(--text)",
               fontWeight: 900,
               fontSize: 16,
+              textDecoration: "none",
               cursor: "pointer",
-              boxShadow: "0 12px 24px rgba(0,0,0,0.35)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               gap: 10,
             }}
-            aria-label="Create new task"
           >
             <span
               style={{
                 width: 28,
                 height: 28,
                 borderRadius: 999,
-                background: "rgba(0,0,0,0.18)",
+                background: theme.accent.primary,
+                color: "#000",
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
                 fontSize: 20,
-                lineHeight: 0,
                 fontWeight: 900,
+                lineHeight: 0,
               }}
             >
               +
             </span>
             Create new task
-          </button>
+          </Link>
         </div>
 
-        {/* Archived list */}
         {!loading && archivedTasks.length > 0 ? (
           <div style={{ marginTop: 22 }}>
             <div style={{ fontWeight: 900, opacity: 0.9, marginBottom: 10 }}>Archived</div>
@@ -554,6 +570,9 @@ export default function TasksPage() {
           </div>
         ) : null}
       </div>
+
+      {/* If you still cannot see this fixed + button, your layout is covering/clipping the page. */}
+      <FixedCreateFab />
     </main>
   );
 }
