@@ -8,7 +8,7 @@ import { theme } from "@/UI/theme";
 type TaskType = "habit" | "single";
 type FrequencyUnit = "day" | "week" | "month" | "year";
 
-type TaskRow = {
+type TaskRow = { 
   id: string;
   user_id: string;
   title: string;
