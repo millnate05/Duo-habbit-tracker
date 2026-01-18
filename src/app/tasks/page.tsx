@@ -720,375 +720,249 @@ export default function TasksPage() {
   }
 
   // -----------------------------
-  // edit + archive + delete
-  // -----------------------------
-  function openEdit(t: TaskRow) {
-    setEditTask(t);
-    setEditOpen(true);
-    setStatus(null);
-    setEditFreqTimesStr(String(t.freq_times ?? 1));
-    setEditWeeklySkipsStr(String(t.weekly_skips_allowed ?? 0));
+// edit + archive + delete
+// -----------------------------
+function openEdit(t: TaskRow) {
+  setEditTask(t);
+  setEditOpen(true);
+  setStatus(null);
+  setEditFreqTimesStr(String(t.freq_times ?? 1));
+  setEditWeeklySkipsStr(String(t.weekly_skips_allowed ?? 0));
 
-    const existing = remindersByTask[t.id] ?? [];
-    setEditReminders(existing.length ? [toDraftFromRow(existing[0])] : []);
+  const existing = remindersByTask[t.id] ?? [];
+  setEditReminders(existing.length ? [toDraftFromRow(existing[0])] : []);
+}
+
+async function saveEdit(next: TaskRow) {
+  if (!userId) return;
+
+  const trimmed = next.title.trim();
+  if (!trimmed) {
+    setStatus("Title is required.");
+    return;
   }
 
-  async function saveEdit(next: TaskRow) {
-    if (!userId) return;
+  setBusy(true);
+  setStatus(null);
 
-    const trimmed = next.title.trim();
-    if (!trimmed) {
-      setStatus("Title is required.");
-      return;
-    }
+  try {
+    const freqTimes = parseBoundedInt(editFreqTimesStr, { min: 1, max: 999, fallback: 1 });
+    const weeklySkipsAllowed = parseBoundedInt(editWeeklySkipsStr, { min: 0, max: 7, fallback: 0 });
 
-    setBusy(true);
-    setStatus(null);
+    const { data, error } = await supabase
+      .from("tasks")
+      .update({
+        title: trimmed,
+        type: next.type,
+        freq_times: next.type === "habit" ? freqTimes : null,
+        freq_per: next.type === "habit" ? (next.freq_per ?? "week") : null,
+        scheduled_days: next.scheduled_days,
+        weekly_skips_allowed: weeklySkipsAllowed,
+        archived: next.archived,
+      })
+      .eq("id", next.id)
+      .eq("user_id", userId)
+      .select("*")
+      .single();
 
-    try {
-      const freqTimes = parseBoundedInt(editFreqTimesStr, { min: 1, max: 999, fallback: 1 });
-      const weeklySkipsAllowed = parseBoundedInt(editWeeklySkipsStr, { min: 0, max: 7, fallback: 0 });
+    if (error) throw error;
 
-      const { data, error } = await supabase
-        .from("tasks")
-        .update({
-          title: trimmed,
-          type: next.type,
-          freq_times: next.type === "habit" ? freqTimes : null,
-          freq_per: next.type === "habit" ? (next.freq_per ?? "week") : null,
-          scheduled_days: next.scheduled_days,
-          weekly_skips_allowed: weeklySkipsAllowed,
-          archived: next.archived,
-        })
-        .eq("id", next.id)
-        .eq("user_id", userId)
-        .select("*")
-        .single();
+    const updated = data as TaskRow;
+    setTasks((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
 
-      if (error) throw error;
+    await upsertRemindersForTask(updated.id, editReminders);
 
-      const updated = data as TaskRow;
-      setTasks((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+    setEditOpen(false);
+    setEditTask(null);
+    setEditReminders([]);
+  } catch (e: any) {
+    console.error(e);
+    setStatus(e?.message ?? "Failed to save.");
+  } finally {
+    setBusy(false);
+  }
+}
 
-      await upsertRemindersForTask(updated.id, editReminders);
+async function toggleArchive(t: TaskRow) {
+  if (!userId) return;
+  setBusy(true);
+  setStatus(null);
 
+  try {
+    const { data, error } = await supabase
+      .from("tasks")
+      .update({ archived: !t.archived })
+      .eq("id", t.id)
+      .eq("user_id", userId)
+      .select("*")
+      .single();
+
+    if (error) throw error;
+
+    const updated = data as TaskRow;
+    setTasks((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+  } catch (e: any) {
+    console.error(e);
+    setStatus(e?.message ?? "Failed to update task.");
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function deleteTask(t: TaskRow) {
+  if (!userId) return;
+  if (busy) return;
+
+  const ok = window.confirm(`Delete "${t.title}"?\n\nThis cannot be undone.`);
+  if (!ok) return;
+
+  setBusy(true);
+  setStatus(null);
+
+  try {
+    // ✅ delete reminder rows FIRST so you don't trip a FK constraint
+    await supabase.from("reminders").delete().eq("user_id", userId).eq("task_id", t.id);
+
+    const { error } = await supabase.from("tasks").delete().eq("id", t.id).eq("user_id", userId);
+    if (error) throw error;
+
+    setTasks((prev) => prev.filter((x) => x.id !== t.id));
+
+    setRemindersByTask((prev) => {
+      const copy = { ...prev };
+      delete copy[t.id];
+      return copy;
+    });
+
+    if (editTask?.id === t.id) {
       setEditOpen(false);
       setEditTask(null);
       setEditReminders([]);
-    } catch (e: any) {
-      console.error(e);
-      setStatus(e?.message ?? "Failed to save.");
-    } finally {
-      setBusy(false);
     }
+  } catch (e: any) {
+    console.error(e);
+    setStatus(e?.message ?? "Failed to delete task.");
+  } finally {
+    setBusy(false);
   }
+}
 
-  async function toggleArchive(t: TaskRow) {
-    if (!userId) return;
-    setBusy(true);
-    setStatus(null);
-
-    try {
-      const { data, error } = await supabase
-        .from("tasks")
-        .update({ archived: !t.archived })
-        .eq("id", t.id)
-        .eq("user_id", userId)
-        .select("*")
-        .single();
-
-      if (error) throw error;
-
-      const updated = data as TaskRow;
-      setTasks((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
-    } catch (e: any) {
-      console.error(e);
-      setStatus(e?.message ?? "Failed to update task.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-   async function deleteTask(t: TaskRow) {
-    if (!userId) return;
-    if (busy) return;
-
-    const ok = window.confirm(`Delete "${t.title}"?\n\nThis cannot be undone.`);
-    if (!ok) return;
-
-    setBusy(true);
-    setStatus(null);
-
-    try {
-      const { error } = await supabase.from("tasks").delete().eq("id", t.id).eq("user_id", userId);
-      if (error) throw error;
-
-      setTasks((prev) => prev.filter((x) => x.id !== t.id));
-
-      await supabase.from("reminders").delete().eq("user_id", userId).eq("task_id", t.id);
-
-      setRemindersByTask((prev) => {
-        const copy = { ...prev };
-        delete copy[t.id];
-        return copy;
-      });
-
-      if (editTask?.id === t.id) {
+// -----------------------------
+// overlay behavior (esc + body scroll lock)
+// -----------------------------
+useEffect(() => {
+  function onKeyDown(e: KeyboardEvent) {
+    if (e.key === "Escape") {
+      if (createOpen) closeCreate();
+      if (editOpen && !busy) {
         setEditOpen(false);
         setEditTask(null);
-      }
-    } catch (e: any) {
-      console.error(e);
-      setStatus(e?.message ?? "Failed to delete task.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // -----------------------------
-  // overlay behavior (esc + body scroll lock)
-  // -----------------------------
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        if (createOpen) closeCreate();
-        if (editOpen && !busy) {
-          setEditOpen(false);
-          setEditTask(null);
-          setEditReminders([]);
-        }
+        setEditReminders([]);
       }
     }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [createOpen, editOpen, busy]);
-
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    if (createOpen || editOpen) document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [createOpen, editOpen]);
-
-  // -----------------------------
-  // UI pieces
-  // -----------------------------
-  function StepChip({ label, active }: { label: string; active: boolean }) {
-    return (
-      <div
-        className="dht-anim"
-        style={{
-          padding: "8px 10px",
-          borderRadius: 999,
-          border: `1px solid ${active ? theme.accent.primary : "var(--border)"}`,
-          background: active ? "rgba(255,255,255,0.04)" : "transparent",
-          fontWeight: 900,
-          fontSize: 12,
-          opacity: active ? 1 : 0.75,
-          transition: "all 220ms ease",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {label}
-      </div>
-    );
   }
+  window.addEventListener("keydown", onKeyDown);
+  return () => window.removeEventListener("keydown", onKeyDown);
+}, [createOpen, editOpen, busy]);
 
-  function OverlayShell({
-    open,
-    title,
-    onClose,
-    children,
-    footer,
-  }: {
-    open: boolean;
-    title: string;
-    onClose: () => void;
-    children: React.ReactNode;
-    footer?: React.ReactNode;
-  }) {
-    return (
+useEffect(() => {
+  const prev = document.body.style.overflow;
+  if (createOpen || editOpen) document.body.style.overflow = "hidden";
+  return () => {
+    document.body.style.overflow = prev;
+  };
+}, [createOpen, editOpen]);
+
+// -----------------------------
+// UI pieces
+// -----------------------------
+function StepChip({ label, active }: { label: string; active: boolean }) {
+  return (
+    <div
+      className="dht-anim"
+      style={{
+        padding: "8px 10px",
+        borderRadius: 999,
+        border: `1px solid ${active ? theme.accent.primary : "var(--border)"}`,
+        background: active ? "rgba(255,255,255,0.04)" : "transparent",
+        fontWeight: 900,
+        fontSize: 12,
+        opacity: active ? 1 : 0.75,
+        transition: "all 220ms ease",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+    </div>
+  );
+}
+
+function OverlayShell({
+  open,
+  title,
+  onClose,
+  children,
+  footer,
+}: {
+  open: boolean;
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+}) {
+  return (
+    <div
+      className="dht-anim"
+      style={{
+        position: "fixed",
+        inset: 0,
+        pointerEvents: open ? "auto" : "none",
+        zIndex: 1000,
+      }}
+      aria-hidden={!open}
+    >
+      {/* Full black backdrop */}
       <div
         className="dht-anim"
+        onClick={onClose}
         style={{
-          position: "fixed",
+          position: "absolute",
           inset: 0,
-          pointerEvents: open ? "auto" : "none",
-          zIndex: 1000,
+          background: "#000",
+          opacity: open ? 1 : 0,
+          transition: "opacity 220ms ease",
         }}
-        aria-hidden={!open}
-      >
-        {/* Full black backdrop */}
-        <div
-          className="dht-anim"
-          onClick={onClose}
-          style={{
-            position: "absolute",
-            inset: 0,
-            background: "#000",
-            opacity: open ? 1 : 0,
-            transition: "opacity 220ms ease",
-          }}
-        />
+      />
 
-        {/* Fullscreen sheet */}
-        <div
-          className="dht-anim"
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: "absolute",
-            inset: 0,
-            margin: 0,
-            width: "100%",
-            height: "100%",
-            borderRadius: 0,
-            border: "none",
-            background: "var(--bg)",
-            boxShadow: "none",
-            transform: open ? "translateY(0)" : "translateY(10px)",
-            opacity: open ? 1 : 0,
-            transition: "transform 240ms ease, opacity 240ms ease",
-            overflow: "hidden",
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div style={{ padding: 16, borderBottom: "1px solid var(--border)" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-              <div style={{ fontWeight: 900, fontSize: 18 }}>{title}</div>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={onClose}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid var(--border)",
-                  background: "transparent",
-                  color: "var(--text)",
-                  fontWeight: 900,
-                  cursor: busy ? "not-allowed" : "pointer",
-                  opacity: busy ? 0.6 : 1,
-                }}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-
-          <div style={{ padding: 16, overflowY: "auto", height: "calc(100% - 74px - 78px)" }}>{children}</div>
-
-          <div style={{ padding: 16, borderTop: "1px solid var(--border)", background: "rgba(255,255,255,0.02)" }}>
-            {footer ?? null}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // --- tiny icon buttons (no deps) ---
-  function IconPencil({ size = 16 }: { size?: number }) {
-    return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M12 20h9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        <path
-          d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    );
-  }
-
-  function BigPlusButton({ onClick }: { onClick: () => void }) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        disabled={busy}
+      {/* Fullscreen sheet */}
+      <div
         className="dht-anim"
+        role="dialog"
+        aria-modal="true"
         style={{
-          position: "fixed",
-          left: "50%",
-          transform: "translateX(-50%)",
-          bottom: 18,
-          zIndex: 40,
-          width: 64,
-          height: 64,
-          borderRadius: 999,
-          border: `1px solid ${theme.accent.primary}`,
-          background: "rgba(255,255,255,0.04)",
-          backdropFilter: "blur(8px)",
-          color: "var(--text)",
-          fontSize: 34,
-          fontWeight: 900,
-          display: "grid",
-          placeItems: "center",
-          cursor: busy ? "not-allowed" : "pointer",
-          opacity: busy ? 0.65 : 1,
-          boxShadow: "0 14px 35px rgba(0,0,0,0.45)",
-          transition: "transform 160ms ease, opacity 160ms ease",
+          position: "absolute",
+          inset: 0,
+          margin: 0,
+          width: "100%",
+          height: "100%",
+          borderRadius: 0,
+          border: "none",
+          background: "var(--bg)",
+          boxShadow: "none",
+          transform: open ? "translateY(0)" : "translateY(10px)",
+          opacity: open ? 1 : 0,
+          transition: "transform 240ms ease, opacity 240ms ease",
+          overflow: "hidden",
         }}
-        aria-label="Create task"
-        title="Create task"
+        onClick={(e) => e.stopPropagation()}
       >
-        +
-      </button>
-    );
-  }
-
-  if (!userId) {
-    return (
-      <main style={{ minHeight: theme.layout.fullHeight, background: theme.page.background, color: theme.page.text, padding: 24 }}>
-        <style>{globalFixesCSS}</style>
-        <div style={{ maxWidth: 980, margin: "0 auto" }}>
-          <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>Tasks</h1>
-          <p style={{ margin: "8px 0 0 0", opacity: 0.8 }}>Log in to manage tasks.</p>
-
-          <div style={{ height: 14 }} />
-
-          <Link
-            href="/profile"
-            style={{
-              display: "inline-block",
-              padding: "12px 14px",
-              borderRadius: 12,
-              border: `1px solid ${theme.accent.primary}`,
-              color: "var(--text)",
-              textDecoration: "none",
-              fontWeight: 900,
-            }}
-          >
-            Go to Profile (Log in)
-          </Link>
-        </div>
-      </main>
-    );
-  }
-
-  function CreateOverlay() {
-    const stepTitle = createStep === 0 ? "Basics" : createStep === 1 ? "Schedule" : "Reminders";
-
-    return (
-      <OverlayShell
-        open={createOpen}
-        title={`Create Task • ${stepTitle}`}
-        onClose={closeCreate}
-        footer={
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <div style={{ padding: 16, borderBottom: "1px solid var(--border)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div style={{ fontWeight: 900, fontSize: 18 }}>{title}</div>
             <button
               type="button"
               disabled={busy}
-              onClick={() => {
-                if (createStep === 0) {
-                  setCreateOpen(false);
-                  return;
-                }
-                setCreateStep((s) => (s === 2 ? 1 : 0));
-              }}
+              onClick={onClose}
               style={{
                 padding: "10px 12px",
                 borderRadius: 12,
@@ -1100,419 +974,99 @@ export default function TasksPage() {
                 opacity: busy ? 0.6 : 1,
               }}
             >
-              {createStep === 0 ? "Cancel" : "Back"}
-            </button>
-
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => {
-                  resetCreateForm();
-                  setStatus(null);
-                  setTimeout(() => createTitleRef.current?.focus(), 50);
-                }}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid var(--border)",
-                  background: "transparent",
-                  color: "var(--text)",
-                  fontWeight: 900,
-                  cursor: busy ? "not-allowed" : "pointer",
-                  opacity: busy ? 0.6 : 1,
-                }}
-              >
-                Reset
-              </button>
-
-              {createStep < 2 ? (
-                <button
-                  type="button"
-                  disabled={busy || !canGoNextFromStep(createStep)}
-                  onClick={() => {
-                    if (!canGoNextFromStep(createStep)) return;
-                    setCreateStep((s) => (s === 0 ? 1 : 2));
-                  }}
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    border: `1px solid ${theme.accent.primary}`,
-                    background: "transparent",
-                    color: "var(--text)",
-                    fontWeight: 900,
-                    cursor: busy || !canGoNextFromStep(createStep) ? "not-allowed" : "pointer",
-                    opacity: busy || !canGoNextFromStep(createStep) ? 0.6 : 1,
-                  }}
-                >
-                  Next
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={createTask}
-                  disabled={busy || title.trim().length === 0}
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    border: `1px solid ${theme.accent.primary}`,
-                    background: "transparent",
-                    color: "var(--text)",
-                    fontWeight: 900,
-                    cursor: busy || title.trim().length === 0 ? "not-allowed" : "pointer",
-                    opacity: busy || title.trim().length === 0 ? 0.6 : 1,
-                  }}
-                >
-                  Create
-                </button>
-              )}
-            </div>
-          </div>
-        }
-      >
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
-          <StepChip label="1 • Basics" active={createStep === 0} />
-          <StepChip label="2 • Schedule" active={createStep === 1} />
-          <StepChip label="3 • Reminders" active={createStep === 2} />
-        </div>
-
-        {/* (same step content as before) */}
-        {createStep === 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ fontWeight: 900, opacity: 0.85 }}>Title</div>
-            <input
-              ref={createTitleRef}
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Task title"
-              style={{ ...baseField, width: "100%" }}
-            />
-
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-              <div style={{ fontWeight: 900, opacity: 0.85 }}>Type</div>
-              <select value={type} onChange={(e) => setType(e.target.value as TaskType)} style={cleanSelect}>
-                <option value="habit">Habit</option>
-                <option value="single">Single</option>
-              </select>
-            </div>
-
-            {type === "habit" ? (
-              <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 12, background: "rgba(255,255,255,0.02)" }}>
-                <div style={{ fontWeight: 900, marginBottom: 10 }}>Frequency</div>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                  <input
-                    type="number"
-                    min={1}
-                    max={999}
-                    value={freqTimesStr}
-                    onChange={(e) => onNumberFieldChange(setFreqTimesStr, e.target.value)}
-                    style={{ ...cleanNumber, width: 90 }}
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    placeholder="1"
-                  />
-                  <span style={{ opacity: 0.85 }}>x per</span>
-                  <select value={freqPer} onChange={(e) => setFreqPer(e.target.value as FrequencyUnit)} style={cleanSelect}>
-                    <option value="day">day</option>
-                    <option value="week">week</option>
-                    <option value="month">month</option>
-                    <option value="year">year</option>
-                  </select>
-                </div>
-              </div>
-            ) : (
-              <div style={{ opacity: 0.8, fontSize: 13 }}>Single tasks can still have scheduled days + reminders.</div>
-            )}
-          </div>
-        ) : null}
-
-        {createStep === 1 ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 12, background: "rgba(255,255,255,0.02)" }}>
-              <div style={{ fontWeight: 900, marginBottom: 6 }}>Scheduled days</div>
-              <div style={{ opacity: 0.8, fontSize: 13, marginBottom: 10 }}>
-                If you select all 7 days, it becomes <b>Every day</b>.
-              </div>
-
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {DOW.map((d) => {
-                  const selected = (scheduledDays ?? [0, 1, 2, 3, 4, 5, 6]).includes(d.n);
-                  return (
-                    <button
-                      key={d.n}
-                      type="button"
-                      onClick={() => toggleDay(d.n, scheduledDays, setScheduledDays)}
-                      disabled={busy}
-                      style={{
-                        padding: "8px 10px",
-                        borderRadius: 999,
-                        border: `1px solid ${selected ? theme.accent.primary : "var(--border)"}`,
-                        background: selected ? "rgba(255,255,255,0.04)" : "transparent",
-                        color: "var(--text)",
-                        fontWeight: 900,
-                        cursor: busy ? "not-allowed" : "pointer",
-                        opacity: busy ? 0.6 : 1,
-                      }}
-                    >
-                      {d.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div style={{ marginTop: 10, opacity: 0.85 }}>
-                Selected: <b>{fmtScheduledDays(scheduledDays)}</b>
-              </div>
-            </div>
-
-            <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 12, background: "rgba(255,255,255,0.02)" }}>
-              <div style={{ fontWeight: 900, marginBottom: 8 }}>Weekly skips allowed</div>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                <input
-                  type="number"
-                  min={0}
-                  max={7}
-                  value={weeklySkipsAllowedStr}
-                  onChange={(e) => onNumberFieldChange(setWeeklySkipsAllowedStr, e.target.value)}
-                  style={{ ...cleanNumber, width: 90 }}
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  placeholder="0"
-                />
-                <div style={{ opacity: 0.8, fontSize: 13 }}>Example: a 5x/week task can allow 2 skips.</div>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {createStep === 2 ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <ReminderEditor drafts={createReminders} setDrafts={setCreateReminders} />
-          </div>
-        ) : null}
-      </OverlayShell>
-    );
-  }
-
-  // --- Home-screen style task row (you can tweak this to match your home exactly) ---
-  function TaskCardHomeLook({
-    t,
-    isArchived,
-  }: {
-    t: TaskRow;
-    isArchived: boolean;
-  }) {
-    const { bg, text } = TASK_COLORS[colorIndexFromId(t.id)];
-    const textIsBlack = text === "#000";
-
-    const rCount = (remindersByTask[t.id] ?? []).length;
-    const kind = pickIconKind(t.title);
-
-    return (
-      <div
-        style={{
-          width: "100%",
-          borderRadius: 20,
-          background: bg,
-          color: text,
-          position: "relative",
-          overflow: "hidden",
-          padding: "12px 12px 13px",
-          boxShadow: "0 10px 22px rgba(0,0,0,0.45)",
-          opacity: isArchived ? 0.65 : 1,
-          filter: isArchived ? "grayscale(1)" : "none",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 10, paddingBottom: 10 }}>
-          {/* Icon */}
-          <div
-            style={{
-              flex: "0 0 auto",
-              width: 34,
-              height: 34,
-              borderRadius: 14,
-              background: textIsBlack ? "rgba(0,0,0,0.12)" : "rgba(255,255,255,0.16)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: text,
-            }}
-          >
-            <MiniIcon kind={kind} />
-          </div>
-
-          {/* Title */}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                fontWeight: 900,
-                fontSize: 16,
-                lineHeight: 1.1,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-              title={t.title}
-            >
-              {t.title}
-            </div>
-
-            <div style={{ marginTop: 6, opacity: 0.9, fontSize: 12, fontWeight: 900 }}>
-              {fmtScheduledDays(t.scheduled_days)} • Reminders: {rCount}
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div style={{ display: "flex", gap: 10 }}>
-            <button
-              onClick={() => openEdit(t)}
-              disabled={busy}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 14,
-                border: textIsBlack ? "1px solid rgba(0,0,0,0.22)" : "1px solid rgba(255,255,255,0.26)",
-                background: textIsBlack ? "rgba(0,0,0,0.14)" : "rgba(255,255,255,0.16)",
-                color: text,
-                fontWeight: 900,
-                cursor: busy ? "not-allowed" : "pointer",
-                opacity: busy ? 0.65 : 1,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-              }}
-              type="button"
-            >
-              <IconPencil />
-              Edit
-            </button>
-
-            <button
-              onClick={() => toggleArchive(t)}
-              disabled={busy}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 14,
-                border: textIsBlack ? "1px solid rgba(0,0,0,0.22)" : "1px solid rgba(255,255,255,0.26)",
-                background: textIsBlack ? "rgba(0,0,0,0.14)" : "rgba(255,255,255,0.16)",
-                color: text,
-                fontWeight: 900,
-                cursor: busy ? "not-allowed" : "pointer",
-                opacity: busy ? 0.65 : 1,
-              }}
-              type="button"
-            >
-              {isArchived ? "Unarchive" : "Archive"}
-            </button>
-
-            <button
-              onClick={() => deleteTask(t)}
-              disabled={busy}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 14,
-                border: textIsBlack ? "1px solid rgba(0,0,0,0.22)" : "1px solid rgba(255,255,255,0.26)",
-                background: textIsBlack ? "rgba(0,0,0,0.14)" : "rgba(255,255,255,0.16)",
-                color: text,
-                fontWeight: 900,
-                cursor: busy ? "not-allowed" : "pointer",
-                opacity: busy ? 0.65 : 1,
-              }}
-              type="button"
-            >
-              Delete
+              Close
             </button>
           </div>
         </div>
 
-        {/* Bottom bar */}
-        <div
+        <div style={{ padding: 16, overflowY: "auto", height: "calc(100% - 74px - 78px)" }}>{children}</div>
+
+        <div style={{ padding: 16, borderTop: "1px solid var(--border)", background: "rgba(255,255,255,0.02)" }}>
+          {footer ?? null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- tiny icon buttons (no deps) ---
+function IconPencil({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 20h9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path
+        d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function BigPlusButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      className="dht-anim"
+      style={{
+        position: "fixed",
+        left: "50%",
+        transform: "translateX(-50%)",
+        bottom: 18,
+        zIndex: 40,
+        width: 64,
+        height: 64,
+        borderRadius: 999,
+        border: `1px solid ${theme.accent.primary}`,
+        background: "rgba(255,255,255,0.04)",
+        backdropFilter: "blur(8px)",
+        color: "var(--text)",
+        fontSize: 34,
+        fontWeight: 900,
+        display: "grid",
+        placeItems: "center",
+        cursor: busy ? "not-allowed" : "pointer",
+        opacity: busy ? 0.65 : 1,
+        boxShadow: "0 14px 35px rgba(0,0,0,0.45)",
+        transition: "transform 160ms ease, opacity 160ms ease",
+      }}
+      aria-label="Create task"
+      title="Create task"
+    >
+      +
+    </button>
+  );
+}
+
+if (!userId) {
+  return (
+    <main style={{ minHeight: theme.layout.fullHeight, background: theme.page.background, color: theme.page.text, padding: 24 }}>
+      <style>{globalFixesCSS}</style>
+      <div style={{ maxWidth: 980, margin: "0 auto" }}>
+        <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>Tasks</h1>
+        <p style={{ margin: "8px 0 0 0", opacity: 0.8 }}>Log in to manage tasks.</p>
+
+        <div style={{ height: 14 }} />
+
+        <Link
+          href="/profile"
           style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            bottom: 0,
-            height: 8,
-            background: textIsBlack ? "rgba(0,0,0,0.18)" : "rgba(255,255,255,0.18)",
+            display: "inline-block",
+            padding: "12px 14px",
+            borderRadius: 12,
+            border: `1px solid ${theme.accent.primary}`,
+            color: "var(--text)",
+            textDecoration: "none",
+            fontWeight: 900,
           }}
         >
-          <div
-            style={{
-              height: "100%",
-              width: "100%",
-              background: textIsBlack ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.70)",
-            }}
-          />
-        </div>
+          Go to Profile (Log in)
+        </Link>
       </div>
-    );
-  }
-
-  return (
-    <main
-      style={{
-        height: "100vh",
-        overflowY: "auto",
-        background: theme.page.background,
-        color: theme.page.text,
-        padding: 24,
-        paddingBottom: 110,
-      }}
-    >
-      <style>{globalFixesCSS}</style>
-
-      <div style={{ maxWidth: 980, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>Tasks</h1>
-            <div style={{ marginTop: 6, opacity: 0.85 }}>
-              Active: <b>{activeTasks.length}</b>
-              {archivedTasks.length ? (
-                <>
-                  {" "}
-                  • Archived: <b>{archivedTasks.length}</b>
-                </>
-              ) : null}
-            </div>
-          </div>
-
-          {/* ✅ removed “New Task” text button entirely */}
-        </div>
-
-        {status ? (
-          <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 12, background: "rgba(255,255,255,0.02)" }}>
-            {status}
-          </div>
-        ) : null}
-
-        <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {loading ? (
-            <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>Loading…</div>
-          ) : activeTasks.length === 0 ? (
-            <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>
-              No active tasks. Tap <b>+</b> to create one.
-            </div>
-          ) : (
-            activeTasks.map((t) => <TaskCardHomeLook key={t.id} t={t} isArchived={false} />)
-          )}
-        </section>
-
-        {archivedTasks.length ? (
-          <section style={{ marginTop: 10 }}>
-            <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 10 }}>Archived</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {archivedTasks.map((t) => (
-                <TaskCardHomeLook key={t.id} t={t} isArchived={true} />
-              ))}
-            </div>
-          </section>
-        ) : null}
-      </div>
-
-      <BigPlusButton onClick={openCreate} />
-      <CreateOverlay />
-
-      {/* NOTE: keeping your existing edit modal code from your previous file.
-          If you want it to match the same full-screen create overlay style too, say so and I’ll convert it. */}
     </main>
   );
 }
