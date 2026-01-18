@@ -241,6 +241,91 @@ input[type="number"] { -moz-appearance: textfield; }
 `;
 
 export default function TasksPage() {
+  export default function TasksPage() {
+  const [userId, setUserId] = useState<string | null>(null);
+
+  const [loading, setLoading] = useState(true);
+  const [loadingCompleted, setLoadingCompleted] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+
+  const [tasks, setTasks] = useState<TaskRow[]>([]);
+  const [completions, setCompletions] = useState<CompletionRow[]>([]);
+  const [remindersByTask, setRemindersByTask] = useState<Record<string, ReminderRow[]>>({});
+
+  const [createOpen, setCreateOpen] = useState(false);
+
+  const [title, setTitle] = useState("");
+  const [type, setType] = useState<TaskType>("habit");
+  const [freqTimesStr, setFreqTimesStr] = useState<string>("1");
+  const [freqPer, setFreqPer] = useState<FrequencyUnit>("week");
+  const [scheduledDays, setScheduledDays] = useState<number[] | null>(null);
+  const [weeklySkipsAllowedStr, setWeeklySkipsAllowedStr] = useState<string>("0");
+  const [createReminders, setCreateReminders] = useState<ReminderDraft[]>([]);
+  const [createStep, setCreateStep] = useState<0 | 1 | 2>(0);
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [editTask, setEditTask] = useState<TaskRow | null>(null);
+  const [editFreqTimesStr, setEditFreqTimesStr] = useState<string>("1");
+  const [editWeeklySkipsStr, setEditWeeklySkipsStr] = useState<string>("0");
+  const [editReminders, setEditReminders] = useState<ReminderDraft[]>([]);
+
+  const createTitleRef = useRef<HTMLInputElement | null>(null);
+
+  const baseField: React.CSSProperties = {
+    padding: "10px 12px",
+    borderRadius: 12,
+    border: "1px solid var(--border)",
+    background: "transparent",
+    color: "var(--text)",
+    outline: "none",
+  };
+
+  const cleanSelect: React.CSSProperties = {
+    ...baseField,
+    WebkitAppearance: "none",
+    MozAppearance: "none",
+    appearance: "none",
+    paddingRight: 38,
+    backgroundImage:
+      'url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 20 20%27%3E%3Cpath d=%27M6 8l4 4 4-4%27 fill=%27none%27 stroke=%27%23c9c9c9%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27/%3E%3C/svg%3E")',
+    backgroundRepeat: "no-repeat",
+    backgroundPosition: "right 12px center",
+    backgroundSize: "16px 16px",
+  };
+
+  const cleanNumber: React.CSSProperties = {
+    ...baseField,
+    MozAppearance: "textfield",
+  };
+
+  // -----------------------------
+  // Auth: keep userId in sync
+  // -----------------------------
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      const { data, error } = await supabase.auth.getSession();
+      if (!alive) return;
+      if (error) setStatus(error.message);
+      const u = data.session?.user ?? null;
+      setUserId(u?.id ?? null);
+    })();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
+      const u = session?.user ?? null;
+      setUserId(u?.id ?? null);
+    });
+
+    return () => {
+      alive = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+
   useEffect(() => {
     if (!userId) {
       setTasks([]);
