@@ -104,6 +104,25 @@ export default function RootLayout({
     );
   }
 
+  // Center Home button style (slightly wider)
+  const homeButton: React.CSSProperties = {
+    height: 44,
+    padding: "0 14px",
+    borderRadius: 14,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(255,255,255,0.04)",
+    color: shellText,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    textDecoration: "none",
+    fontWeight: 900,
+    boxShadow: "0 10px 24px rgba(0,0,0,0.35)",
+    userSelect: "none",
+    whiteSpace: "nowrap",
+  };
+
   return (
     <html lang="en">
       <body
@@ -162,7 +181,6 @@ export default function RootLayout({
                     background: "rgba(255,255,255,0.04)",
                   }}
                 >
-                  {/* Placeholder for now; later swap to avatar image */}
                   👤
                 </div>
               </div>
@@ -191,8 +209,20 @@ export default function RootLayout({
               ) : null}
             </div>
 
-            {/* Center spacer */}
-            <div style={{ flex: 1 }} />
+            {/* Center: Home button */}
+            <Link
+              href="/"
+              onClick={() => {
+                setLeftOpen(false);
+                setRightOpen(false);
+              }}
+              style={homeButton}
+              aria-label="Go to Home"
+              title="Home"
+            >
+              <span style={{ fontSize: 16, lineHeight: 1 }}>⌂</span>
+              <span>Home</span>
+            </Link>
 
             {/* Right: Plus button */}
             <div ref={rightRef} style={{ position: "relative" }}>
