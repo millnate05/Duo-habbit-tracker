@@ -77,7 +77,7 @@ function pickIconKind(title: string): IconKind {
 }
 
 function MiniIcon({ kind }: { kind: IconKind }) {
-  const common = { width: 26, height: 26, viewBox: "0 0 24 24" };
+  const common = { width: 22, height: 22, viewBox: "0 0 24 24" };
 
   switch (kind) {
     case "water":
@@ -157,7 +157,7 @@ function endOfDayLocal(d: Date) {
 }
 function startOfWeekLocal(d: Date) {
   const x = startOfDayLocal(d);
-  const day = x.getDay(); // 0..6, Sunday = 0
+  const day = x.getDay();
   x.setDate(x.getDate() - day);
   return x;
 }
@@ -191,14 +191,12 @@ function endOfYearLocal(d: Date) {
   e.setDate(0);
   return endOfDayLocal(e);
 }
-
 function getPeriodBounds(unit: FrequencyUnit, now: Date) {
   if (unit === "day") return { start: startOfDayLocal(now), end: endOfDayLocal(now) };
   if (unit === "week") return { start: startOfWeekLocal(now), end: endOfWeekLocal(now) };
   if (unit === "month") return { start: startOfMonthLocal(now), end: endOfMonthLocal(now) };
   return { start: startOfYearLocal(now), end: endOfYearLocal(now) };
 }
-
 function safeMs(s: string) {
   const ms = Date.parse(s);
   return Number.isFinite(ms) ? ms : 0;
@@ -209,15 +207,12 @@ export default function TasksPage() {
 
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [completions, setCompletions] = useState<CompletionRow[]>([]);
 
-  // -----------------------------
-  // Auth: keep userId in sync
-  // -----------------------------
+  // Auth
   useEffect(() => {
     let alive = true;
 
@@ -225,13 +220,11 @@ export default function TasksPage() {
       const { data, error } = await supabase.auth.getSession();
       if (!alive) return;
       if (error) setStatus(error.message);
-      const u = data.session?.user ?? null;
-      setUserId(u?.id ?? null);
+      setUserId(data.session?.user?.id ?? null);
     })();
 
     const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
-      const u = session?.user ?? null;
-      setUserId(u?.id ?? null);
+      setUserId(session?.user?.id ?? null);
     });
 
     return () => {
@@ -240,9 +233,7 @@ export default function TasksPage() {
     };
   }, []);
 
-  // -----------------------------
-  // Load data when user changes
-  // -----------------------------
+  // Load when user changes
   useEffect(() => {
     if (!userId) {
       setTasks([]);
@@ -250,7 +241,6 @@ export default function TasksPage() {
       setLoading(false);
       return;
     }
-
     void loadTasks(userId);
     void loadCompletions(userId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -259,7 +249,7 @@ export default function TasksPage() {
   const activeTasks = useMemo(() => tasks.filter((t) => !t.archived), [tasks]);
   const archivedTasks = useMemo(() => tasks.filter((t) => t.archived), [tasks]);
 
-  // completion map (task_id -> timestamps)
+  // completion map
   const completionMap = useMemo(() => {
     const m = new Map<string, number[]>();
     for (const c of completions) {
@@ -275,7 +265,6 @@ export default function TasksPage() {
     const now = new Date();
     const arr = completionMap.get(t.id) ?? [];
 
-    // Single tasks: show "done today" as 0 or 1
     if (t.type === "single") {
       const { start, end } = getPeriodBounds("day", now);
       const s = start.getTime();
@@ -295,9 +284,6 @@ export default function TasksPage() {
     return { done: Math.min(done, target), target };
   }
 
-  // -----------------------------
-  // data loads
-  // -----------------------------
   async function loadTasks(uid: string) {
     setLoading(true);
     setStatus(null);
@@ -320,13 +306,12 @@ export default function TasksPage() {
 
   async function loadCompletions(uid: string) {
     try {
-      // Increase limit so progress is accurate for week/month
       const { data, error } = await supabase
         .from("completions")
         .select("id,user_id,task_id,completed_at")
         .eq("user_id", uid)
         .order("completed_at", { ascending: false })
-        .limit(800);
+        .limit(1200);
 
       if (error) throw error;
       setCompletions((data ?? []) as CompletionRow[]);
@@ -335,9 +320,6 @@ export default function TasksPage() {
     }
   }
 
-  // -----------------------------
-  // Render
-  // -----------------------------
   return (
     <main
       style={{
@@ -402,24 +384,31 @@ export default function TasksPage() {
               return (
                 <div
                   key={t.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => router.push(`/tasks/${t.id}`)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") router.push(`/tasks/${t.id}`);
+                  }}
                   style={{
                     width: "100%",
-                    borderRadius: 20,
+                    borderRadius: 18,
                     background: bg,
                     color: text,
                     position: "relative",
                     overflow: "hidden",
-                    padding: "12px 12px 14px",
+                    padding: "10px 12px", // ✅ shorter card height
                     boxShadow: "0 10px 22px rgba(0,0,0,0.45)",
+                    cursor: "pointer",
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <div
                       style={{
                         flex: "0 0 auto",
-                        width: 34,
-                        height: 34,
-                        borderRadius: 14,
+                        width: 30,
+                        height: 30,
+                        borderRadius: 12,
                         background: textIsBlack ? "rgba(0,0,0,0.12)" : "rgba(255,255,255,0.16)",
                         display: "flex",
                         alignItems: "center",
@@ -434,8 +423,8 @@ export default function TasksPage() {
                       <div
                         style={{
                           fontWeight: 900,
-                          fontSize: 16,
-                          lineHeight: 1.1,
+                          fontSize: 15,
+                          lineHeight: 1.05,
                           whiteSpace: "nowrap",
                           overflow: "hidden",
                           textOverflow: "ellipsis",
@@ -445,11 +434,11 @@ export default function TasksPage() {
                         {t.title}
                       </div>
 
-                      {/* Progress bar (NO percentage text underneath) */}
+                      {/* Progress bar only (no % line) */}
                       <div
                         style={{
-                          marginTop: 10,
-                          height: 10,
+                          marginTop: 8,
+                          height: 9,
                           borderRadius: 999,
                           background: textIsBlack ? "rgba(0,0,0,0.16)" : "rgba(255,255,255,0.22)",
                           overflow: "hidden",
@@ -466,33 +455,11 @@ export default function TasksPage() {
                           }}
                         />
                       </div>
-
-                      {/* Tiny count label (keeps it useful without a % line) */}
-                      <div style={{ marginTop: 8, fontSize: 12, fontWeight: 900, opacity: 0.92 }}>
-                        {done}/{target}
-                      </div>
                     </div>
 
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => router.push(`/tasks/${t.id}`)}
-                      style={{
-                        padding: "10px 12px",
-                        borderRadius: 14,
-                        border: textIsBlack
-                          ? "1px solid rgba(0,0,0,0.22)"
-                          : "1px solid rgba(255,255,255,0.26)",
-                        background: textIsBlack ? "rgba(0,0,0,0.14)" : "rgba(255,255,255,0.16)",
-                        color: text,
-                        fontWeight: 900,
-                        cursor: busy ? "not-allowed" : "pointer",
-                        opacity: busy ? 0.65 : 1,
-                      }}
-                      title="Edit task"
-                    >
-                      Edit
-                    </button>
+                    <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.95, whiteSpace: "nowrap" }}>
+                      {done}/{target}
+                    </div>
                   </div>
                 </div>
               );
@@ -500,7 +467,7 @@ export default function TasksPage() {
           </div>
         )}
 
-        {/* Create button centered UNDER the bottom-most task */}
+        {/* ✅ ALWAYS render the create button (even if 0 tasks) */}
         <div style={{ display: "flex", justifyContent: "center", marginTop: 18 }}>
           <button
             type="button"
@@ -523,12 +490,27 @@ export default function TasksPage() {
             }}
             aria-label="Create new task"
           >
-            <span style={{ fontSize: 22, lineHeight: 0 }}>+</span>
+            <span
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 999,
+                background: "rgba(0,0,0,0.18)",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 20,
+                lineHeight: 0,
+                fontWeight: 900,
+              }}
+            >
+              +
+            </span>
             Create new task
           </button>
         </div>
 
-        {/* Archived list */}
+        {/* Archived list (unchanged, compact) */}
         {!loading && archivedTasks.length > 0 ? (
           <div style={{ marginTop: 22 }}>
             <div style={{ fontWeight: 900, opacity: 0.9, marginBottom: 10 }}>Archived</div>
