@@ -32,7 +32,8 @@ type CompletionRow = {
   proof_note: string | null;
   photo_path: string | null;
   completed_at: string;
-  tasks?: { title: string }[] | null;
+  // depending on your select shape, this may be object or array; we keep it permissive
+  tasks?: { title: string } | { title: string }[] | null;
 };
 
 type ReminderRow = {
@@ -42,7 +43,7 @@ type ReminderRow = {
   enabled: boolean;
   tz: string;
   reminder_time: string; // "HH:MM:SS"
-  scheduled_days: number[] | null; // null means daily, otherwise weekly selection
+  scheduled_days: number[] | null; // null means daily, otherwise weekly selection (we store exactly 1 day)
   next_fire_at: string | null;
   created_at?: string;
   updated_at?: string;
@@ -55,7 +56,7 @@ type ReminderDraft = {
   timezone: string; // tz
   time_of_day: string; // "HH:MM"
   cadence: Cadence; // daily or weekly
-  days_of_week: number[]; // weekly: exactly ONE day (0..6)
+  days_of_week: number[]; // weekly: we enforce exactly ONE day (0..6)
 };
 
 const DOW = [
@@ -74,7 +75,10 @@ function fmtScheduledDays(days: number[] | null) {
   return sorted.map((d) => DOW.find((x) => x.n === d)?.label ?? "?").join(", ");
 }
 
-function parseBoundedInt(raw: string, { min, max, fallback }: { min: number; max: number; fallback: number }) {
+function parseBoundedInt(
+  raw: string,
+  { min, max, fallback }: { min: number; max: number; fallback: number }
+) {
   const s = raw.trim();
   if (s === "") return fallback;
   const n = Number(s);
@@ -236,6 +240,147 @@ input[type="number"] { -moz-appearance: textfield; }
 }
 `;
 
+// ---------- Small UI helpers (self-contained) ----------
+function StepChip({ label, active }: { label: string; active: boolean }) {
+  return (
+    <div
+      style={{
+        padding: "6px 10px",
+        borderRadius: 999,
+        border: `1px solid ${active ? theme.accent.primary : "var(--border)"}`,
+        background: active ? "rgba(255,255,255,0.04)" : "transparent",
+        fontWeight: 900,
+        fontSize: 12,
+        opacity: active ? 1 : 0.8,
+      }}
+    >
+      {label}
+    </div>
+  );
+}
+
+function BigPlusButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Create task"
+      style={{
+        position: "fixed",
+        right: 18,
+        bottom: 18,
+        width: 60,
+        height: 60,
+        borderRadius: 999,
+        border: `1px solid ${theme.accent.primary}`,
+        background: theme.accent.primary,
+        color: "#000",
+        fontWeight: 900,
+        fontSize: 28,
+        lineHeight: "60px",
+        textAlign: "center",
+        boxShadow: "0 12px 24px rgba(0,0,0,0.45)",
+        cursor: "pointer",
+        zIndex: 60,
+      }}
+    >
+      +
+    </button>
+  );
+}
+
+function OverlayShell({
+  open,
+  title,
+  onClose,
+  footer,
+  children,
+}: {
+  open: boolean;
+  title: string;
+  onClose: () => void;
+  footer?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  if (!open) return null;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.65)",
+        zIndex: 80,
+        display: "flex",
+        alignItems: "flex-end",
+        justifyContent: "center",
+        padding: 16,
+      }}
+      onMouseDown={(e) => {
+        // close only if they click the backdrop
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 980,
+          borderRadius: 18,
+          border: "1px solid var(--border)",
+          background: "rgba(10,10,10,0.92)",
+          backdropFilter: "blur(10px)",
+          boxShadow: "0 20px 60px rgba(0,0,0,0.6)",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            padding: "14px 14px 12px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 10,
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
+          }}
+        >
+          <div style={{ fontWeight: 900, fontSize: 16 }}>{title}</div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              padding: "8px 10px",
+              borderRadius: 12,
+              border: "1px solid var(--border)",
+              background: "transparent",
+              color: "var(--text)",
+              fontWeight: 900,
+              cursor: "pointer",
+            }}
+          >
+            Close
+          </button>
+        </div>
+
+        <div style={{ padding: 14 }}>{children}</div>
+
+        {footer ? (
+          <div
+            style={{
+              padding: 14,
+              borderTop: "1px solid rgba(255,255,255,0.08)",
+              background: "rgba(255,255,255,0.02)",
+            }}
+          >
+            {footer}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export default function TasksPage() {
   const [userId, setUserId] = useState<string | null>(null);
 
@@ -332,9 +477,10 @@ export default function TasksPage() {
       setLoadingCompleted(false);
       return;
     }
-    loadTasks(userId);
-    loadCompletions(userId);
-    loadReminders(userId);
+
+    void loadTasks(userId);
+    void loadCompletions(userId);
+    void loadReminders(userId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
@@ -354,13 +500,25 @@ export default function TasksPage() {
     else setFn(next);
   }
 
-  function describeReminder(d: ReminderDraft) {
-    const time = d.time_of_day;
-    const tz = d.timezone;
-    if (d.cadence === "daily") return `Daily at ${time} (${tz})`;
+  function normalizeDraft(d: ReminderDraft): ReminderDraft {
+    const tz = (d.timezone || guessTimeZone()).trim() || guessTimeZone();
+    const time = isTimeStringValidHHMM(d.time_of_day) ? d.time_of_day : "09:00";
+    if (d.cadence === "daily") {
+      return { ...d, timezone: tz, time_of_day: time, days_of_week: [1] };
+    }
+    const oneDay = d.days_of_week?.length ? d.days_of_week[0] : 1;
+    const clamped = Math.max(0, Math.min(6, oneDay));
+    return { ...d, timezone: tz, time_of_day: time, days_of_week: [clamped] };
+  }
 
-    const day = d.days_of_week.length ? d.days_of_week[0] : null;
-    const label = day == null ? "no day" : DOW.find((x) => x.n === day)?.label ?? "?";
+  function describeReminder(d: ReminderDraft) {
+    const nd = normalizeDraft(d);
+    const time = nd.time_of_day;
+    const tz = nd.timezone;
+    if (nd.cadence === "daily") return `Daily at ${time} (${tz})`;
+
+    const day = nd.days_of_week[0];
+    const label = DOW.find((x) => x.n === day)?.label ?? "?";
     return `Weekly on ${label} at ${time} (${tz})`;
   }
 
@@ -388,7 +546,21 @@ export default function TasksPage() {
     };
   }
 
-  // ✅ FIXED ReminderEditor (was previously broken)
+  function draftToDbFields(taskId: string, d: ReminderDraft) {
+    const nd = normalizeDraft(d);
+    const timeHHMMSS = `${nd.time_of_day}:00`; // "HH:MM:SS"
+    const scheduled_days = nd.cadence === "daily" ? null : [nd.days_of_week[0]];
+    return {
+      task_id: taskId,
+      user_id: userId,
+      enabled: !!nd.enabled,
+      tz: nd.timezone,
+      reminder_time: timeHHMMSS,
+      scheduled_days,
+    };
+  }
+
+  // ✅ ReminderEditor (self-contained)
   function ReminderEditor({
     drafts,
     setDrafts,
@@ -423,164 +595,176 @@ export default function TasksPage() {
 
         {hasOne ? (
           <div style={{ fontSize: 12, opacity: 0.75 }}>
-            Note: Right now you can have <b>one</b> reminder per task (matches the backend).
+            Note: Right now you can have <b>one</b> reminder per task (matches the backend assumption).
           </div>
         ) : (
-          <div style={{ opacity: 0.75, fontSize: 13 }}>No reminders set. Add one if you want the app to notify you later.</div>
+          <div style={{ opacity: 0.75, fontSize: 13 }}>
+            No reminders set. Add one if you want the app to notify you later.
+          </div>
         )}
 
-        {drafts.map((d, idx) => (
-          <div
-            key={`rem-${idx}`}
-            style={{
-              border: "1px solid var(--border)",
-              borderRadius: 14,
-              padding: 12,
-              background: "rgba(255,255,255,0.02)",
-              display: "flex",
-              flexDirection: "column",
-              gap: 10,
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-              <div style={{ fontWeight: 900, opacity: 0.95 }}>{describeReminder(d)}</div>
+        {drafts.map((d0, idx) => {
+          const d = normalizeDraft(d0);
 
-              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <label style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+          return (
+            <div
+              key={`rem-${idx}`}
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: 14,
+                padding: 12,
+                background: "rgba(255,255,255,0.02)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ fontWeight: 900, opacity: 0.95 }}>{describeReminder(d)}</div>
+
+                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                  <label style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+                    <input
+                      type="checkbox"
+                      checked={d.enabled}
+                      disabled={busy}
+                      onChange={(e) => {
+                        const next = drafts.slice();
+                        next[idx] = { ...d, enabled: e.target.checked };
+                        setDrafts(next);
+                      }}
+                    />
+                    <span style={{ fontWeight: 900 }}>{d.enabled ? "Enabled" : "Disabled"}</span>
+                  </label>
+
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setDrafts([])}
+                    style={{
+                      padding: "8px 10px",
+                      borderRadius: 12,
+                      border: "1px solid rgba(255, 99, 99, 0.65)",
+                      background: "transparent",
+                      color: "var(--text)",
+                      fontWeight: 900,
+                      cursor: busy ? "not-allowed" : "pointer",
+                      opacity: busy ? 0.6 : 1,
+                    }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div>
+                  <div style={{ fontWeight: 900, marginBottom: 6 }}>Cadence</div>
+                  <select
+                    value={d.cadence}
+                    disabled={busy}
+                    onChange={(e) => {
+                      const nextCadence = e.target.value as Cadence;
+                      const next = drafts.slice();
+
+                      const patched: ReminderDraft = { ...d, cadence: nextCadence };
+                      if (nextCadence === "weekly") {
+                        patched.days_of_week = patched.days_of_week.length ? [patched.days_of_week[0]] : [1];
+                      }
+
+                      next[idx] = patched;
+                      setDrafts(next);
+                    }}
+                    style={cleanSelect}
+                  >
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                  </select>
+                </div>
+
+                <div>
+                  <div style={{ fontWeight: 900, marginBottom: 6 }}>Time</div>
                   <input
-                    type="checkbox"
-                    checked={d.enabled}
+                    type="time"
+                    value={d.time_of_day}
+                    disabled={busy}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      const next = drafts.slice();
+                      next[idx] = { ...d, time_of_day: v };
+                      setDrafts(next);
+                    }}
+                    style={baseField}
+                  />
+                  {!isTimeStringValidHHMM(d.time_of_day) ? (
+                    <div style={{ fontSize: 12, opacity: 0.8, marginTop: 6 }}>Use HH:MM (24-hour)</div>
+                  ) : null}
+                </div>
+
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <div style={{ fontWeight: 900, marginBottom: 6 }}>Timezone</div>
+                  <input
+                    value={d.timezone}
                     disabled={busy}
                     onChange={(e) => {
                       const next = drafts.slice();
-                      next[idx] = { ...d, enabled: e.target.checked };
+                      next[idx] = { ...d, timezone: e.target.value };
                       setDrafts(next);
                     }}
+                    placeholder="America/Los_Angeles"
+                    style={baseField}
                   />
-                  <span style={{ fontWeight: 900 }}>{d.enabled ? "Enabled" : "Disabled"}</span>
-                </label>
-
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => setDrafts([])}
-                  style={{
-                    padding: "8px 10px",
-                    borderRadius: 12,
-                    border: "1px solid rgba(255, 99, 99, 0.65)",
-                    background: "transparent",
-                    color: "var(--text)",
-                    fontWeight: 900,
-                    cursor: busy ? "not-allowed" : "pointer",
-                    opacity: busy ? 0.6 : 1,
-                  }}
-                >
-                  Remove
-                </button>
-              </div>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <div>
-                <div style={{ fontWeight: 900, marginBottom: 6 }}>Cadence</div>
-                <select
-                  value={d.cadence}
-                  disabled={busy}
-                  onChange={(e) => {
-                    const nextCadence = e.target.value as Cadence;
-                    const next = drafts.slice();
-
-                    const patched: ReminderDraft = { ...d, cadence: nextCadence };
-                    if (nextCadence === "weekly") {
-                      patched.days_of_week = patched.days_of_week.length ? [patched.days_of_week[0]] : [1];
-                    }
-
-                    next[idx] = patched;
-                    setDrafts(next);
-                  }}
-                  style={cleanSelect}
-                >
-                  <option value="daily">Daily</option>
-                  <option value="weekly">Weekly</option>
-                </select>
-              </div>
-
-              <div>
-                <div style={{ fontWeight: 900, marginBottom: 6 }}>Time</div>
-                <input
-                  type="time"
-                  value={d.time_of_day}
-                  disabled={busy}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    const next = drafts.slice();
-                    next[idx] = { ...d, time_of_day: v };
-                    setDrafts(next);
-                  }}
-                  style={baseField}
-                />
-                {!isTimeStringValidHHMM(d.time_of_day) ? (
-                  <div style={{ fontSize: 12, opacity: 0.8, marginTop: 6 }}>Use HH:MM (24-hour)</div>
-                ) : null}
-              </div>
-
-              <div style={{ gridColumn: "1 / -1" }}>
-                <div style={{ fontWeight: 900, marginBottom: 6 }}>Timezone</div>
-                <input
-                  value={d.timezone}
-                  disabled={busy}
-                  onChange={(e) => {
-                    const next = drafts.slice();
-                    next[idx] = { ...d, timezone: e.target.value };
-                    setDrafts(next);
-                  }}
-                  placeholder="America/Los_Angeles"
-                  style={baseField}
-                />
-                <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>
-                  Tip: keep this as the device timezone unless you have a reason.
-                </div>
-              </div>
-
-              {d.cadence === "weekly" ? (
-                <div style={{ gridColumn: "1 / -1" }}>
-                  <div style={{ fontWeight: 900, marginBottom: 6 }}>Day of week</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {DOW.map((x) => {
-                      const selected = d.days_of_week.length ? d.days_of_week[0] === x.n : false;
-                      return (
-                        <button
-                          key={x.n}
-                          type="button"
-                          disabled={busy}
-                          onClick={() => {
-                            const next = drafts.slice();
-                            next[idx] = { ...d, days_of_week: [x.n] };
-                            setDrafts(next);
-                          }}
-                          style={{
-                            padding: "8px 10px",
-                            borderRadius: 999,
-                            border: `1px solid ${selected ? theme.accent.primary : "var(--border)"}`,
-                            background: selected ? "rgba(255,255,255,0.04)" : "transparent",
-                            color: "var(--text)",
-                            fontWeight: 900,
-                            cursor: busy ? "not-allowed" : "pointer",
-                            opacity: busy ? 0.6 : 1,
-                          }}
-                        >
-                          {x.label}
-                        </button>
-                      );
-                    })}
+                  <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>
+                    Tip: keep this as the device timezone unless you have a reason.
                   </div>
                 </div>
-              ) : null}
+
+                {d.cadence === "weekly" ? (
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <div style={{ fontWeight: 900, marginBottom: 6 }}>Day of week</div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {DOW.map((x) => {
+                        const selected = d.days_of_week.length ? d.days_of_week[0] === x.n : false;
+                        return (
+                          <button
+                            key={x.n}
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              const next = drafts.slice();
+                              next[idx] = { ...d, days_of_week: [x.n] };
+                              setDrafts(next);
+                            }}
+                            style={{
+                              padding: "8px 10px",
+                              borderRadius: 999,
+                              border: `1px solid ${selected ? theme.accent.primary : "var(--border)"}`,
+                              background: selected ? "rgba(255,255,255,0.04)" : "transparent",
+                              color: "var(--text)",
+                              fontWeight: 900,
+                              cursor: busy ? "not-allowed" : "pointer",
+                              opacity: busy ? 0.6 : 1,
+                            }}
+                          >
+                            {x.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     );
+  }
+
+  function canGoNextFromStep(step: 0 | 1 | 2) {
+    if (step === 0) return title.trim().length >= 1;
+    if (step === 1) return true;
+    return true;
   }
 
   // -----------------------------
@@ -596,8 +780,277 @@ export default function TasksPage() {
         .eq("user_id", uid)
         .order("created_at", { ascending: false });
 
-        // -----------------------------
-  // RENDER (logged in)
+      if (error) throw error;
+      setTasks((data ?? []) as TaskRow[]);
+    } catch (e: any) {
+      setStatus(e?.message ?? "Failed to load tasks.");
+      setTasks([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadCompletions(uid: string) {
+    setLoadingCompleted(true);
+    try {
+      // Keep this lightweight; your UI isn’t using it right now, but we keep state in sync
+      const { data, error } = await supabase
+        .from("completions")
+        .select("*")
+        .eq("user_id", uid)
+        .order("completed_at", { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+      setCompletions((data ?? []) as CompletionRow[]);
+    } catch {
+      setCompletions([]);
+    } finally {
+      setLoadingCompleted(false);
+    }
+  }
+
+  async function loadReminders(uid: string) {
+    try {
+      const { data, error } = await supabase.from("reminders").select("*").eq("user_id", uid);
+      if (error) throw error;
+
+      const rows = (data ?? []) as ReminderRow[];
+      const map: Record<string, ReminderRow[]> = {};
+      for (const r of rows) {
+        if (!map[r.task_id]) map[r.task_id] = [];
+        map[r.task_id].push(r);
+      }
+      // stable ordering: enabled first, then created
+      for (const k of Object.keys(map)) {
+        map[k] = map[k].sort((a, b) => {
+          const ea = a.enabled ? 0 : 1;
+          const eb = b.enabled ? 0 : 1;
+          if (ea !== eb) return ea - eb;
+          return (a.created_at ?? "").localeCompare(b.created_at ?? "");
+        });
+      }
+      setRemindersByTask(map);
+    } catch (e: any) {
+      // don’t hard-fail the page on reminder load
+      console.warn("loadReminders failed:", e?.message ?? e);
+      setRemindersByTask({});
+    }
+  }
+
+  // -----------------------------
+  // open/close create/edit
+  // -----------------------------
+  function openCreate() {
+    setStatus(null);
+    setTitle("");
+    setType("habit");
+    setFreqTimesStr("1");
+    setFreqPer("week");
+    setScheduledDays(null);
+    setWeeklySkipsAllowedStr("0");
+    setCreateReminders([]);
+    setCreateStep(0);
+    setCreateOpen(true);
+    setTimeout(() => createTitleRef.current?.focus(), 50);
+  }
+
+  function closeCreate() {
+    if (busy) return;
+    setCreateOpen(false);
+  }
+
+  function openEdit(t: TaskRow) {
+    setStatus(null);
+    setEditTask({ ...t });
+    setEditFreqTimesStr(String(t.freq_times ?? 1));
+    setEditWeeklySkipsStr(String(t.weekly_skips_allowed ?? 0));
+
+    const existing = remindersByTask[t.id]?.[0] ?? null;
+    setEditReminders(existing ? [toDraftFromRow(existing)] : []);
+    setEditOpen(true);
+  }
+
+  function closeEdit() {
+    if (busy) return;
+    setEditOpen(false);
+    setEditTask(null);
+    setEditReminders([]);
+  }
+
+  // -----------------------------
+  // CRUD: tasks + reminders (1 per task)
+  // -----------------------------
+  async function createTask() {
+    if (!userId) return;
+    if (busy) return;
+
+    const tTitle = title.trim();
+    if (!tTitle) {
+      setStatus("Please enter a title.");
+      return;
+    }
+
+    const times = parseBoundedInt(freqTimesStr, { min: 1, max: 365, fallback: 1 });
+    const skips = parseBoundedInt(weeklySkipsAllowedStr, { min: 0, max: 7, fallback: 0 });
+
+    setBusy(true);
+    setStatus(null);
+
+    try {
+      const payload: Partial<TaskRow> = {
+        user_id: userId,
+        title: tTitle,
+        type,
+        freq_times: type === "habit" ? times : null,
+        freq_per: type === "habit" ? freqPer : null,
+        archived: false,
+        scheduled_days: scheduledDays, // null => every day
+        weekly_skips_allowed: skips,
+      };
+
+      const { data: inserted, error } = await supabase.from("tasks").insert(payload).select("*").single();
+      if (error) throw error;
+
+      const newTask = inserted as TaskRow;
+
+      // reminder (optional)
+      const draft = createReminders[0] ? normalizeDraft(createReminders[0]) : null;
+      if (draft) {
+        const fields = draftToDbFields(newTask.id, draft);
+        const { error: rErr } = await supabase.from("reminders").insert(fields);
+        if (rErr) throw rErr;
+      }
+
+      // refresh
+      await loadTasks(userId);
+      await loadReminders(userId);
+
+      setCreateOpen(false);
+    } catch (e: any) {
+      setStatus(e?.message ?? "Failed to create task.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveEdit(t: TaskRow) {
+    if (!userId) return;
+    if (busy) return;
+
+    const nextTitle = (t.title ?? "").trim();
+    if (!nextTitle) {
+      setStatus("Title cannot be empty.");
+      return;
+    }
+
+    const times = parseBoundedInt(editFreqTimesStr, { min: 1, max: 365, fallback: 1 });
+    const skips = parseBoundedInt(editWeeklySkipsStr, { min: 0, max: 7, fallback: 0 });
+
+    setBusy(true);
+    setStatus(null);
+
+    try {
+      const updatePayload: Partial<TaskRow> = {
+        title: nextTitle,
+        type: t.type,
+        freq_times: t.type === "habit" ? times : null,
+        freq_per: t.type === "habit" ? (t.freq_per ?? "week") : null,
+        scheduled_days: t.scheduled_days,
+        weekly_skips_allowed: skips,
+        archived: !!t.archived,
+      };
+
+      const { error } = await supabase.from("tasks").update(updatePayload).eq("id", t.id).eq("user_id", userId);
+      if (error) throw error;
+
+      // reminders: enforce max 1
+      const existing = remindersByTask[t.id]?.[0] ?? null;
+      const desired = editReminders[0] ? normalizeDraft(editReminders[0]) : null;
+
+      if (!desired && existing) {
+        const { error: delErr } = await supabase.from("reminders").delete().eq("id", existing.id).eq("user_id", userId);
+        if (delErr) throw delErr;
+      } else if (desired && existing) {
+        const fields = draftToDbFields(t.id, desired);
+        const { error: upErr } = await supabase
+          .from("reminders")
+          .update({
+            enabled: fields.enabled,
+            tz: fields.tz,
+            reminder_time: fields.reminder_time,
+            scheduled_days: fields.scheduled_days,
+          })
+          .eq("id", existing.id)
+          .eq("user_id", userId);
+        if (upErr) throw upErr;
+      } else if (desired && !existing) {
+        const fields = draftToDbFields(t.id, desired);
+        const { error: insErr } = await supabase.from("reminders").insert(fields);
+        if (insErr) throw insErr;
+      }
+
+      await loadTasks(userId);
+      await loadReminders(userId);
+
+      closeEdit();
+    } catch (e: any) {
+      setStatus(e?.message ?? "Failed to save changes.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleArchive(t: TaskRow) {
+    if (!userId) return;
+    if (busy) return;
+
+    setBusy(true);
+    setStatus(null);
+    try {
+      const { error } = await supabase
+        .from("tasks")
+        .update({ archived: !t.archived })
+        .eq("id", t.id)
+        .eq("user_id", userId);
+
+      if (error) throw error;
+      await loadTasks(userId);
+    } catch (e: any) {
+      setStatus(e?.message ?? "Failed to update archive.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteTask(t: TaskRow) {
+    if (!userId) return;
+    if (busy) return;
+
+    const ok = window.confirm(`Delete "${t.title}"? This cannot be undone.`);
+    if (!ok) return;
+
+    setBusy(true);
+    setStatus(null);
+    try {
+      // delete reminders first (if FK doesn’t cascade)
+      await supabase.from("reminders").delete().eq("task_id", t.id).eq("user_id", userId);
+
+      const { error } = await supabase.from("tasks").delete().eq("id", t.id).eq("user_id", userId);
+      if (error) throw error;
+
+      await loadTasks(userId);
+      await loadReminders(userId);
+      closeEdit();
+    } catch (e: any) {
+      setStatus(e?.message ?? "Failed to delete task.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // -----------------------------
+  // RENDER
   // -----------------------------
   return (
     <main
@@ -653,7 +1106,6 @@ export default function TasksPage() {
         ) : activeTasks.length === 0 ? (
           <div style={{ opacity: 0.8 }}>No tasks yet. Tap + to create one.</div>
         ) : (
-          // ✅ Match Home layout: single vertical list
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {activeTasks.map((t) => {
               const { bg, text } = TASK_COLORS[colorIndexFromId(t.id)];
@@ -697,7 +1149,6 @@ export default function TasksPage() {
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 10, paddingBottom: 10 }}>
-                    {/* Icon (match Home sizing) */}
                     <div
                       style={{
                         flex: "0 0 auto",
@@ -714,7 +1165,6 @@ export default function TasksPage() {
                       <MiniIcon kind={icon} />
                     </div>
 
-                    {/* Title + subline */}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div
                         style={{
@@ -733,7 +1183,6 @@ export default function TasksPage() {
                       <div style={{ marginTop: 6, opacity: 0.9, fontSize: 12, fontWeight: 900 }}>{subLine}</div>
                     </div>
 
-                    {/* Right-side control styled like Home buttons */}
                     <div style={{ display: "flex", gap: 10 }}>
                       <button
                         type="button"
@@ -761,16 +1210,46 @@ export default function TasksPage() {
                     </div>
                   </div>
 
-                  {/* Reminder line (kept, but styled to fit Home density) */}
                   <div style={{ fontSize: 12, opacity: 0.92, fontWeight: 900 }}>{remText}</div>
                 </div>
               );
             })}
           </div>
         )}
+
+        {/* Archived list (optional, but handy) */}
+        {!loading && archivedTasks.length > 0 ? (
+          <div style={{ marginTop: 18 }}>
+            <div style={{ fontWeight: 900, opacity: 0.9, marginBottom: 10 }}>Archived</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {archivedTasks.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => openEdit(t)}
+                  style={{
+                    textAlign: "left",
+                    padding: 12,
+                    borderRadius: 14,
+                    border: "1px solid var(--border)",
+                    background: "rgba(255,255,255,0.02)",
+                    color: "var(--text)",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div style={{ fontWeight: 900 }}>{t.title}</div>
+                  <div style={{ opacity: 0.75, marginTop: 6, fontSize: 13 }}>
+                    {t.type === "habit"
+                      ? `${t.freq_times ?? 1} / ${t.freq_per ?? "week"} · Days: ${fmtScheduledDays(t.scheduled_days)}`
+                      : `Single task · Days: ${fmtScheduledDays(t.scheduled_days)}`}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
 
-      {/* Floating create */}
       <BigPlusButton onClick={openCreate} />
 
       {/* CREATE OVERLAY */}
