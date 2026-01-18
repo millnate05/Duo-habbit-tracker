@@ -115,6 +115,121 @@ function onNumberFieldChange(setter: (v: string) => void, raw: string) {
   if (/^\d+$/.test(raw)) return setter(raw);
 }
 
+// ---------- Home-card palette + icon helpers (Tasks page) ----------
+type TaskColor = { bg: string; text: "#000" | "#fff" };
+
+const TASK_COLORS: TaskColor[] = [
+  { bg: "#F59E0B", text: "#000" }, // orange
+  { bg: "#3B82F6", text: "#fff" }, // blue
+  { bg: "#22C55E", text: "#000" }, // green
+  { bg: "#EF4444", text: "#fff" }, // red
+  { bg: "#A855F7", text: "#fff" }, // purple
+  { bg: "#06B6D4", text: "#000" }, // cyan
+  { bg: "#F97316", text: "#000" }, // orange2
+  { bg: "#84CC16", text: "#000" }, // lime
+  { bg: "#0EA5E9", text: "#000" }, // sky
+  { bg: "#111827", text: "#fff" }, // near-black slate
+];
+
+function colorIndexFromId(id: string) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return h % TASK_COLORS.length;
+}
+
+type IconKind = "water" | "lift" | "run" | "calendar" | "check";
+
+function pickIconKind(title: string): IconKind {
+  const t = title.toLowerCase();
+  if (t.includes("water") || t.includes("hydrate") || t.includes("drink")) return "water";
+  if (
+    t.includes("lift") ||
+    t.includes("weights") ||
+    t.includes("weight") ||
+    t.includes("gym") ||
+    t.includes("bench") ||
+    t.includes("squat") ||
+    t.includes("deadlift") ||
+    t.includes("workout") ||
+    t.includes("train")
+  )
+    return "lift";
+  if (t.includes("run") || t.includes("cardio") || t.includes("walk") || t.includes("steps")) return "run";
+  if (t.includes("calendar") || t.includes("schedule") || t.includes("plan")) return "calendar";
+  return "check";
+}
+
+/**
+ * Cleaner icons: solid + minimal detail (matches Home)
+ */
+function MiniIcon({ kind }: { kind: IconKind }) {
+  const common = { width: 26, height: 26, viewBox: "0 0 24 24" };
+
+  switch (kind) {
+    case "water":
+      return (
+        <svg {...common} aria-label="water">
+          <path
+            d="M12 2c-2.2 4.2-6 7.3-6 11.2A6 6 0 0 0 12 19a6 6 0 0 0 6-5.8C18 9.3 14.2 6.2 12 2z"
+            fill="currentColor"
+            opacity="0.92"
+          />
+        </svg>
+      );
+
+    case "lift":
+      return (
+        <svg {...common} aria-label="dumbbell">
+          <rect x="3" y="10" width="3" height="4" rx="1" fill="currentColor" opacity="0.92" />
+          <rect x="6.5" y="9" width="2.5" height="6" rx="1" fill="currentColor" opacity="0.92" />
+          <rect x="9.8" y="11" width="4.4" height="2" rx="1" fill="currentColor" opacity="0.92" />
+          <rect x="15" y="9" width="2.5" height="6" rx="1" fill="currentColor" opacity="0.92" />
+          <rect x="18" y="10" width="3" height="4" rx="1" fill="currentColor" opacity="0.92" />
+        </svg>
+      );
+
+    case "run":
+      return (
+        <svg {...common} aria-label="run">
+          <circle cx="15.6" cy="6.6" r="1.6" fill="currentColor" opacity="0.92" />
+          <path
+            d="M9.2 20.6l2.1-4.7 2.4 1.2 2-3.8-3-1.7-1.1-2.3-2.7 1.2 1 2.2-2.5 3.1"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            opacity="0.92"
+          />
+        </svg>
+      );
+
+    case "calendar":
+      return (
+        <svg {...common} aria-label="calendar">
+          <rect x="5" y="6.5" width="14" height="13" rx="3" fill="currentColor" opacity="0.92" />
+          <rect x="7.2" y="9.1" width="9.6" height="1.8" rx="0.9" fill="rgba(0,0,0,0.25)" />
+          <rect x="7.2" y="12" width="4.2" height="4.2" rx="1.2" fill="rgba(0,0,0,0.25)" />
+        </svg>
+      );
+
+    default:
+      return (
+        <svg {...common} aria-label="check">
+          <circle cx="12" cy="12" r="9" fill="currentColor" opacity="0.92" />
+          <path
+            d="M8.3 12.4l2.2 2.2 5.2-5.2"
+            fill="none"
+            stroke="rgba(0,0,0,0.28)"
+            strokeWidth="2.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      );
+  }
+}
+
 const globalFixesCSS = `
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
@@ -125,176 +240,6 @@ input[type="number"] { -moz-appearance: textfield; }
 }
 `;
 
-// --- tiny icon buttons (no deps) ---
-function IconPencil({ size = 16 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M12 20h9"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-      <path
-        d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-export default function TasksPage() {
-  const [userId, setUserId] = useState<string | null>(null);
-
-  const [loading, setLoading] = useState(true);
-  const [loadingCompleted, setLoadingCompleted] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
-
-  const [tasks, setTasks] = useState<TaskRow[]>([]);
-  const [completions, setCompletions] = useState<CompletionRow[]>([]);
-
-  const [remindersByTask, setRemindersByTask] = useState<Record<string, ReminderRow[]>>({});
-
-  const [createOpen, setCreateOpen] = useState(false);
-
-  const [title, setTitle] = useState("");
-  const [type, setType] = useState<TaskType>("habit");
-  const [freqTimesStr, setFreqTimesStr] = useState<string>("1");
-  const [freqPer, setFreqPer] = useState<FrequencyUnit>("week");
-  const [scheduledDays, setScheduledDays] = useState<number[] | null>(null);
-  const [weeklySkipsAllowedStr, setWeeklySkipsAllowedStr] = useState<string>("0");
-  const [createReminders, setCreateReminders] = useState<ReminderDraft[]>([]);
-  const [createStep, setCreateStep] = useState<0 | 1 | 2>(0);
-
-  const [editOpen, setEditOpen] = useState(false);
-  const [editTask, setEditTask] = useState<TaskRow | null>(null);
-  const [editFreqTimesStr, setEditFreqTimesStr] = useState<string>("1");
-  const [editWeeklySkipsStr, setEditWeeklySkipsStr] = useState<string>("0");
-  const [editReminders, setEditReminders] = useState<ReminderDraft[]>([]);
-
-  const createTitleRef = useRef<HTMLInputElement | null>(null);
-
-  const baseField: React.CSSProperties = {
-    padding: "10px 12px",
-    borderRadius: 12,
-    border: "1px solid var(--border)",
-    background: "transparent",
-    color: "var(--text)",
-    outline: "none",
-  };
-
-  const cleanSelect: React.CSSProperties = {
-    ...baseField,
-    WebkitAppearance: "none",
-    MozAppearance: "none",
-    appearance: "none",
-    paddingRight: 38,
-    backgroundImage:
-      'url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 20 20%27%3E%3Cpath d=%27M6 8l4 4 4-4%27 fill=%27none%27 stroke=%27%23c9c9c9%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27/%3E%3C/svg%3E")',
-    backgroundRepeat: "no-repeat",
-    backgroundPosition: "right 12px center",
-    backgroundSize: "16px 16px",
-  };
-
-  const cleanNumber: React.CSSProperties = {
-    ...baseField,
-    MozAppearance: "textfield",
-  };
-
-  // -----------------------------
-  // Auth + loads
-  // -----------------------------
-  useEffect(() => {
-    let alive = true;
-
-    (async () => {
-      const { data, error } = await supabase.auth.getSession();
-      if (!alive) return;
-      if (error) setStatus(error.message);
-
-      const u = data.session?.user ?? null;
-      setUserId(u?.id ?? null);
-    })();
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
-      const u = session?.user ?? null;
-      setUserId(u?.id ?? null);
-    });
-
-    return () => {
-      alive = false;
-      sub.subscription.unsubscribe();
-    };
-  }, []);
-
-  async function loadTasks(uid: string) {
-    setLoading(true);
-    setStatus(null);
-
-    const { data, error } = await supabase
-      .from("tasks")
-      .select("*")
-      .eq("assigned_to", uid)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error(error);
-      setStatus(error.message);
-      setTasks([]);
-      setLoading(false);
-      return;
-    }
-
-    setTasks((data ?? []) as TaskRow[]);
-    setLoading(false);
-  }
-
-  async function loadCompletions(uid: string) {
-    setLoadingCompleted(true);
-
-    const { data, error } = await supabase
-      .from("completions")
-      .select("id,user_id,task_id,proof_type,proof_note,photo_path,completed_at,tasks(title)")
-      .eq("user_id", uid)
-      .order("completed_at", { ascending: false })
-      .limit(100);
-
-    if (error) {
-      console.error(error);
-      setStatus((prev) => prev ?? error.message);
-      setCompletions([]);
-      setLoadingCompleted(false);
-      return;
-    }
-
-    setCompletions((data ?? []) as CompletionRow[]);
-    setLoadingCompleted(false);
-  }
-
-  async function loadReminders(uid: string) {
-    const { data, error } = await supabase
-      .from("reminders")
-      .select("*")
-      .eq("user_id", uid)
-      .order("created_at", { ascending: true });
-
-    if (error) {
-      console.error(error);
-      setStatus((prev) => prev ?? error.message);
-      setRemindersByTask({});
-      return;
-    }
-
-    const grouped: Record<string, ReminderRow[]> = {};
-    for (const r of (data ?? []) as ReminderRow[]) {
-      grouped[r.task_id] = grouped[r.task_id] ? [...grouped[r.task_id], r] : [r];
-    }
-    setRemindersByTask(grouped);
-  }
 
   useEffect(() => {
     if (!userId) {
