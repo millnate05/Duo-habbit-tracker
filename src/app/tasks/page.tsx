@@ -195,7 +195,7 @@ export default function TasksPage() {
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <MiniIcon kind={pickIconKind(t.title)} />
                     <div style={{ flex: 1, fontWeight: 900 }}>{t.title}</div>
-                    <button onClick={() => router.push(`/tasks/${t.id}`)}>Edit</button>
+                    <button onClick={() => router.push(`/tasks/create?id=${t.id}`)}>Edit</button>
                   </div>
 
                   <div
