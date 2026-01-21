@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { theme } from "@/UI/theme";
@@ -125,23 +125,29 @@ function StepChip({ label, active }: { label: string; active: boolean }) {
   );
 }
 
-export default function CreateTaskPage() {
+export default function CreateOrEditTaskPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("id"); // if present => edit mode
+  const isEdit = !!editId;
 
   const [userId, setUserId] = useState<string | null>(null);
 
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
-  // Create fields
+  // Fields
   const [title, setTitle] = useState("");
   const [type, setType] = useState<TaskType>("habit");
   const [freqTimesStr, setFreqTimesStr] = useState<string>("1");
   const [freqPer, setFreqPer] = useState<FrequencyUnit>("week");
   const [scheduledDays, setScheduledDays] = useState<number[] | null>(null);
   const [weeklySkipsAllowedStr, setWeeklySkipsAllowedStr] = useState<string>("0");
+
+  // Create reminders only (editing reminders later if you want)
   const [createReminders, setCreateReminders] = useState<ReminderDraft[]>([]);
-  const [createStep, setCreateStep] = useState<0 | 1 | 2>(0);
+
+  const [step, setStep] = useState<0 | 1 | 2>(0);
 
   const titleRef = useRef<HTMLInputElement | null>(null);
 
@@ -186,7 +192,6 @@ export default function CreateTaskPage() {
       const u = data.session?.user ?? null;
       setUserId(u?.id ?? null);
 
-      // focus title when page loads
       setTimeout(() => titleRef.current?.focus(), 50);
     })();
 
@@ -200,6 +205,54 @@ export default function CreateTaskPage() {
       sub.subscription.unsubscribe();
     };
   }, []);
+
+  // -----------------------------
+  // Load task when editing
+  // -----------------------------
+  useEffect(() => {
+    if (!isEdit) return;
+    if (!userId) return;
+    if (!editId) return;
+
+    let alive = true;
+
+    (async () => {
+      setBusy(true);
+      setStatus(null);
+      try {
+        const { data, error } = await supabase
+          .from("tasks")
+          .select("*")
+          .eq("id", editId)
+          .eq("user_id", userId)
+          .single();
+
+        if (error) throw error;
+        if (!alive) return;
+
+        const t = data as TaskRow;
+
+        setTitle(t.title ?? "");
+        setType((t.type as TaskType) ?? "habit");
+        setFreqTimesStr(String(t.freq_times ?? 1));
+        setFreqPer((t.freq_per as FrequencyUnit) ?? "week");
+        setScheduledDays(t.scheduled_days ?? null);
+        setWeeklySkipsAllowedStr(String(t.weekly_skips_allowed ?? 0));
+
+        // for now, keep reminders empty on edit
+        setCreateReminders([]);
+      } catch (e: any) {
+        if (!alive) return;
+        setStatus(e?.message ?? "Failed to load task for editing.");
+      } finally {
+        if (alive) setBusy(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [isEdit, editId, userId]);
 
   // -----------------------------
   // helpers
@@ -250,14 +303,13 @@ export default function CreateTaskPage() {
     };
   }
 
-  function canGoNextFromStep(step: 0 | 1 | 2) {
-    if (step === 0) return title.trim().length >= 1;
-    if (step === 1) return true;
+  function canGoNextFromStep(s: 0 | 1 | 2) {
+    if (s === 0) return title.trim().length >= 1;
     return true;
   }
 
   // -----------------------------
-  // ReminderEditor (self-contained)
+  // ReminderEditor (unchanged)
   // -----------------------------
   function ReminderEditor({
     drafts,
@@ -458,11 +510,11 @@ export default function CreateTaskPage() {
   }
 
   // -----------------------------
-  // CRUD: create task (+ optional reminder)
+  // CREATE or UPDATE
   // -----------------------------
-  async function createTask() {
+  async function saveTask() {
     if (!userId) {
-      setStatus("You must be logged in to create tasks.");
+      setStatus("You must be logged in.");
       return;
     }
     if (busy) return;
@@ -481,38 +533,51 @@ export default function CreateTaskPage() {
 
     try {
       const payload: Partial<TaskRow> = {
-        user_id: userId,
         title: tTitle,
         type,
         freq_times: type === "habit" ? times : null,
         freq_per: type === "habit" ? freqPer : null,
-        archived: false,
-        scheduled_days: scheduledDays, // null => every day
+        scheduled_days: scheduledDays,
         weekly_skips_allowed: skips,
       };
 
-      const { data: inserted, error } = await supabase.from("tasks").insert(payload).select("*").single();
-      if (error) throw error;
+      if (!isEdit) {
+        // CREATE
+        const { data: inserted, error } = await supabase
+          .from("tasks")
+          .insert({ ...payload, user_id: userId, archived: false })
+          .select("*")
+          .single();
+        if (error) throw error;
 
-      const newTask = inserted as TaskRow;
+        const newTask = inserted as TaskRow;
 
-      // reminder (optional) – enforce max 1
-      const draft = createReminders[0] ? normalizeDraft(createReminders[0]) : null;
-      if (draft) {
-        const fields = draftToDbFields(newTask.id, draft);
-        const { error: rErr } = await supabase.from("reminders").insert(fields);
-        if (rErr) throw rErr;
+        // reminder (optional) – enforce max 1
+        const draft = createReminders[0] ? normalizeDraft(createReminders[0]) : null;
+        if (draft) {
+          const fields = draftToDbFields(newTask.id, draft);
+          const { error: rErr } = await supabase.from("reminders").insert(fields);
+          if (rErr) throw rErr;
+        }
+      } else {
+        // UPDATE
+        if (!editId) throw new Error("Missing task id for edit.");
+        const { error } = await supabase.from("tasks").update(payload).eq("id", editId).eq("user_id", userId);
+        if (error) throw error;
+        // (optional) editing reminders later
       }
 
-      // Go back to tasks list
       router.push("/tasks");
       router.refresh();
     } catch (e: any) {
-      setStatus(e?.message ?? "Failed to create task.");
+      setStatus(e?.message ?? "Failed to save task.");
     } finally {
       setBusy(false);
     }
   }
+
+  const pageTitle = isEdit ? "Edit task" : "Create task";
+  const primaryText = isEdit ? "Save" : "Create";
 
   return (
     <main
@@ -528,7 +593,7 @@ export default function CreateTaskPage() {
 
       <div style={{ maxWidth: 980, margin: "0 auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
-          <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>Create task</h1>
+          <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>{pageTitle}</h1>
 
           <Link
             href="/tasks"
@@ -556,14 +621,14 @@ export default function CreateTaskPage() {
         <div style={{ height: 16 }} />
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <StepChip label="Title" active={createStep === 0} />
-          <StepChip label="Schedule" active={createStep === 1} />
-          <StepChip label="Reminders" active={createStep === 2} />
+          <StepChip label="Title" active={step === 0} />
+          <StepChip label="Schedule" active={step === 1} />
+          <StepChip label="Reminders" active={step === 2} />
         </div>
 
         <div style={{ height: 14 }} />
 
-        {createStep === 0 ? (
+        {step === 0 ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ fontWeight: 900 }}>Task title</div>
             <input
@@ -583,7 +648,7 @@ export default function CreateTaskPage() {
           </div>
         ) : null}
 
-        {createStep === 1 ? (
+        {step === 1 ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {type === "habit" ? (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -662,15 +727,15 @@ export default function CreateTaskPage() {
           </div>
         ) : null}
 
-        {createStep === 2 ? <ReminderEditor drafts={createReminders} setDrafts={setCreateReminders} /> : null}
+        {step === 2 ? <ReminderEditor drafts={createReminders} setDrafts={setCreateReminders} /> : null}
 
         <div style={{ height: 18 }} />
 
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
           <button
             type="button"
-            disabled={busy || createStep === 0}
-            onClick={() => setCreateStep((s) => (s === 0 ? 0 : ((s - 1) as any)))}
+            disabled={busy || step === 0}
+            onClick={() => setStep((s) => (s === 0 ? 0 : ((s - 1) as any)))}
             style={{
               padding: "10px 12px",
               borderRadius: 12,
@@ -678,18 +743,18 @@ export default function CreateTaskPage() {
               background: "transparent",
               color: "var(--text)",
               fontWeight: 900,
-              cursor: busy || createStep === 0 ? "not-allowed" : "pointer",
-              opacity: busy || createStep === 0 ? 0.6 : 1,
+              cursor: busy || step === 0 ? "not-allowed" : "pointer",
+              opacity: busy || step === 0 ? 0.6 : 1,
             }}
           >
             Back
           </button>
 
-          {createStep < 2 ? (
+          {step < 2 ? (
             <button
               type="button"
-              disabled={busy || !canGoNextFromStep(createStep)}
-              onClick={() => setCreateStep((s) => (s === 2 ? 2 : ((s + 1) as any)))}
+              disabled={busy || !canGoNextFromStep(step)}
+              onClick={() => setStep((s) => (s === 2 ? 2 : ((s + 1) as any)))}
               style={{
                 padding: "10px 12px",
                 borderRadius: 12,
@@ -697,8 +762,8 @@ export default function CreateTaskPage() {
                 background: "rgba(255,255,255,0.04)",
                 color: "var(--text)",
                 fontWeight: 900,
-                cursor: busy || !canGoNextFromStep(createStep) ? "not-allowed" : "pointer",
-                opacity: busy || !canGoNextFromStep(createStep) ? 0.6 : 1,
+                cursor: busy || !canGoNextFromStep(step) ? "not-allowed" : "pointer",
+                opacity: busy || !canGoNextFromStep(step) ? 0.6 : 1,
               }}
             >
               Next
@@ -707,7 +772,7 @@ export default function CreateTaskPage() {
             <button
               type="button"
               disabled={busy}
-              onClick={createTask}
+              onClick={saveTask}
               style={{
                 padding: "10px 12px",
                 borderRadius: 12,
@@ -719,7 +784,7 @@ export default function CreateTaskPage() {
                 opacity: busy ? 0.65 : 1,
               }}
             >
-              Create
+              {primaryText}
             </button>
           )}
         </div>
