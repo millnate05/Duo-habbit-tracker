@@ -25,7 +25,7 @@ type TaskRow = {
   weekly_skips_allowed: number;
 
   is_shared?: boolean;
-  assigned_to?: string | null;
+  assigned_to?: string | null; // "me" | "partner" | "both" (or your existing scheme)
 };
 
 type Cadence = "daily" | "weekly";
@@ -138,10 +138,12 @@ function SoftButton({
   children,
   onClick,
   disabled,
+  small,
 }: {
   children: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
+  small?: boolean;
 }) {
   return (
     <button
@@ -149,7 +151,7 @@ function SoftButton({
       disabled={!!disabled}
       onClick={onClick}
       style={{
-        padding: "12px 14px",
+        padding: small ? "8px 10px" : "12px 14px",
         borderRadius: 14,
         border: "1px solid var(--border)",
         background: "rgba(255,255,255,0.03)",
@@ -157,6 +159,9 @@ function SoftButton({
         fontWeight: 900,
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.6 : 1,
+        fontSize: small ? 12 : 14,
+        lineHeight: 1,
+        whiteSpace: "nowrap",
       }}
     >
       {children}
@@ -226,6 +231,49 @@ function DayPill({
   );
 }
 
+function Toggle({
+  checked,
+  onChange,
+  disabled,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={!!disabled}
+      onClick={() => onChange(!checked)}
+      aria-pressed={checked}
+      style={{
+        width: 52,
+        height: 30,
+        borderRadius: 999,
+        border: "1px solid var(--border)",
+        background: checked ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.03)",
+        position: "relative",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.6 : 1,
+        padding: 0,
+      }}
+    >
+      <span
+        style={{
+          position: "absolute",
+          top: 3,
+          left: checked ? 26 : 3,
+          width: 24,
+          height: 24,
+          borderRadius: 999,
+          background: checked ? theme.accent.primary : "rgba(255,255,255,0.35)",
+          transition: "left 160ms ease",
+        }}
+      />
+    </button>
+  );
+}
+
 function CreateOrEditTaskInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -238,15 +286,19 @@ function CreateOrEditTaskInner() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
-  // fields
+  // Fields (in the order you requested)
   const [title, setTitle] = useState("");
   const [type, setType] = useState<TaskType>("habit");
+
+  const [isShared, setIsShared] = useState(false);
+  const [assignedTo, setAssignedTo] = useState<"me" | "partner" | "both">("me");
+
   const [freqTimesStr, setFreqTimesStr] = useState<string>("1");
   const [freqPer, setFreqPer] = useState<FrequencyUnit>("week");
+
   const [scheduledDays, setScheduledDays] = useState<number[] | null>(null);
   const [weeklySkipsAllowedStr, setWeeklySkipsAllowedStr] = useState<string>("0");
 
-  // reminders (baseline: one reminder max)
   const [draftReminders, setDraftReminders] = useState<ReminderDraft[]>([]);
 
   const titleRef = useRef<HTMLInputElement | null>(null);
@@ -325,6 +377,17 @@ function CreateOrEditTaskInner() {
 
         setTitle(t.title ?? "");
         setType((t.type as TaskType) ?? "habit");
+
+        setIsShared(!!t.is_shared);
+
+        // If your DB uses different values for assigned_to, adjust here.
+        const rawAssigned = (t.assigned_to ?? "me").toLowerCase();
+        if (rawAssigned === "partner" || rawAssigned === "both" || rawAssigned === "me") {
+          setAssignedTo(rawAssigned as any);
+        } else {
+          setAssignedTo("me");
+        }
+
         setFreqTimesStr(String(t.freq_times ?? 1));
         setFreqPer((t.freq_per as FrequencyUnit) ?? "week");
         setScheduledDays(t.scheduled_days ?? null);
@@ -415,8 +478,8 @@ function CreateOrEditTaskInner() {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <div style={{ fontWeight: 950, fontSize: 16 }}>Reminder</div>
-          <SoftButton disabled={busy || hasOne} onClick={() => setDrafts([defaultReminderDraft()])}>
+          <div style={{ fontWeight: 950, fontSize: 16 }}>Reminders</div>
+          <SoftButton disabled={busy || hasOne} onClick={() => setDrafts([defaultReminderDraft()])} small>
             + Add reminder
           </SoftButton>
         </div>
@@ -458,9 +521,9 @@ function CreateOrEditTaskInner() {
                     />
                     {d.enabled ? "Enabled" : "Disabled"}
                   </label>
-                  <DangerButton disabled={busy} onClick={() => setDrafts([])}>
+                  <SoftButton disabled={busy} onClick={() => setDrafts([])} small>
                     Remove
-                  </DangerButton>
+                  </SoftButton>
                 </div>
               </div>
 
@@ -573,6 +636,8 @@ function CreateOrEditTaskInner() {
         freq_per: type === "habit" ? freqPer : null,
         scheduled_days: scheduledDays,
         weekly_skips_allowed: skips,
+        is_shared: isShared,
+        assigned_to: isShared ? assignedTo : null,
       };
 
       if (!isEdit) {
@@ -636,11 +701,6 @@ function CreateOrEditTaskInner() {
   const pageTitle = isEdit ? "Edit task" : "New task";
   const primaryText = isEdit ? "Save changes" : "Create task";
 
-  const scheduleSummary = useMemo(() => {
-    if (type === "single") return "One-time task";
-    return `${times} / ${freqPer} • ${fmtScheduledDays(scheduledDays)} • skips: ${skips}`;
-  }, [type, times, freqPer, scheduledDays, skips]);
-
   return (
     <main
       style={{
@@ -654,31 +714,33 @@ function CreateOrEditTaskInner() {
       <style>{globalFixesCSS}</style>
 
       <div style={{ maxWidth: 980, margin: "0 auto" }}>
-        {/* Header row: back button stays, title centered */}
+        {/* Smaller back button so it doesn't collide with centered title */}
         <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <Link
             href="/tasks"
             style={{
               display: "inline-block",
-              padding: "10px 12px",
-              borderRadius: 14,
+              padding: "7px 9px",
+              borderRadius: 12,
               border: "1px solid var(--border)",
               color: "var(--text)",
               textDecoration: "none",
               fontWeight: 900,
               opacity: 0.9,
               background: "rgba(255,255,255,0.02)",
+              fontSize: 12,
+              lineHeight: 1,
+              whiteSpace: "nowrap",
             }}
           >
-            ← Back to Tasks
+            ← Tasks
           </Link>
 
           <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", textAlign: "center" }}>
             <h1 style={{ margin: 0, fontSize: 34, fontWeight: 950 }}>{pageTitle}</h1>
           </div>
 
-          {/* right spacer to balance layout */}
-          <div style={{ width: 140 }} />
+          <div style={{ width: 64 }} />
         </div>
 
         {status ? (
@@ -697,7 +759,7 @@ function CreateOrEditTaskInner() {
 
         <div style={{ height: 14 }} />
 
-        {/* Single clean page: Basics + Schedule + Reminder */}
+        {/* Everything in strict list order */}
         <div
           style={{
             border: "1px solid var(--border)",
@@ -707,73 +769,32 @@ function CreateOrEditTaskInner() {
             boxShadow: "0 10px 24px rgba(0,0,0,0.25)",
             display: "flex",
             flexDirection: "column",
-            gap: 16,
+            gap: 14,
           }}
         >
-          {/* BASICS */}
-          <section
-            style={{
-              border: "1px solid var(--border)",
-              borderRadius: 18,
-              padding: 14,
-              background: "rgba(255,255,255,0.01)",
-            }}
-          >
-            <div style={{ fontWeight: 950, fontSize: 16, marginBottom: 10 }}>Basics</div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div>
-                <div style={{ fontWeight: 900, marginBottom: 8 }}>Title</div>
-                <input
-                  ref={titleRef}
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g., Drink water"
-                  style={{ ...baseField, fontSize: 16 }}
-                  disabled={busy}
-                />
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <div>
-                  <div style={{ fontWeight: 900, marginBottom: 8 }}>Type</div>
-                  <select value={type} onChange={(e) => setType(e.target.value as TaskType)} style={cleanSelect} disabled={busy}>
-                    <option value="habit">Habit (recurring)</option>
-                    <option value="single">Single (one-time)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <div style={{ fontWeight: 900, marginBottom: 8 }}>Summary</div>
-                  <div
-                    style={{
-                      ...baseField,
-                      display: "flex",
-                      alignItems: "center",
-                      fontWeight: 900,
-                      opacity: 0.9,
-                      minHeight: 46,
-                    }}
-                  >
-                    {scheduleSummary}
-                  </div>
-                </div>
-              </div>
-            </div>
+          {/* 1) Title */}
+          <section style={{ border: "1px solid var(--border)", borderRadius: 18, padding: 14 }}>
+            <div style={{ fontWeight: 950, marginBottom: 10 }}>Title</div>
+            <input
+              ref={titleRef}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g., Drink water"
+              style={{ ...baseField, fontSize: 16 }}
+              disabled={busy}
+            />
           </section>
 
-          {/* SCHEDULE */}
-          <section
-            style={{
-              border: "1px solid var(--border)",
-              borderRadius: 18,
-              padding: 14,
-              background: "rgba(255,255,255,0.01)",
-            }}
-          >
-            <div style={{ fontWeight: 950, fontSize: 16, marginBottom: 10 }}>Schedule</div>
+          {/* 2) Type */}
+          <section style={{ border: "1px solid var(--border)", borderRadius: 18, padding: 14 }}>
+            <div style={{ fontWeight: 950, marginBottom: 10 }}>Type</div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <select value={type} onChange={(e) => setType(e.target.value as TaskType)} style={cleanSelect} disabled={busy}>
+                <option value="habit">Habit (recurring)</option>
+                <option value="single">Single (one-time)</option>
+              </select>
+
               {type === "habit" ? (
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <div>
@@ -788,7 +809,6 @@ function CreateOrEditTaskInner() {
                       placeholder="1"
                     />
                   </div>
-
                   <div>
                     <div style={{ fontWeight: 900, marginBottom: 8 }}>Per</div>
                     <select value={freqPer} onChange={(e) => setFreqPer(e.target.value as FrequencyUnit)} style={cleanSelect} disabled={busy}>
@@ -800,57 +820,83 @@ function CreateOrEditTaskInner() {
                   </div>
                 </div>
               ) : (
-                <div style={{ opacity: 0.8 }}>Single tasks don’t need frequency.</div>
+                <div style={{ opacity: 0.8, fontSize: 13 }}>Single tasks don’t need frequency.</div>
               )}
-
-              <div>
-                <div style={{ fontWeight: 900, marginBottom: 8 }}>Scheduled days</div>
-                <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 10 }}>
-                  Current: <b>{fmtScheduledDays(scheduledDays)}</b>
-                </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {DOW.map((x) => {
-                    const active = scheduledDays == null ? true : scheduledDays.includes(x.n);
-                    return (
-                      <DayPill key={x.n} label={x.label} active={active} disabled={busy} onClick={() => toggleDay(x.n)} />
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, alignItems: "end" }}>
-                <div>
-                  <div style={{ fontWeight: 900, marginBottom: 8 }}>Weekly skips allowed</div>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={weeklySkipsAllowedStr}
-                    onChange={(e) => onNumberFieldChange(setWeeklySkipsAllowedStr, e.target.value)}
-                    style={baseField}
-                    disabled={busy}
-                    placeholder="0"
-                  />
-                </div>
-                <div style={{ fontSize: 13, opacity: 0.78 }}>
-                  Allows misses without “failing” the week.
-                </div>
-              </div>
             </div>
           </section>
 
-          {/* REMINDER */}
-          <section
-            style={{
-              border: "1px solid var(--border)",
-              borderRadius: 18,
-              padding: 14,
-              background: "rgba(255,255,255,0.01)",
-            }}
-          >
+          {/* 3) Shared toggle + assignment */}
+          <section style={{ border: "1px solid var(--border)", borderRadius: 18, padding: 14 }}>
+            <div style={{ fontWeight: 950, marginBottom: 10 }}>Shared</div>
+
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <div style={{ fontWeight: 900 }}>Share this task?</div>
+                <div style={{ fontSize: 13, opacity: 0.78 }}>If shared, it can show up for your partner too.</div>
+              </div>
+              <Toggle checked={isShared} onChange={(v) => setIsShared(v)} disabled={busy} />
+            </div>
+
+            {isShared ? (
+              <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ fontWeight: 900 }}>Who is this assigned to?</div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <SoftButton small disabled={busy} onClick={() => setAssignedTo("partner")}>
+                    {assignedTo === "partner" ? "✓ Partner" : "Partner"}
+                  </SoftButton>
+                  <SoftButton small disabled={busy} onClick={() => setAssignedTo("both")}>
+                    {assignedTo === "both" ? "✓ Both" : "Both"}
+                  </SoftButton>
+                </div>
+                <div style={{ fontSize: 12, opacity: 0.72 }}>
+                  (If your DB uses different values than <b>partner</b>/<b>both</b>, adjust the mapping at the top.)
+                </div>
+              </div>
+            ) : null}
+          </section>
+
+          {/* 4) Scheduled days */}
+          <section style={{ border: "1px solid var(--border)", borderRadius: 18, padding: 14 }}>
+            <div style={{ fontWeight: 950, marginBottom: 10 }}>Scheduled days</div>
+
+            <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 10 }}>
+              Current: <b>{fmtScheduledDays(scheduledDays)}</b>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {DOW.map((x) => {
+                const active = scheduledDays == null ? true : scheduledDays.includes(x.n);
+                return <DayPill key={x.n} label={x.label} active={active} disabled={busy} onClick={() => toggleDay(x.n)} />;
+              })}
+            </div>
+          </section>
+
+          {/* 5) Weekly skips */}
+          <section style={{ border: "1px solid var(--border)", borderRadius: 18, padding: 14 }}>
+            <div style={{ fontWeight: 950, marginBottom: 10 }}>Weekly skips allowed</div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, alignItems: "end" }}>
+              <div>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={weeklySkipsAllowedStr}
+                  onChange={(e) => onNumberFieldChange(setWeeklySkipsAllowedStr, e.target.value)}
+                  style={baseField}
+                  disabled={busy}
+                  placeholder="0"
+                />
+              </div>
+              <div style={{ fontSize: 13, opacity: 0.78 }}>Allows misses without “failing” the week.</div>
+            </div>
+          </section>
+
+          {/* 6) Reminders */}
+          <section style={{ border: "1px solid var(--border)", borderRadius: 18, padding: 14 }}>
             <ReminderEditor drafts={draftReminders} setDrafts={setDraftReminders} />
           </section>
 
-          {/* ACTIONS */}
+          {/* Actions */}
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
             <SoftButton disabled={busy} onClick={() => router.push("/tasks")}>
               Cancel
