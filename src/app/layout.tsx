@@ -2,6 +2,8 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
 import { theme } from "@/UI/theme";
 
 export default function RootLayout({
@@ -9,8 +11,9 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [leftOpen, setLeftOpen] = useState(false);
+  const pathname = usePathname();
 
+  const [leftOpen, setLeftOpen] = useState(false);
   const leftRef = useRef<HTMLDivElement | null>(null);
 
   // Close menus on outside click / Escape
@@ -20,9 +23,7 @@ export default function RootLayout({
       if (leftRef.current && !leftRef.current.contains(t)) setLeftOpen(false);
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        setLeftOpen(false);
-      }
+      if (e.key === "Escape") setLeftOpen(false);
     }
     window.addEventListener("mousedown", onDown);
     window.addEventListener("keydown", onKey);
@@ -100,7 +101,7 @@ export default function RootLayout({
     );
   }
 
-  // New minimalist Home button (icon-only, larger, centered)
+  // Minimalist Home icon button (icon-only, larger, centered)
   const homeIconButton: React.CSSProperties = {
     width: 54,
     height: 54,
@@ -111,25 +112,29 @@ export default function RootLayout({
     display: "grid",
     placeItems: "center",
     textDecoration: "none",
-    fontWeight: 900,
     boxShadow: "0 10px 24px rgba(0,0,0,0.35)",
     userSelect: "none",
   };
 
-  // Minimal home icon (SVG so it’s clean and consistent)
-  const HomeIcon = ({ size = 26 }: { size?: number }) => (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-    >
+  const HomeIcon = ({ size = 28 }: { size?: number }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
         d="M3.5 10.5L12 3.75L20.5 10.5V20.25C20.5 20.6642 20.1642 21 19.75 21H14.25V15.25C14.25 14.8358 13.9142 14.5 13.5 14.5H10.5C10.0858 14.5 9.75 14.8358 9.75 15.25V21H4.25C3.83579 21 3.5 20.6642 3.5 20.25V10.5Z"
         stroke="currentColor"
         strokeWidth="2"
         strokeLinejoin="round"
+      />
+    </svg>
+  );
+
+  // SVG Plus icon so it never renders like "+ over -"
+  const PlusIcon = ({ size = 22 }: { size?: number }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M12 5v14M5 12h14"
+        stroke="currentColor"
+        strokeWidth="2.6"
+        strokeLinecap="round"
       />
     </svg>
   );
@@ -225,10 +230,10 @@ export default function RootLayout({
               aria-label="Go to Home"
               title="Home"
             >
-              <HomeIcon size={28} />
+              <HomeIcon size={30} />
             </Link>
 
-            {/* Right: Plus button -> now goes straight to /tasks (no menu) */}
+            {/* Right: Plus button -> goes straight to /tasks */}
             <Link
               href="/tasks"
               onClick={() => setLeftOpen(false)}
@@ -239,15 +244,25 @@ export default function RootLayout({
               aria-label="Go to Tasks"
               title="Tasks"
             >
-              <span style={{ fontSize: 22, lineHeight: 1, fontWeight: 900 }}>
-                +
-              </span>
+              <PlusIcon size={24} />
             </Link>
           </div>
         </header>
 
-        {/* Page content */}
-        <div>{children}</div>
+        {/* Page content with transitions */}
+        <div style={{ maxWidth: 980, margin: "0 auto" }}>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={pathname}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+            >
+              {children}
+            </motion.div>
+          </AnimatePresence>
+        </div>
       </body>
     </html>
   );
