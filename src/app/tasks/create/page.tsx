@@ -1,5 +1,5 @@
 "use client";
- 
+
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -25,7 +25,7 @@ type TaskRow = {
   weekly_skips_allowed: number;
 
   is_shared?: boolean;
-  assigned_to?: string | null; // DB is UUID; must be userId or null (NOT "me")
+  assigned_to?: string | null; // DB is UUID; must be userId or partnerId (NOT "me")
 };
 
 type Cadence = "daily" | "weekly";
@@ -36,6 +36,19 @@ type ReminderDraft = {
   time_of_day: string; // "HH:MM"
   cadence: Cadence; // daily or weekly
   days_of_week: number[]; // weekly: enforce exactly ONE day (0..6)
+};
+
+type AssignChoice = "me" | "partner" | "both";
+
+type PartnershipRow = {
+  owner_id: string;
+  partner_id: string;
+};
+
+type PartnerProfile = {
+  user_id: string;
+  display_name: string | null;
+  email: string | null;
 };
 
 const ORANGE = "#ff7a18"; // FORCE ORANGE (not theme-dependent)
@@ -113,6 +126,84 @@ input[type="number"] { -moz-appearance: textfield; }
   .dht-anim { transition: none !important; animation: none !important; }
 }
 `;
+
+/* -------------------- helpers: compute next_fire_at (reminders NOT NULL) -------------------- */
+
+function getZonedParts(date: Date, timeZone: string) {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    weekday: "short",
+  });
+
+  const parts = dtf.formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  const weekdayStr = get("weekday"); // Sun/Mon/...
+
+  const weekdayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+  return {
+    year: Number(get("year")),
+    month: Number(get("month")),
+    day: Number(get("day")),
+    hour: Number(get("hour")),
+    minute: Number(get("minute")),
+    second: Number(get("second")),
+    weekday: weekdayMap[weekdayStr] ?? 0,
+  };
+}
+
+// Create a Date that represents the given wall-clock time in a specific IANA timezone.
+function makeDateInTimeZone(
+  timeZone: string,
+  y: number,
+  m: number,
+  d: number,
+  hh: number,
+  mm: number,
+  ss: number
+) {
+  // Start with a UTC "guess" then correct by measuring the timezone shift at that instant.
+  const utcGuess = new Date(Date.UTC(y, m - 1, d, hh, mm, ss));
+  const tzGuess = new Date(utcGuess.toLocaleString("en-US", { timeZone }));
+  const diffMs = utcGuess.getTime() - tzGuess.getTime();
+  return new Date(utcGuess.getTime() + diffMs);
+}
+
+function computeNextFireAt(d: ReminderDraft): string {
+  const tz = (d.timezone || guessTimeZone()).trim() || guessTimeZone();
+  const [hhStr, mmStr] = (isTimeStringValidHHMM(d.time_of_day) ? d.time_of_day : "09:00").split(":");
+  const hh = Number(hhStr);
+  const mm = Number(mmStr);
+
+  const now = new Date();
+
+  // Use a noon-UTC anchor to safely step days and then read YMD in the target timezone.
+  for (let addDays = 0; addDays <= 14; addDays++) {
+    const anchor = new Date(now.getTime() + addDays * 24 * 60 * 60 * 1000);
+    const z = getZonedParts(anchor, tz);
+
+    if (d.cadence === "weekly") {
+      const want = d.days_of_week?.length ? d.days_of_week[0] : 1;
+      const clamped = Math.max(0, Math.min(6, want));
+      if (z.weekday !== clamped) continue;
+    }
+
+    const candidate = makeDateInTimeZone(tz, z.year, z.month, z.day, hh, mm, 0);
+    if (candidate.getTime() > now.getTime() + 5 * 1000) {
+      return candidate.toISOString();
+    }
+  }
+
+  // Fallback: 1 hour from now (shouldn't happen, but avoids null)
+  return new Date(Date.now() + 60 * 60 * 1000).toISOString();
+}
 
 /* -------------------- tiny inline icons (no library) -------------------- */
 
@@ -423,6 +514,9 @@ function CreateOrEditTaskInner() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
+  // partner info (for shared assignment)
+  const [partner, setPartner] = useState<PartnerProfile | null>(null);
+
   // Fields
   const [title, setTitle] = useState("");
   const [type, setType] = useState<TaskType>("habit");
@@ -435,8 +529,9 @@ function CreateOrEditTaskInner() {
 
   const [draftReminders, setDraftReminders] = useState<ReminderDraft[]>([]);
 
-  // THIS TOGGLE IS NOW A NAV SHORTCUT (not a DB field here)
-  const [shareShortcutOn, setShareShortcutOn] = useState(false);
+  // ✅ CHANGED: shared toggle is now creation behavior (no navigation)
+  const [isShared, setIsShared] = useState(false);
+  const [assignChoice, setAssignChoice] = useState<AssignChoice>("me");
 
   const titleRef = useRef<HTMLInputElement | null>(null);
 
@@ -490,12 +585,61 @@ function CreateOrEditTaskInner() {
     };
   }, []);
 
-  // load task on edit (and hide the share shortcut toggle in edit mode)
+  // load partner link (so "partner/both" can assign a UUID)
   useEffect(() => {
-    if (!isEdit) return;
-    setShareShortcutOn(false);
-  }, [isEdit]);
+    if (!userId) {
+      setPartner(null);
+      return;
+    }
+    let alive = true;
 
+    (async () => {
+      try {
+        const { data: links, error } = await supabase
+          .from("partnerships")
+          .select("owner_id, partner_id")
+          .or(`owner_id.eq.${userId},partner_id.eq.${userId}`)
+          .limit(1);
+
+        if (!alive) return;
+        if (error) {
+          setPartner(null);
+          return;
+        }
+
+        const link = (links?.[0] as PartnershipRow | undefined) ?? null;
+        if (!link) {
+          setPartner(null);
+          return;
+        }
+
+        const otherId = link.owner_id === userId ? link.partner_id : link.owner_id;
+
+        const { data: prof, error: profErr } = await supabase
+          .from("profiles")
+          .select("user_id, display_name, email")
+          .eq("user_id", otherId)
+          .maybeSingle();
+
+        if (!alive) return;
+        if (profErr) {
+          setPartner(null);
+          return;
+        }
+
+        setPartner((prof as PartnerProfile) ?? null);
+      } catch {
+        if (!alive) return;
+        setPartner(null);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [userId]);
+
+  // load task on edit
   useEffect(() => {
     if (!isEdit) return;
     if (!userId) return;
@@ -527,6 +671,21 @@ function CreateOrEditTaskInner() {
         setScheduledDays(t.scheduled_days ?? null);
         setWeeklySkipsAllowedStr(String(t.weekly_skips_allowed ?? 0));
 
+        // keep existing task's shared fields (even if UI hides toggle in edit mode)
+        const shared = !!t.is_shared;
+        setIsShared(shared);
+
+        // set assignChoice based on assigned_to (best effort)
+        if (shared && t.assigned_to && partner?.user_id) {
+          if (t.assigned_to === userId) setAssignChoice("me");
+          else if (t.assigned_to === partner.user_id) setAssignChoice("partner");
+          else setAssignChoice("me");
+        } else if (shared && t.assigned_to === userId) {
+          setAssignChoice("me");
+        } else {
+          setAssignChoice("me");
+        }
+
         setDraftReminders([]);
       } catch (e: any) {
         if (!alive) return;
@@ -539,7 +698,8 @@ function CreateOrEditTaskInner() {
     return () => {
       alive = false;
     };
-  }, [isEdit, editId, userId]);
+    // NOTE: include partner?.user_id so assignChoice can be inferred if partner loads after auth
+  }, [isEdit, editId, userId, partner?.user_id]);
 
   const times = useMemo(
     () => parseBoundedInt(freqTimesStr, { min: 1, max: 365, fallback: 1 }),
@@ -596,6 +756,8 @@ function CreateOrEditTaskInner() {
       tz: nd.timezone,
       reminder_time: timeHHMMSS,
       scheduled_days,
+      // ✅ FIX for NOT NULL constraint
+      next_fire_at: computeNextFireAt(nd),
     };
   }
 
@@ -610,15 +772,7 @@ function CreateOrEditTaskInner() {
 
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 10,
-            flexWrap: "wrap",
-            alignItems: "center",
-          }}
-        >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <Icon>
               <IBell />
@@ -760,6 +914,11 @@ function CreateOrEditTaskInner() {
     );
   }
 
+  function partnerLabel() {
+    if (!partner) return "Partner";
+    return partner.display_name ?? partner.email ?? partner.user_id.slice(0, 8);
+  }
+
   async function saveTask() {
     if (!userId) {
       setStatus("You must be logged in.");
@@ -773,41 +932,78 @@ function CreateOrEditTaskInner() {
       return;
     }
 
+    // If shared + partner/both selected, require a partner link (so we have a UUID to assign)
+    if (isShared && (assignChoice === "partner" || assignChoice === "both") && !partner?.user_id) {
+      setStatus("No partner linked. Link a partner to assign shared tasks to them.");
+      return;
+    }
+
     setBusy(true);
     setStatus(null);
 
     try {
-      // NOTE: This page is for personal tasks.
-      // Shared tasks are created on the Shared Tasks page.
-      const payload: Partial<TaskRow> = {
+      const basePayload: Omit<Partial<TaskRow>, "assigned_to"> = {
         title: tTitle,
         type,
         freq_times: type === "habit" ? times : null,
         freq_per: type === "habit" ? freqPer : null,
         scheduled_days: scheduledDays,
         weekly_skips_allowed: skips,
-        is_shared: false,
-        assigned_to: userId, // ✅ FIX: UUID of logged-in user (not "me")
+        is_shared: !!isShared,
       };
 
+      // For non-shared tasks, always assign to me.
+      const meAssigned = userId;
+      const partnerAssigned = partner?.user_id ?? null;
+
       if (!isEdit) {
-        const { data: inserted, error } = await supabase
-          .from("tasks")
-          .insert({ ...payload, user_id: userId, archived: false })
-          .select("*")
-          .single();
+        // ✅ Insert logic:
+        // - not shared => one row assigned_to = me
+        // - shared + me => one row assigned_to = me
+        // - shared + partner => one row assigned_to = partner (still owned by me via user_id for RLS)
+        // - shared + both => two rows (me + partner), both owned by me via user_id
+        const rows: any[] = [];
+
+        if (!isShared) {
+          rows.push({ ...basePayload, user_id: userId, archived: false, assigned_to: meAssigned });
+        } else {
+          if (assignChoice === "me") {
+            rows.push({ ...basePayload, user_id: userId, archived: false, assigned_to: meAssigned });
+          } else if (assignChoice === "partner") {
+            rows.push({ ...basePayload, user_id: userId, archived: false, assigned_to: partnerAssigned });
+          } else {
+            // both
+            rows.push({ ...basePayload, user_id: userId, archived: false, assigned_to: meAssigned });
+            rows.push({ ...basePayload, user_id: userId, archived: false, assigned_to: partnerAssigned });
+          }
+        }
+
+        const { data: inserted, error } = await supabase.from("tasks").insert(rows).select("*");
         if (error) throw error;
 
-        const newTask = inserted as TaskRow;
-
+        const createdTasks = (inserted as TaskRow[]) ?? [];
         const draft = draftReminders[0] ? normalizeDraft(draftReminders[0]) : null;
-        if (draft) {
-          const fields = draftToDbFields(newTask.id, draft);
-          const { error: rErr } = await supabase.from("reminders").insert(fields);
+
+        if (draft && createdTasks.length) {
+          // Keep behavior: if you set a reminder, create one for each created row.
+          const reminderRows = createdTasks.map((t) => draftToDbFields(t.id, draft));
+          const { error: rErr } = await supabase.from("reminders").insert(reminderRows);
           if (rErr) throw rErr;
         }
       } else {
         if (!editId) throw new Error("Missing task id for edit.");
+
+        // ✅ Update: keep shared flags consistent with toggle/state
+        // Note: we update only ONE row (the edited task). If you want "both" editing to update both rows,
+        // that’s a separate feature.
+        const assigned_to =
+          !isShared ? userId : assignChoice === "partner" ? partnerAssigned : userId;
+
+        const payload: Partial<TaskRow> = {
+          ...basePayload,
+          assigned_to,
+        };
+
         const { error } = await supabase.from("tasks").update(payload).eq("id", editId).eq("user_id", userId);
         if (error) throw error;
       }
@@ -848,17 +1044,20 @@ function CreateOrEditTaskInner() {
     }
   }
 
-  function onToggleShareShortcut(next: boolean) {
-    setShareShortcutOn(next);
+  function onToggleShared(next: boolean) {
+    setIsShared(next);
 
-    if (next) {
-      // CHANGE THIS PATH if your shared page route is different.
-      router.push("/shared");
-    }
+    // When turning off shared, reset assign choice back to me
+    if (!next) setAssignChoice("me");
+
+    // If turning on shared but no partner, still allow "me" (but block partner/both at save time)
+    if (next && !partner?.user_id) setAssignChoice("me");
   }
 
   const pageTitle = isEdit ? "Edit task" : "New task";
   const primaryText = isEdit ? "Save" : "Create";
+
+  const partnerName = partnerLabel();
 
   return (
     <main
@@ -874,15 +1073,7 @@ function CreateOrEditTaskInner() {
 
       <div style={{ maxWidth: 980, margin: "0 auto" }}>
         {/* Top row */}
-        <div
-          style={{
-            position: "relative",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-          }}
-        >
+        <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <Link
             href="/tasks"
             style={{
@@ -940,7 +1131,7 @@ function CreateOrEditTaskInner() {
             gap: 14,
           }}
         >
-          {/* 1) Title + Share shortcut at top */}
+          {/* 1) Title + Shared toggle at top */}
           <section style={{ border: "1px solid var(--border)", borderRadius: 18, padding: 14 }}>
             <SectionHeader
               icon={
@@ -951,7 +1142,7 @@ function CreateOrEditTaskInner() {
               title="Title"
               right={
                 !isEdit ? (
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
                     <div
                       style={{
                         display: "inline-flex",
@@ -973,7 +1164,7 @@ function CreateOrEditTaskInner() {
                       Shared
                     </div>
 
-                    <Toggle checked={shareShortcutOn} onChange={onToggleShareShortcut} disabled={busy} />
+                    <Toggle checked={isShared} onChange={onToggleShared} disabled={busy} />
                   </div>
                 ) : null
               }
@@ -987,6 +1178,29 @@ function CreateOrEditTaskInner() {
               style={baseField}
               disabled={busy}
             />
+
+            {/* ✅ When Shared is on, show assignment choice. Nothing else changes. */}
+            {isShared && !isEdit ? (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontWeight: 900, marginBottom: 8, opacity: 0.92 }}>Assign to</div>
+                <select
+                  value={assignChoice}
+                  onChange={(e) => setAssignChoice(e.target.value as AssignChoice)}
+                  style={cleanSelect}
+                  disabled={busy}
+                >
+                  <option value="me">Me</option>
+                  <option value="partner">{partner ? partnerName : "Partner (not linked)"}</option>
+                  <option value="both">Both</option>
+                </select>
+
+                {!partner?.user_id ? (
+                  <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
+                    Partner not linked. You can still create shared tasks assigned to <b>Me</b>, but Partner/Both will be blocked on save.
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </section>
 
           {/* 2) Type */}
