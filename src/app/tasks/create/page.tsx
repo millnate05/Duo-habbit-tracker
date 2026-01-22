@@ -104,29 +104,6 @@ input[type="number"] { -moz-appearance: textfield; }
 }
 `;
 
-/* ------------------ tiny UI helpers ------------------ */
-
-function Chip({ label, active, onClick }: { label: string; active?: boolean; onClick?: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        padding: "8px 10px",
-        borderRadius: 999,
-        border: `1px solid ${active ? theme.accent.primary : "var(--border)"}`,
-        background: active ? "rgba(255,255,255,0.05)" : "transparent",
-        color: "var(--text)",
-        fontWeight: 900,
-        cursor: "pointer",
-        opacity: active ? 1 : 0.82,
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
 function PrimaryButton({
   children,
   onClick,
@@ -217,7 +194,37 @@ function DangerButton({
   );
 }
 
-/* ------------------ main page ------------------ */
+function DayPill({
+  label,
+  active,
+  onClick,
+  disabled,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={!!disabled}
+      onClick={onClick}
+      style={{
+        padding: "8px 10px",
+        borderRadius: 999,
+        border: `1px solid ${active ? theme.accent.primary : "var(--border)"}`,
+        background: active ? "rgba(255,255,255,0.05)" : "transparent",
+        color: "var(--text)",
+        fontWeight: 900,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.6 : active ? 1 : 0.82,
+      }}
+    >
+      {label}
+    </button>
+  );
+}
 
 function CreateOrEditTaskInner() {
   const router = useRouter();
@@ -239,9 +246,8 @@ function CreateOrEditTaskInner() {
   const [scheduledDays, setScheduledDays] = useState<number[] | null>(null);
   const [weeklySkipsAllowedStr, setWeeklySkipsAllowedStr] = useState<string>("0");
 
-  // reminders (still “create only” baseline; we keep it in edit too as draft you can re-add)
+  // reminders (baseline: one reminder max)
   const [draftReminders, setDraftReminders] = useState<ReminderDraft[]>([]);
-  const [activeSection, setActiveSection] = useState<"basics" | "schedule" | "reminders" | "danger">("basics");
 
   const titleRef = useRef<HTMLInputElement | null>(null);
 
@@ -279,7 +285,6 @@ function CreateOrEditTaskInner() {
       if (error) setStatus(error.message);
       const u = data.session?.user ?? null;
       setUserId(u?.id ?? null);
-
       setTimeout(() => titleRef.current?.focus(), 50);
     })();
 
@@ -325,7 +330,7 @@ function CreateOrEditTaskInner() {
         setScheduledDays(t.scheduled_days ?? null);
         setWeeklySkipsAllowedStr(String(t.weekly_skips_allowed ?? 0));
 
-        // baseline: reminders not loaded (by request earlier)
+        // baseline: reminders not loaded from DB yet
         setDraftReminders([]);
       } catch (e: any) {
         if (!alive) return;
@@ -340,14 +345,14 @@ function CreateOrEditTaskInner() {
     };
   }, [isEdit, editId, userId]);
 
-  // derived
-  const times = useMemo(() => parseBoundedInt(freqTimesStr, { min: 1, max: 365, fallback: 1 }), [freqTimesStr]);
-  const skips = useMemo(() => parseBoundedInt(weeklySkipsAllowedStr, { min: 0, max: 7, fallback: 0 }), [weeklySkipsAllowedStr]);
-
-  const scheduleSummary = useMemo(() => {
-    if (type === "single") return "One-time task";
-    return `${times} / ${freqPer} • ${fmtScheduledDays(scheduledDays)} • skips: ${skips}`;
-  }, [type, times, freqPer, scheduledDays, skips]);
+  const times = useMemo(
+    () => parseBoundedInt(freqTimesStr, { min: 1, max: 365, fallback: 1 }),
+    [freqTimesStr]
+  );
+  const skips = useMemo(
+    () => parseBoundedInt(weeklySkipsAllowedStr, { min: 0, max: 7, fallback: 0 }),
+    [weeklySkipsAllowedStr]
+  );
 
   const readyToSave = useMemo(() => {
     if (!title.trim()) return false;
@@ -355,10 +360,8 @@ function CreateOrEditTaskInner() {
     return true;
   }, [title, type, times]);
 
-  // helpers
   function toggleDay(day: number) {
-    const current = scheduledDays;
-    const base = current ?? [0, 1, 2, 3, 4, 5, 6];
+    const base = scheduledDays ?? [0, 1, 2, 3, 4, 5, 6];
     const set = new Set(base);
     if (set.has(day)) set.delete(day);
     else set.add(day);
@@ -400,7 +403,6 @@ function CreateOrEditTaskInner() {
     };
   }
 
-  // Reminder Editor (more “card-like”)
   function ReminderEditor({
     drafts,
     setDrafts,
@@ -412,44 +414,21 @@ function CreateOrEditTaskInner() {
 
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 10,
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <div style={{ fontWeight: 950, fontSize: 16 }}>Reminder</div>
-          <SoftButton
-            disabled={busy || hasOne}
-            onClick={() => setDrafts([defaultReminderDraft()])}
-          >
+          <SoftButton disabled={busy || hasOne} onClick={() => setDrafts([defaultReminderDraft()])}>
             + Add reminder
           </SoftButton>
         </div>
 
-        <div style={{ fontSize: 13, opacity: 0.78 }}>
-          Baseline: one reminder per task. (We can expand later.)
-        </div>
-
         {!hasOne ? (
-          <div
-            style={{
-              border: "1px dashed var(--border)",
-              borderRadius: 16,
-              padding: 14,
-              opacity: 0.85,
-            }}
-          >
+          <div style={{ border: "1px dashed var(--border)", borderRadius: 16, padding: 14, opacity: 0.85 }}>
             No reminder set.
           </div>
         ) : null}
 
         {drafts.map((d0, idx) => {
           const d = normalizeDraft(d0);
-
           return (
             <div
               key={`rem-${idx}`}
@@ -495,7 +474,9 @@ function CreateOrEditTaskInner() {
                       const nextCadence = e.target.value as Cadence;
                       const next = drafts.slice();
                       const patched: ReminderDraft = { ...d, cadence: nextCadence };
-                      if (nextCadence === "weekly") patched.days_of_week = patched.days_of_week.length ? [patched.days_of_week[0]] : [1];
+                      if (nextCadence === "weekly") {
+                        patched.days_of_week = patched.days_of_week.length ? [patched.days_of_week[0]] : [1];
+                      }
                       next[idx] = patched;
                       setDrafts(next);
                     }}
@@ -535,9 +516,6 @@ function CreateOrEditTaskInner() {
                     placeholder="America/Los_Angeles"
                     style={baseField}
                   />
-                  <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>
-                    Keep as your device timezone unless you have a reason.
-                  </div>
                 </div>
 
                 {d.cadence === "weekly" ? (
@@ -547,10 +525,11 @@ function CreateOrEditTaskInner() {
                       {DOW.map((x) => {
                         const selected = d.days_of_week.length ? d.days_of_week[0] === x.n : false;
                         return (
-                          <Chip
+                          <DayPill
                             key={x.n}
                             label={x.label}
                             active={selected}
+                            disabled={busy}
                             onClick={() => {
                               const next = drafts.slice();
                               next[idx] = { ...d, days_of_week: [x.n] };
@@ -570,7 +549,6 @@ function CreateOrEditTaskInner() {
     );
   }
 
-  // CRUD
   async function saveTask() {
     if (!userId) {
       setStatus("You must be logged in.");
@@ -581,7 +559,6 @@ function CreateOrEditTaskInner() {
     const tTitle = title.trim();
     if (!tTitle) {
       setStatus("Please enter a title.");
-      setActiveSection("basics");
       return;
     }
 
@@ -641,9 +618,7 @@ function CreateOrEditTaskInner() {
     setStatus(null);
 
     try {
-      // Optional: clean reminders first (avoid FK issues if you have them)
       await supabase.from("reminders").delete().eq("task_id", editId).eq("user_id", userId);
-      // Optional: clean completions too
       await supabase.from("completions").delete().eq("task_id", editId).eq("user_id", userId);
 
       const { error } = await supabase.from("tasks").delete().eq("id", editId).eq("user_id", userId);
@@ -661,15 +636,10 @@ function CreateOrEditTaskInner() {
   const pageTitle = isEdit ? "Edit task" : "New task";
   const primaryText = isEdit ? "Save changes" : "Create task";
 
-  // “fun” preview card
-  const previewAccent = useMemo(() => {
-    const t = title.trim().toLowerCase();
-    if (t.includes("water") || t.includes("hydrate")) return "#06B6D4";
-    if (t.includes("gym") || t.includes("lift") || t.includes("bench") || t.includes("squat")) return "#A855F7";
-    if (t.includes("walk") || t.includes("run") || t.includes("steps")) return "#22C55E";
-    if (t.includes("read") || t.includes("study")) return "#3B82F6";
-    return theme.accent.primary;
-  }, [title]);
+  const scheduleSummary = useMemo(() => {
+    if (type === "single") return "One-time task";
+    return `${times} / ${freqPer} • ${fmtScheduledDays(scheduledDays)} • skips: ${skips}`;
+  }, [type, times, freqPer, scheduledDays, skips]);
 
   return (
     <main
@@ -683,27 +653,9 @@ function CreateOrEditTaskInner() {
     >
       <style>{globalFixesCSS}</style>
 
-      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-        {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <div>
-            <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
-              <h1 style={{ margin: 0, fontSize: 34, fontWeight: 950 }}>{pageTitle}</h1>
-              <span style={{ opacity: 0.72, fontWeight: 900 }}>
-                {isEdit ? "Update details + schedule" : "Fast, clean setup"}
-              </span>
-            </div>
-            <div style={{ height: 8 }} />
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <Chip label="Basics" active={activeSection === "basics"} onClick={() => setActiveSection("basics")} />
-              <Chip label="Schedule" active={activeSection === "schedule"} onClick={() => setActiveSection("schedule")} />
-              <Chip label="Reminder" active={activeSection === "reminders"} onClick={() => setActiveSection("reminders")} />
-              {isEdit ? (
-                <Chip label="Danger zone" active={activeSection === "danger"} onClick={() => setActiveSection("danger")} />
-              ) : null}
-            </div>
-          </div>
-
+      <div style={{ maxWidth: 980, margin: "0 auto" }}>
+        {/* Header row: back button stays, title centered */}
+        <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <Link
             href="/tasks"
             style={{
@@ -720,6 +672,13 @@ function CreateOrEditTaskInner() {
           >
             ← Back to Tasks
           </Link>
+
+          <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", textAlign: "center" }}>
+            <h1 style={{ margin: 0, fontSize: 34, fontWeight: 950 }}>{pageTitle}</h1>
+          </div>
+
+          {/* right spacer to balance layout */}
+          <div style={{ width: 140 }} />
         </div>
 
         {status ? (
@@ -738,375 +697,175 @@ function CreateOrEditTaskInner() {
 
         <div style={{ height: 14 }} />
 
-        {/* Layout */}
-        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 14 }}>
-          {/* LEFT: forms */}
-          <div
+        {/* Single clean page: Basics + Schedule + Reminder */}
+        <div
+          style={{
+            border: "1px solid var(--border)",
+            borderRadius: 20,
+            padding: 16,
+            background: "rgba(255,255,255,0.02)",
+            boxShadow: "0 10px 24px rgba(0,0,0,0.25)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 16,
+          }}
+        >
+          {/* BASICS */}
+          <section
             style={{
               border: "1px solid var(--border)",
-              borderRadius: 20,
-              padding: 16,
-              background: "rgba(255,255,255,0.02)",
-              boxShadow: "0 10px 24px rgba(0,0,0,0.25)",
+              borderRadius: 18,
+              padding: 14,
+              background: "rgba(255,255,255,0.01)",
             }}
           >
-            {activeSection === "basics" ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <div style={{ fontWeight: 950, fontSize: 16 }}>Basics</div>
+            <div style={{ fontWeight: 950, fontSize: 16, marginBottom: 10 }}>Basics</div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <div style={{ fontWeight: 900, marginBottom: 8 }}>Title</div>
+                <input
+                  ref={titleRef}
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="e.g., Drink water"
+                  style={{ ...baseField, fontSize: 16 }}
+                  disabled={busy}
+                />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div>
+                  <div style={{ fontWeight: 900, marginBottom: 8 }}>Type</div>
+                  <select value={type} onChange={(e) => setType(e.target.value as TaskType)} style={cleanSelect} disabled={busy}>
+                    <option value="habit">Habit (recurring)</option>
+                    <option value="single">Single (one-time)</option>
+                  </select>
+                </div>
 
                 <div>
-                  <div style={{ fontWeight: 900, marginBottom: 8 }}>Title</div>
-                  <input
-                    ref={titleRef}
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="e.g., Drink water"
-                    style={{ ...baseField, fontSize: 16 }}
-                    disabled={busy}
-                  />
-                  <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
-                    Keep it short. This is what you’ll see on your home + tasks list.
-                  </div>
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                  <div>
-                    <div style={{ fontWeight: 900, marginBottom: 8 }}>Type</div>
-                    <select
-                      value={type}
-                      onChange={(e) => setType(e.target.value as TaskType)}
-                      style={cleanSelect}
-                      disabled={busy}
-                    >
-                      <option value="habit">Habit (recurring)</option>
-                      <option value="single">Single (one-time)</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <div style={{ fontWeight: 900, marginBottom: 8 }}>Quick template</div>
-                    <select
-                      value=""
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (!v) return;
-
-                        // baseline presets (feel free to expand)
-                        if (v === "water") {
-                          setTitle((prev) => (prev.trim() ? prev : "Drink water"));
-                          setType("habit");
-                          setFreqTimesStr("8");
-                          setFreqPer("day");
-                          setScheduledDays(null);
-                          setWeeklySkipsAllowedStr("0");
-                        }
-                        if (v === "steps") {
-                          setTitle((prev) => (prev.trim() ? prev : "10k steps"));
-                          setType("habit");
-                          setFreqTimesStr("1");
-                          setFreqPer("day");
-                          setScheduledDays(null);
-                          setWeeklySkipsAllowedStr("1");
-                        }
-                        if (v === "gym") {
-                          setTitle((prev) => (prev.trim() ? prev : "Gym"));
-                          setType("habit");
-                          setFreqTimesStr("4");
-                          setFreqPer("week");
-                          setScheduledDays([1, 2, 4, 6]);
-                          setWeeklySkipsAllowedStr("1");
-                        }
-
-                        // reset dropdown
-                        setTimeout(() => {
-                          (e.target as HTMLSelectElement).value = "";
-                        }, 0);
-                      }}
-                      style={cleanSelect}
-                      disabled={busy}
-                    >
-                      <option value="">Pick…</option>
-                      <option value="water">Hydration</option>
-                      <option value="steps">Steps</option>
-                      <option value="gym">Gym</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", gap: 10, justifyContent: "space-between", flexWrap: "wrap" }}>
-                  <SoftButton
-                    disabled={busy}
-                    onClick={() => setActiveSection("schedule")}
+                  <div style={{ fontWeight: 900, marginBottom: 8 }}>Summary</div>
+                  <div
+                    style={{
+                      ...baseField,
+                      display: "flex",
+                      alignItems: "center",
+                      fontWeight: 900,
+                      opacity: 0.9,
+                      minHeight: 46,
+                    }}
                   >
-                    Next: Schedule →
-                  </SoftButton>
-
-                  <PrimaryButton
-                    disabled={busy || !readyToSave}
-                    onClick={saveTask}
-                  >
-                    {primaryText}
-                  </PrimaryButton>
+                    {scheduleSummary}
+                  </div>
                 </div>
               </div>
-            ) : null}
+            </div>
+          </section>
 
-            {activeSection === "schedule" ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                  <div style={{ fontWeight: 950, fontSize: 16 }}>Schedule</div>
-                  <div style={{ opacity: 0.75, fontWeight: 900 }}>{type === "habit" ? "How often?" : "One-time task"}</div>
-                </div>
+          {/* SCHEDULE */}
+          <section
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: 18,
+              padding: 14,
+              background: "rgba(255,255,255,0.01)",
+            }}
+          >
+            <div style={{ fontWeight: 950, fontSize: 16, marginBottom: 10 }}>Schedule</div>
 
-                {type === "habit" ? (
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                    <div>
-                      <div style={{ fontWeight: 900, marginBottom: 8 }}>Times</div>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={freqTimesStr}
-                        onChange={(e) => onNumberFieldChange(setFreqTimesStr, e.target.value)}
-                        style={baseField}
-                        disabled={busy}
-                        placeholder="1"
-                      />
-                    </div>
-                    <div>
-                      <div style={{ fontWeight: 900, marginBottom: 8 }}>Per</div>
-                      <select
-                        value={freqPer}
-                        onChange={(e) => setFreqPer(e.target.value as FrequencyUnit)}
-                        style={cleanSelect}
-                        disabled={busy}
-                      >
-                        <option value="day">Day</option>
-                        <option value="week">Week</option>
-                        <option value="month">Month</option>
-                        <option value="year">Year</option>
-                      </select>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ opacity: 0.8 }}>
-                    Single tasks don’t need frequency. You’ll just complete it once.
-                  </div>
-                )}
-
-                <div>
-                  <div style={{ fontWeight: 900, marginBottom: 8 }}>Scheduled days</div>
-                  <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 10 }}>
-                    Current: <b>{fmtScheduledDays(scheduledDays)}</b>
-                  </div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {DOW.map((x) => {
-                      const active = scheduledDays == null ? true : scheduledDays.includes(x.n);
-                      return (
-                        <Chip
-                          key={x.n}
-                          label={x.label}
-                          active={active}
-                          onClick={() => toggleDay(x.n)}
-                        />
-                      );
-                    })}
-                  </div>
-                </div>
-
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {type === "habit" ? (
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <div>
-                    <div style={{ fontWeight: 900, marginBottom: 8 }}>Weekly skips allowed</div>
+                    <div style={{ fontWeight: 900, marginBottom: 8 }}>Times</div>
                     <input
                       type="text"
                       inputMode="numeric"
-                      value={weeklySkipsAllowedStr}
-                      onChange={(e) => onNumberFieldChange(setWeeklySkipsAllowedStr, e.target.value)}
+                      value={freqTimesStr}
+                      onChange={(e) => onNumberFieldChange(setFreqTimesStr, e.target.value)}
                       style={baseField}
                       disabled={busy}
-                      placeholder="0"
+                      placeholder="1"
                     />
                   </div>
-                  <div style={{ fontSize: 13, opacity: 0.78, alignSelf: "end" }}>
-                    Allows misses without “failing” the week.
+
+                  <div>
+                    <div style={{ fontWeight: 900, marginBottom: 8 }}>Per</div>
+                    <select value={freqPer} onChange={(e) => setFreqPer(e.target.value as FrequencyUnit)} style={cleanSelect} disabled={busy}>
+                      <option value="day">Day</option>
+                      <option value="week">Week</option>
+                      <option value="month">Month</option>
+                      <option value="year">Year</option>
+                    </select>
                   </div>
                 </div>
+              ) : (
+                <div style={{ opacity: 0.8 }}>Single tasks don’t need frequency.</div>
+              )}
 
-                <div style={{ display: "flex", gap: 10, justifyContent: "space-between", flexWrap: "wrap" }}>
-                  <SoftButton disabled={busy} onClick={() => setActiveSection("basics")}>
-                    ← Back
-                  </SoftButton>
-
-                  <SoftButton disabled={busy} onClick={() => setActiveSection("reminders")}>
-                    Next: Reminder →
-                  </SoftButton>
-
-                  <PrimaryButton disabled={busy || !readyToSave} onClick={saveTask}>
-                    {primaryText}
-                  </PrimaryButton>
+              <div>
+                <div style={{ fontWeight: 900, marginBottom: 8 }}>Scheduled days</div>
+                <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 10 }}>
+                  Current: <b>{fmtScheduledDays(scheduledDays)}</b>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {DOW.map((x) => {
+                    const active = scheduledDays == null ? true : scheduledDays.includes(x.n);
+                    return (
+                      <DayPill key={x.n} label={x.label} active={active} disabled={busy} onClick={() => toggleDay(x.n)} />
+                    );
+                  })}
                 </div>
               </div>
-            ) : null}
 
-            {activeSection === "reminders" ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                  <div style={{ fontWeight: 950, fontSize: 16 }}>Reminder</div>
-                  <div style={{ opacity: 0.75, fontWeight: 900 }}>Optional</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, alignItems: "end" }}>
+                <div>
+                  <div style={{ fontWeight: 900, marginBottom: 8 }}>Weekly skips allowed</div>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={weeklySkipsAllowedStr}
+                    onChange={(e) => onNumberFieldChange(setWeeklySkipsAllowedStr, e.target.value)}
+                    style={baseField}
+                    disabled={busy}
+                    placeholder="0"
+                  />
                 </div>
-
-                <ReminderEditor drafts={draftReminders} setDrafts={setDraftReminders} />
-
-                <div style={{ display: "flex", gap: 10, justifyContent: "space-between", flexWrap: "wrap" }}>
-                  <SoftButton disabled={busy} onClick={() => setActiveSection("schedule")}>
-                    ← Back
-                  </SoftButton>
-
-                  {isEdit ? (
-                    <SoftButton disabled={busy} onClick={() => setActiveSection("danger")}>
-                      Danger zone →
-                    </SoftButton>
-                  ) : null}
-
-                  <PrimaryButton disabled={busy || !readyToSave} onClick={saveTask}>
-                    {primaryText}
-                  </PrimaryButton>
+                <div style={{ fontSize: 13, opacity: 0.78 }}>
+                  Allows misses without “failing” the week.
                 </div>
-              </div>
-            ) : null}
-
-            {activeSection === "danger" ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <div style={{ fontWeight: 950, fontSize: 16 }}>Danger zone</div>
-
-                <div
-                  style={{
-                    border: "1px solid rgba(255, 99, 99, 0.35)",
-                    borderRadius: 16,
-                    padding: 14,
-                    background: "rgba(255, 99, 99, 0.08)",
-                  }}
-                >
-                  <div style={{ fontWeight: 950, marginBottom: 6 }}>Delete task</div>
-                  <div style={{ opacity: 0.85, fontSize: 13, marginBottom: 12 }}>
-                    This permanently deletes the task (and attempts to remove its reminders/completions).
-                  </div>
-                  <DangerButton disabled={busy} onClick={deleteTask}>
-                    Delete task
-                  </DangerButton>
-                </div>
-
-                <div style={{ display: "flex", gap: 10, justifyContent: "space-between", flexWrap: "wrap" }}>
-                  <SoftButton disabled={busy} onClick={() => setActiveSection("basics")}>
-                    ← Back
-                  </SoftButton>
-
-                  <PrimaryButton disabled={busy || !readyToSave} onClick={saveTask}>
-                    {primaryText}
-                  </PrimaryButton>
-                </div>
-              </div>
-            ) : null}
-          </div>
-
-          {/* RIGHT: preview + quick summary */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div
-              style={{
-                border: "1px solid var(--border)",
-                borderRadius: 20,
-                padding: 16,
-                background: "rgba(255,255,255,0.02)",
-                boxShadow: "0 10px 24px rgba(0,0,0,0.25)",
-              }}
-            >
-              <div style={{ fontWeight: 950, marginBottom: 10 }}>Preview</div>
-
-              <div
-                style={{
-                  borderRadius: 18,
-                  padding: 14,
-                  background: previewAccent,
-                  color: "#000",
-                  boxShadow: "0 14px 28px rgba(0,0,0,0.35)",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
-                  <div style={{ fontWeight: 950, fontSize: 18 }}>
-                    {title.trim() ? title.trim() : "Untitled task"}
-                  </div>
-                  <div style={{ fontWeight: 900, opacity: 0.85 }}>
-                    {type === "habit" ? "Habit" : "Single"}
-                  </div>
-                </div>
-
-                <div style={{ height: 10 }} />
-
-                <div
-                  style={{
-                    background: "rgba(0,0,0,0.18)",
-                    borderRadius: 999,
-                    height: 10,
-                    overflow: "hidden",
-                  }}
-                >
-                  <div style={{ height: "100%", width: "35%", background: "rgba(0,0,0,0.35)" }} />
-                </div>
-
-                <div style={{ height: 10 }} />
-                <div style={{ fontSize: 13, fontWeight: 900, opacity: 0.9 }}>{scheduleSummary}</div>
-              </div>
-
-              <div style={{ height: 12 }} />
-
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <SoftButton disabled={busy} onClick={() => setActiveSection("basics")}>
-                  Edit basics
-                </SoftButton>
-                <SoftButton disabled={busy} onClick={() => setActiveSection("schedule")}>
-                  Edit schedule
-                </SoftButton>
-                <SoftButton disabled={busy} onClick={() => setActiveSection("reminders")}>
-                  Edit reminder
-                </SoftButton>
               </div>
             </div>
+          </section>
 
-            <div
-              style={{
-                border: "1px solid var(--border)",
-                borderRadius: 20,
-                padding: 16,
-                background: "rgba(255,255,255,0.02)",
-              }}
-            >
-              <div style={{ fontWeight: 950, marginBottom: 8 }}>Quick checks</div>
-              <div style={{ fontSize: 13, opacity: 0.86, display: "flex", flexDirection: "column", gap: 6 }}>
-                <div>
-                  • Title: <b>{title.trim() ? "✅" : "❌"}</b>
-                </div>
-                <div>
-                  • Type: <b>{type === "habit" ? "Habit" : "Single"}</b>
-                </div>
-                <div>
-                  • Reminder: <b>{draftReminders.length ? "✅" : "—"}</b>
-                </div>
-                <div style={{ marginTop: 10, opacity: 0.85 }}>
-                  Tip: if you ever want an even “funnier” flow, we can make it a single scroll page with animated sections + a big sticky save button.
-                </div>
-              </div>
+          {/* REMINDER */}
+          <section
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: 18,
+              padding: 14,
+              background: "rgba(255,255,255,0.01)",
+            }}
+          >
+            <ReminderEditor drafts={draftReminders} setDrafts={setDraftReminders} />
+          </section>
 
-              <div style={{ height: 12 }} />
+          {/* ACTIONS */}
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+            <SoftButton disabled={busy} onClick={() => router.push("/tasks")}>
+              Cancel
+            </SoftButton>
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {isEdit ? (
+                <DangerButton disabled={busy} onClick={deleteTask}>
+                  Delete task
+                </DangerButton>
+              ) : null}
+
               <PrimaryButton disabled={busy || !readyToSave} onClick={saveTask}>
                 {primaryText}
               </PrimaryButton>
-
-              {isEdit ? (
-                <div style={{ marginTop: 10 }}>
-                  <DangerButton disabled={busy} onClick={() => setActiveSection("danger")}>
-                    Delete…
-                  </DangerButton>
-                </div>
-              ) : null}
             </div>
           </div>
         </div>
