@@ -25,7 +25,7 @@ type TaskRow = {
   weekly_skips_allowed: number;
 
   is_shared?: boolean;
-  assigned_to?: string | null; // "me" | "partner" | "both"
+  assigned_to?: string | null;
 };
 
 type Cadence = "daily" | "weekly";
@@ -38,7 +38,7 @@ type ReminderDraft = {
   days_of_week: number[]; // weekly: enforce exactly ONE day (0..6)
 };
 
-const ORANGE = "#ff7a18"; // <-- FORCE ORANGE (not theme-dependent)
+const ORANGE = "#ff7a18"; // FORCE ORANGE (not theme-dependent)
 
 const DOW = [
   { n: 0, label: "Sun" },
@@ -158,16 +158,6 @@ function IType() {
     </svg>
   );
 }
-function IShare() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-      <path d="M16 8a3 3 0 1 0-2.8-4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-      <path d="M7 14a3 3 0 1 0 0 6a3 3 0 0 0 0-6Z" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round" />
-      <path d="M16.5 7.5 9.6 12.2M9.6 15.8l6.9 4.7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-      <path d="M19 18a3 3 0 1 0-1.2 2.4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-    </svg>
-  );
-}
 function ICalendar() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -202,6 +192,16 @@ function IBell() {
     </svg>
   );
 }
+function IShareMini() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <path d="M16 8a3 3 0 1 0-2.8-4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+      <path d="M7 14a3 3 0 1 0 0 6a3 3 0 0 0 0-6Z" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round" />
+      <path d="M16.5 7.5 9.6 12.2M9.6 15.8l6.9 4.7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+      <path d="M19 18a3 3 0 1 0-1.2 2.4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 /* -------------------- UI bits -------------------- */
 
@@ -209,64 +209,49 @@ function SectionHeader({
   icon,
   title,
   subtitle,
+  right,
 }: {
   icon: React.ReactNode;
   title: React.ReactNode;
   subtitle?: React.ReactNode;
+  right?: React.ReactNode;
 }) {
   return (
-    <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 10 }}>
-      <div
-        style={{
-          width: 34,
-          height: 34,
-          borderRadius: 12,
-          border: `1px solid rgba(255,255,255,0.12)`,
-          background: `linear-gradient(180deg, rgba(255,122,24,0.14), rgba(255,255,255,0.03))`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          boxShadow: `0 10px 22px rgba(0,0,0,0.28), inset 0 0 0 1px rgba(0,0,0,0.25)`,
-        }}
-      >
-        {icon}
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-        <div style={{ fontWeight: 950, fontSize: 16, lineHeight: 1.1 }}>{title}</div>
-        {subtitle ? <div style={{ fontSize: 13, opacity: 0.78 }}>{subtitle}</div> : null}
-      </div>
-    </div>
-  );
-}
-
-function PrimaryButton({
-  children,
-  onClick,
-  disabled,
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={!!disabled}
-      onClick={onClick}
+    <div
       style={{
-        padding: "12px 16px",
-        borderRadius: 16,
-        border: `1px solid rgba(255,122,24,0.95)`,
-        background: ORANGE,
-        color: "#000",
-        fontWeight: 950,
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.6 : 1,
-        boxShadow: `0 14px 28px rgba(255,122,24,0.18), 0 10px 22px rgba(0,0,0,0.35)`,
+        display: "flex",
+        gap: 10,
+        alignItems: "flex-start",
+        justifyContent: "space-between",
+        marginBottom: 10,
       }}
     >
-      {children}
-    </button>
+      <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+        <div
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 12,
+            border: `1px solid rgba(255,255,255,0.12)`,
+            background: `linear-gradient(180deg, rgba(255,122,24,0.14), rgba(255,255,255,0.03))`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxShadow: `0 10px 22px rgba(0,0,0,0.28), inset 0 0 0 1px rgba(0,0,0,0.25)`,
+            flex: "0 0 auto",
+          }}
+        >
+          {icon}
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          <div style={{ fontWeight: 950, fontSize: 16, lineHeight: 1.1 }}>{title}</div>
+          {subtitle ? <div style={{ fontSize: 13, opacity: 0.78 }}>{subtitle}</div> : null}
+        </div>
+      </div>
+
+      {right ? <div style={{ display: "flex", alignItems: "center", gap: 10 }}>{right}</div> : null}
+    </div>
   );
 }
 
@@ -293,12 +278,8 @@ function SoftButton({
       style={{
         padding: small ? "8px 10px" : "12px 14px",
         borderRadius: 14,
-        border: `1px solid ${
-          active || orangeBorder ? "rgba(255,122,24,0.85)" : "var(--border)"
-        }`,
-        background: active
-          ? "rgba(255,122,24,0.12)"
-          : "rgba(255,255,255,0.03)",
+        border: `1px solid ${active || orangeBorder ? "rgba(255,122,24,0.85)" : "var(--border)"}`,
+        background: active ? "rgba(255,122,24,0.12)" : "rgba(255,255,255,0.03)",
         color: "var(--text)",
         fontWeight: 900,
         cursor: disabled ? "not-allowed" : "pointer",
@@ -403,6 +384,7 @@ function Toggle({
         opacity: disabled ? 0.6 : 1,
         padding: 0,
         boxShadow: checked ? `0 0 0 3px rgba(255,122,24,0.08)` : "none",
+        flex: "0 0 auto",
       }}
     >
       <span
@@ -436,12 +418,9 @@ function CreateOrEditTaskInner() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
-  // Fields (in order)
+  // Fields
   const [title, setTitle] = useState("");
   const [type, setType] = useState<TaskType>("habit");
-
-  const [isShared, setIsShared] = useState(false);
-  const [assignedTo, setAssignedTo] = useState<"me" | "partner" | "both">("me");
 
   const [freqTimesStr, setFreqTimesStr] = useState<string>("1");
   const [freqPer, setFreqPer] = useState<FrequencyUnit>("week");
@@ -450,6 +429,9 @@ function CreateOrEditTaskInner() {
   const [weeklySkipsAllowedStr, setWeeklySkipsAllowedStr] = useState<string>("0");
 
   const [draftReminders, setDraftReminders] = useState<ReminderDraft[]>([]);
+
+  // THIS TOGGLE IS NOW A NAV SHORTCUT (not a DB field here)
+  const [shareShortcutOn, setShareShortcutOn] = useState(false);
 
   const titleRef = useRef<HTMLInputElement | null>(null);
 
@@ -503,7 +485,12 @@ function CreateOrEditTaskInner() {
     };
   }, []);
 
-  // load task on edit
+  // load task on edit (and hide the share shortcut toggle in edit mode)
+  useEffect(() => {
+    if (!isEdit) return;
+    setShareShortcutOn(false);
+  }, [isEdit]);
+
   useEffect(() => {
     if (!isEdit) return;
     if (!userId) return;
@@ -529,15 +516,6 @@ function CreateOrEditTaskInner() {
 
         setTitle(t.title ?? "");
         setType((t.type as TaskType) ?? "habit");
-
-        setIsShared(!!t.is_shared);
-
-        const rawAssigned = (t.assigned_to ?? "me").toLowerCase();
-        if (rawAssigned === "partner" || rawAssigned === "both" || rawAssigned === "me") {
-          setAssignedTo(rawAssigned as any);
-        } else {
-          setAssignedTo("me");
-        }
 
         setFreqTimesStr(String(t.freq_times ?? 1));
         setFreqPer((t.freq_per as FrequencyUnit) ?? "week");
@@ -786,6 +764,8 @@ function CreateOrEditTaskInner() {
     setStatus(null);
 
     try {
+      // NOTE: This page is for personal tasks.
+      // Shared tasks are created on the Shared Tasks page.
       const payload: Partial<TaskRow> = {
         title: tTitle,
         type,
@@ -793,8 +773,8 @@ function CreateOrEditTaskInner() {
         freq_per: type === "habit" ? freqPer : null,
         scheduled_days: scheduledDays,
         weekly_skips_allowed: skips,
-        is_shared: isShared,
-        assigned_to: isShared ? assignedTo : "me",
+        is_shared: false,
+        assigned_to: "me",
       };
 
       if (!isEdit) {
@@ -852,6 +832,15 @@ function CreateOrEditTaskInner() {
       setStatus(e?.message ?? "Failed to delete task.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  function onToggleShareShortcut(next: boolean) {
+    setShareShortcutOn(next);
+
+    if (next) {
+      // CHANGE THIS PATH if your shared page route is different.
+      router.push("/shared");
     }
   }
 
@@ -930,7 +919,7 @@ function CreateOrEditTaskInner() {
             gap: 14,
           }}
         >
-          {/* 1) Title */}
+          {/* 1) Title + Share shortcut at top */}
           <section style={{ border: "1px solid var(--border)", borderRadius: 18, padding: 14 }}>
             <SectionHeader
               icon={
@@ -939,7 +928,36 @@ function CreateOrEditTaskInner() {
                 </Icon>
               }
               title="Title"
+              right={
+                !isEdit ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 8,
+                        fontWeight: 950,
+                        fontSize: 13,
+                        color: "rgba(255,255,255,0.92)",
+                        padding: "6px 10px",
+                        borderRadius: 999,
+                        border: "1px solid rgba(255,122,24,0.25)",
+                        background: "rgba(255,122,24,0.08)",
+                        userSelect: "none",
+                      }}
+                    >
+                      <Icon size={16} color="var(--dht-orange)">
+                        <IShareMini />
+                      </Icon>
+                      Shared
+                    </div>
+
+                    <Toggle checked={shareShortcutOn} onChange={onToggleShareShortcut} disabled={busy} />
+                  </div>
+                ) : null
+              }
             />
+
             <input
               ref={titleRef}
               value={title}
@@ -997,70 +1015,7 @@ function CreateOrEditTaskInner() {
             </div>
           </section>
 
-          {/* 3) Shared */}
-          <section style={{ border: "1px solid var(--border)", borderRadius: 18, padding: 14 }}>
-            <SectionHeader
-              icon={
-                <Icon>
-                  <IShare />
-                </Icon>
-              }
-              title="Share this task?"
-              subtitle="If shared, it can show up for your partner too."
-            />
-
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <div style={{ fontWeight: 900, display: "flex", gap: 8, alignItems: "center" }}>
-                  <span>Sharing</span>
-                  <span
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 950,
-                      padding: "3px 8px",
-                      borderRadius: 999,
-                      border: `1px solid rgba(255,122,24,0.35)`,
-                      background: isShared ? "rgba(255,122,24,0.12)" : "rgba(255,255,255,0.03)",
-                      color: isShared ? "var(--dht-orange)" : "rgba(255,255,255,0.75)",
-                    }}
-                  >
-                    {isShared ? "ON" : "OFF"}
-                  </span>
-                </div>
-              </div>
-
-              <Toggle checked={isShared} onChange={(v) => setIsShared(v)} disabled={busy} />
-            </div>
-
-            <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ fontWeight: 900 }}>Assigned to</div>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <SoftButton small disabled={busy} active={assignedTo === "me"} onClick={() => setAssignedTo("me")}>
-                  {assignedTo === "me" ? "✓ Me" : "Me"}
-                </SoftButton>
-
-                <SoftButton
-                  small
-                  disabled={busy || !isShared}
-                  active={assignedTo === "partner"}
-                  onClick={() => setAssignedTo("partner")}
-                >
-                  {assignedTo === "partner" ? "✓ Partner" : "Partner"}
-                </SoftButton>
-
-                <SoftButton
-                  small
-                  disabled={busy || !isShared}
-                  active={assignedTo === "both"}
-                  onClick={() => setAssignedTo("both")}
-                >
-                  {assignedTo === "both" ? "✓ Both" : "Both"}
-                </SoftButton>
-              </div>
-            </div>
-          </section>
-
-          {/* 4) Scheduled days */}
+          {/* 3) Scheduled days */}
           <section style={{ border: "1px solid var(--border)", borderRadius: 18, padding: 14 }}>
             <SectionHeader
               icon={
@@ -1084,7 +1039,7 @@ function CreateOrEditTaskInner() {
             </div>
           </section>
 
-          {/* 5) Weekly skips (tip removed) */}
+          {/* 4) Weekly skips */}
           <section style={{ border: "1px solid var(--border)", borderRadius: 18, padding: 14 }}>
             <SectionHeader
               icon={
@@ -1111,12 +1066,12 @@ function CreateOrEditTaskInner() {
             </div>
           </section>
 
-          {/* 6) Reminders */}
+          {/* 5) Reminders */}
           <section style={{ border: "1px solid var(--border)", borderRadius: 18, padding: 14 }}>
             <ReminderEditor drafts={draftReminders} setDrafts={setDraftReminders} />
           </section>
 
-          {/* Actions: Cancel left, Create/Save on the right (no sticky footer text) */}
+          {/* Actions */}
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
             <SoftButton disabled={busy} onClick={() => router.push("/tasks")}>
               Cancel
@@ -1129,7 +1084,6 @@ function CreateOrEditTaskInner() {
                 </DangerButton>
               ) : null}
 
-              {/* Create button (opposite cancel), clean label */}
               <SoftButton disabled={busy || !readyToSave} onClick={saveTask} orangeBorder>
                 {primaryText}
               </SoftButton>
