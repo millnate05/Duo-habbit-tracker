@@ -25,7 +25,7 @@ type TaskRow = {
   weekly_skips_allowed: number;
 
   is_shared?: boolean;
-  assigned_to?: string | null;
+  assigned_to?: string | null; // DB is UUID; must be userId or null (NOT "me")
 };
 
 type Cadence = "daily" | "weekly";
@@ -196,7 +196,12 @@ function IShareMini() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
       <path d="M16 8a3 3 0 1 0-2.8-4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-      <path d="M7 14a3 3 0 1 0 0 6a3 3 0 0 0 0-6Z" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round" />
+      <path
+        d="M7 14a3 3 0 1 0 0 6a3 3 0 0 0 0-6Z"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinejoin="round"
+      />
       <path d="M16.5 7.5 9.6 12.2M9.6 15.8l6.9 4.7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
       <path d="M19 18a3 3 0 1 0-1.2 2.4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
     </svg>
@@ -605,7 +610,15 @@ function CreateOrEditTaskInner() {
 
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 10,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <Icon>
               <IBell />
@@ -774,7 +787,7 @@ function CreateOrEditTaskInner() {
         scheduled_days: scheduledDays,
         weekly_skips_allowed: skips,
         is_shared: false,
-        assigned_to: "me",
+        assigned_to: userId, // ✅ FIX: UUID of logged-in user (not "me")
       };
 
       if (!isEdit) {
@@ -861,7 +874,15 @@ function CreateOrEditTaskInner() {
 
       <div style={{ maxWidth: 980, margin: "0 auto" }}>
         {/* Top row */}
-        <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <div
+          style={{
+            position: "relative",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
           <Link
             href="/tasks"
             style={{
