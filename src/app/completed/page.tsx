@@ -5,34 +5,8 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { theme } from "@/UI/theme";
 
-/**
- * ASSUMPTIONS / EXPECTED DB FIELDS
- * --------------------------------
- * completions: id, user_id, task_id, proof_type, proof_note, photo_path, completed_at
- *
- * tasks join should ideally include:
- * - title
- * - scope or is_shared (to tell solo vs shared)
- * - created_by (who created the shared task)
- * - assigned_to or assignee_user_id or assigned_user_id (who it is assigned to)
- *
- * partnerships table assumed (adjust to your actual schema):
- * - user_a uuid, user_b uuid, status text ('accepted')
- *
- * If your task/partnership fields differ, search for:
- *   "CHANGE THESE IF NEEDED"
- */
-
 type TaskJoin = {
   title: string;
-
-  // CHANGE THESE IF NEEDED:
-  // Use ONE of these approaches in your DB:
-  scope?: "solo" | "shared" | null; // preferred
-  is_shared?: boolean | null; // alternative
-  created_by?: string | null; // who created the shared task
-  assigned_to?: "self" | "partner" | "both" | null; // simple enum
-  assignee_user_id?: string | null; // alternative if you store explicit user id
 };
 
 type CompletionRow = {
@@ -43,15 +17,11 @@ type CompletionRow = {
   proof_note: string | null;
   photo_path: string | null;
   completed_at: string;
-
-  // PostgREST join comes back as arrays
   tasks?: TaskJoin[] | null;
 };
 
-type BucketKey = "solo" | "shared_you" | "shared_both" | "shared_partner";
-
 type DayGroup = {
-  key: string; // YYYY-MM-DD (local)
+  key: string; // YYYY-MM-DD local
   date: Date;
   items: CompletionRow[];
 };
@@ -60,13 +30,9 @@ function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
 
-// Build a local date key that won’t shift due to UTC parsing
 function localDayKeyFromISO(iso: string) {
   const d = new Date(iso);
-  const y = d.getFullYear();
-  const m = d.getMonth() + 1;
-  const day = d.getDate();
-  return `${y}-${pad2(m)}-${pad2(day)}`;
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
 function dayLabel(d: Date) {
@@ -88,34 +54,21 @@ function daysInMonth(year: number, monthIndex0: number) {
 }
 
 function startWeekdayOfMonth(year: number, monthIndex0: number) {
-  return new Date(year, monthIndex0, 1).getDay();
+  return new Date(year, monthIndex0, 1).getDay(); // 0=Sun..6=Sat
 }
 
-function sameMonth(d: Date, year: number, monthIndex0: number) {
-  return d.getFullYear() === year && d.getMonth() === monthIndex0;
-}
-
-function bucketLabel(b: BucketKey) {
-  switch (b) {
-    case "solo":
-      return "Solo";
-    case "shared_you":
-      return "Shared (Yours)";
-    case "shared_both":
-      return "Shared (Both)";
-    case "shared_partner":
-      return "Shared (Partner)";
-  }
+// Stable “random” index per day key (so it won’t change every render)
+function stableIndexFromKey(key: string, mod: number) {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return mod === 0 ? 0 : hash % mod;
 }
 
 export default function CompletedPage() {
   const [userId, setUserId] = useState<string | null>(null);
-  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
 
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-
-  const [partnerId, setPartnerId] = useState<string | null>(null);
 
   const [completions, setCompletions] = useState<CompletionRow[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({}); // photo_path -> signed url
@@ -148,16 +101,11 @@ export default function CompletedPage() {
       const { data, error } = await supabase.auth.getSession();
       if (!alive) return;
       if (error) setStatus(error.message);
-
-      const u = data.session?.user ?? null;
-      setUserId(u?.id ?? null);
-      setSessionEmail(u?.email ?? null);
+      setUserId(data.session?.user?.id ?? null);
     })();
 
     const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
-      const u = session?.user ?? null;
-      setUserId(u?.id ?? null);
-      setSessionEmail(u?.email ?? null);
+      setUserId(session?.user?.id ?? null);
     });
 
     return () => {
@@ -166,43 +114,7 @@ export default function CompletedPage() {
     };
   }, []);
 
-  // LOAD PARTNER ID (best effort)
-  useEffect(() => {
-    if (!userId) {
-      setPartnerId(null);
-      return;
-    }
-
-    (async () => {
-      // CHANGE THESE IF NEEDED: partnerships schema
-      // This tries to find an accepted partnership where user is either side.
-      const { data, error } = await supabase
-        .from("partnerships")
-        .select("user_a,user_b,status")
-        .or(`user_a.eq.${userId},user_b.eq.${userId}`)
-        .eq("status", "accepted")
-        .limit(1)
-        .maybeSingle();
-
-      if (error) {
-        // If table doesn't exist yet or schema differs, don't hard-fail the page.
-        console.warn("partner lookup failed:", error.message);
-        setPartnerId(null);
-        return;
-      }
-
-      if (!data) {
-        setPartnerId(null);
-        return;
-      }
-
-      const p =
-        data.user_a === userId ? (data.user_b as string) : (data.user_a as string);
-      setPartnerId(p ?? null);
-    })();
-  }, [userId]);
-
-  // LOAD COMPLETIONS (you + partner if present)
+  // LOAD COMPLETIONS (only YOU)
   useEffect(() => {
     if (!userId) {
       setCompletions([]);
@@ -214,33 +126,25 @@ export default function CompletedPage() {
       setLoading(true);
       setStatus(null);
 
-      // Build user list for query
-      const ids = partnerId ? [userId, partnerId] : [userId];
-
-      // CHANGE THESE IF NEEDED: tasks join fields
-      // NOTE: we intentionally pull extra task metadata to classify buckets.
       const { data, error } = await supabase
-  .from("completions")
-  .select(
-    "id,user_id,task_id,proof_type,proof_note,photo_path,completed_at,tasks(title)"
-  )
-  .eq("user_id", userId)
-  .order("completed_at", { ascending: false })
-  .limit(300);
+        .from("completions")
+        .select("id,user_id,task_id,proof_type,proof_note,photo_path,completed_at,tasks(title)")
+        .eq("user_id", userId)
+        .order("completed_at", { ascending: false })
+        .limit(500);
 
-if (error || !Array.isArray(data)) {
-  console.error(error);
-  setStatus(error?.message ?? "Failed to load completions");
-  setCompletions([]);
-  setLoading(false);
-  return;
-}
+      if (error || !Array.isArray(data)) {
+        console.error(error);
+        setStatus(error?.message ?? "Failed to load completions");
+        setCompletions([]);
+        setLoading(false);
+        return;
+      }
 
-setCompletions(data);
-setLoading(false);
-
+      setCompletions(data);
+      setLoading(false);
     })();
-  }, [userId, partnerId]);
+  }, [userId]);
 
   // SIGNED URLS FOR PHOTOS
   useEffect(() => {
@@ -312,30 +216,6 @@ setLoading(false);
     });
   }, [completions]);
 
-  // Calendar grid for current month/year
-  const calendarCells = useMemo(() => {
-    const totalDays = daysInMonth(year, monthIndex0);
-    const startDow = startWeekdayOfMonth(year, monthIndex0);
-
-    const cells: { date: Date; inMonth: boolean; key: string }[] = [];
-
-    const gridStart = new Date(year, monthIndex0, 1);
-    gridStart.setDate(gridStart.getDate() - startDow);
-
-    for (let i = 0; i < 42; i++) {
-      const d = new Date(gridStart);
-      d.setDate(gridStart.getDate() + i);
-      const inMonth = sameMonth(d, year, monthIndex0);
-      const key = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(
-        d.getDate()
-      )}`;
-      cells.push({ date: d, inMonth, key });
-    }
-
-    void totalDays;
-    return cells;
-  }, [year, monthIndex0]);
-
   const completionsByDayKey = useMemo(() => {
     const map = new Map<string, CompletionRow[]>();
     for (const g of dayGroups) map.set(g.key, g.items);
@@ -362,94 +242,40 @@ setLoading(false);
     setMonthIndex0(d.getMonth());
   }
 
-  // --- BUCKETING LOGIC ---
-  // This is the heart of the “solo / shared-you / shared-both / shared-partner” split.
-  // Adjust this if your schema differs.
-  function classifyCompletion(c: CompletionRow): BucketKey {
-    const t = c.tasks?.[0];
+  // Calendar cells: ONLY the month’s days (1..end) + leading/trailing blanks
+  const calendarCells = useMemo(() => {
+    const totalDays = daysInMonth(year, monthIndex0);
+    const startDow = startWeekdayOfMonth(year, monthIndex0);
 
-    const isShared =
-      (t?.scope ? t.scope === "shared" : false) ||
-      (typeof t?.is_shared === "boolean" ? t.is_shared : false);
+    const blanksBefore = startDow; // number of empty cells before day 1
+    const totalCells = blanksBefore + totalDays;
+    const blanksAfter = (7 - (totalCells % 7)) % 7; // pad to full weeks
+    const cellCount = totalCells + blanksAfter;
 
-    if (!isShared) return "solo";
+    const cells: Array<
+      | { kind: "blank"; key: string }
+      | { kind: "day"; day: number; key: string; date: Date }
+    > = [];
 
-    const createdBy = t?.created_by ?? null;
-
-    // Option A: assigned_to enum
-    const assignedTo = t?.assigned_to ?? null;
-
-    // Option B: explicit assignee_user_id
-    const assigneeUserId = t?.assignee_user_id ?? null;
-
-    // BOTH takes priority
-    if (assignedTo === "both") return "shared_both";
-
-    // If explicit assignee id exists, use it (your shared task “lane”)
-    if (assigneeUserId) {
-      if (assigneeUserId === userId) return "shared_you";
-      if (partnerId && assigneeUserId === partnerId) return "shared_partner";
+    for (let i = 0; i < blanksBefore; i++) {
+      cells.push({ kind: "blank", key: `blank-b-${i}` });
     }
 
-    // Otherwise fall back to creator based logic
-    if (partnerId && createdBy === partnerId) return "shared_partner";
-    return "shared_you";
-  }
-
-  function groupByBucket(items: CompletionRow[]) {
-    const buckets: Record<BucketKey, CompletionRow[]> = {
-      solo: [],
-      shared_you: [],
-      shared_both: [],
-      shared_partner: [],
-    };
-
-    for (const c of items) {
-      const b = classifyCompletion(c);
-      buckets[b].push(c);
+    for (let day = 1; day <= totalDays; day++) {
+      const date = new Date(year, monthIndex0, day);
+      const key = `${year}-${pad2(monthIndex0 + 1)}-${pad2(day)}`;
+      cells.push({ kind: "day", day, key, date });
     }
 
-    // newest first in each bucket
-    (Object.keys(buckets) as BucketKey[]).forEach((k) => {
-      buckets[k].sort((a, b) => (a.completed_at > b.completed_at ? -1 : 1));
-    });
-
-    return buckets;
-  }
-
-  // Calendar: per day, compute bucket covers + counts
-  const dayBucketMeta = useMemo(() => {
-    const meta = new Map<
-      string,
-      Record<
-        BucketKey,
-        {
-          count: number;
-          coverPath: string | null;
-          coverUrl: string | null;
-        }
-      >
-    >();
-
-    for (const [dayKey, items] of completionsByDayKey.entries()) {
-      const buckets = groupByBucket(items);
-
-      const toMeta = (arr: CompletionRow[]) => {
-        const cover = arr.find((x) => x.photo_path)?.photo_path ?? null;
-        const coverUrl = cover ? photoUrls[cover] ?? null : null;
-        return { count: arr.length, coverPath: cover, coverUrl };
-      };
-
-      meta.set(dayKey, {
-        solo: toMeta(buckets.solo),
-        shared_you: toMeta(buckets.shared_you),
-        shared_both: toMeta(buckets.shared_both),
-        shared_partner: toMeta(buckets.shared_partner),
-      });
+    for (let i = 0; i < blanksAfter; i++) {
+      cells.push({ kind: "blank", key: `blank-a-${i}` });
     }
 
-    return meta;
-  }, [completionsByDayKey, photoUrls]);
+    // sanity: keep it week-aligned (28/35/42 cells depending on month)
+    void cellCount;
+
+    return cells;
+  }, [year, monthIndex0]);
 
   if (!userId) {
     return (
@@ -571,7 +397,7 @@ setLoading(false);
                 style={{
                   width: "100%",
                   height: "100%",
-                  objectFit: "contain", // <-- no distortion
+                  objectFit: "contain",
                 }}
               />
             </div>
@@ -596,18 +422,9 @@ setLoading(false);
         >
           <div>
             <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>Completed</h1>
-            <div style={{ opacity: 0.8, marginTop: 6 }}>
-              Logged in as <b>{sessionEmail}</b>
+            <div style={{ opacity: 0.7, marginTop: 6, fontSize: 13 }}>
+              Your photo proofs by day.
             </div>
-            {partnerId ? (
-              <div style={{ opacity: 0.7, marginTop: 4, fontSize: 13 }}>
-                Partner linked ✅
-              </div>
-            ) : (
-              <div style={{ opacity: 0.7, marginTop: 4, fontSize: 13 }}>
-                Partner not linked (showing solo only)
-              </div>
-            )}
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -733,25 +550,6 @@ setLoading(false);
 
           <div style={{ height: 12 }} />
 
-          {/* Legend */}
-          <div
-            style={{
-              display: "flex",
-              gap: 10,
-              flexWrap: "wrap",
-              opacity: 0.85,
-              fontSize: 12,
-              marginBottom: 10,
-              fontWeight: 900,
-            }}
-          >
-            <span>Legend:</span>
-            <span>S = Solo</span>
-            <span>Y = Shared (Yours)</span>
-            <span>B = Shared (Both)</span>
-            <span>P = Shared (Partner)</span>
-          </div>
-
           {/* Weekday header */}
           <div
             style={{
@@ -771,7 +569,7 @@ setLoading(false);
             ))}
           </div>
 
-          {/* Calendar grid */}
+          {/* Calendar grid: only 1..end (with blanks) */}
           <div
             style={{
               display: "grid",
@@ -780,72 +578,36 @@ setLoading(false);
             }}
           >
             {calendarCells.map((cell) => {
-              const meta = dayBucketMeta.get(cell.key);
+              if (cell.kind === "blank") {
+                return <div key={cell.key} style={{ height: 118 }} />;
+              }
+
+              const dayKey = cell.key;
+              const items = completionsByDayKey.get(dayKey) ?? [];
+
+              const photos = items
+                .map((c) => c.photo_path)
+                .filter((p): p is string => !!p)
+                .map((p) => photoUrls[p])
+                .filter((u): u is string => !!u);
+
+              const pick = photos.length
+                ? photos[stableIndexFromKey(dayKey, photos.length)]
+                : null;
 
               const isToday =
-                cell.key ===
+                dayKey ===
                 `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
 
-              const total =
-                (meta?.solo.count ?? 0) +
-                (meta?.shared_you.count ?? 0) +
-                (meta?.shared_both.count ?? 0) +
-                (meta?.shared_partner.count ?? 0);
-
-              // We also keep a “background cover” just like you had (first found photo of any bucket)
-              const bgCoverUrl =
-                meta?.solo.coverUrl ??
-                meta?.shared_you.coverUrl ??
-                meta?.shared_both.coverUrl ??
-                meta?.shared_partner.coverUrl ??
-                null;
-
-              function laneBox(label: string, coverUrl: string | null, count: number) {
-                return (
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 4,
-                      alignItems: "stretch",
-                    }}
-                  >
-                    <div style={{ fontSize: 10, fontWeight: 900, opacity: 0.95 }}>
-                      {label}
-                    </div>
-                    <div
-                      style={{
-                        height: 34,
-                        borderRadius: 10,
-                        overflow: "hidden",
-                        border: "1px solid rgba(255,255,255,0.18)",
-                        background: "rgba(0,0,0,0.30)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      {coverUrl ? (
-                        <img
-                          src={coverUrl}
-                          alt="Proof"
-                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                        />
-                      ) : (
-                        <span style={{ fontSize: 11, fontWeight: 900, opacity: 0.8 }}>
-                          {count ? `${count}` : "—"}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              }
+              const title = items.length
+                ? `${items.length} completion(s) — click to jump`
+                : "No completions";
 
               return (
                 <button
-                  key={cell.key}
+                  key={dayKey}
                   type="button"
-                  onClick={() => jumpToDay(cell.key)}
+                  onClick={() => jumpToDay(dayKey)}
                   style={{
                     position: "relative",
                     height: 118,
@@ -853,21 +615,19 @@ setLoading(false);
                     border: isToday
                       ? `1px solid ${theme.accent.primary}`
                       : "1px solid var(--border)",
-                    background: cell.inMonth
-                      ? "rgba(255,255,255,0.02)"
-                      : "rgba(255,255,255,0.01)",
+                    background: "rgba(255,255,255,0.02)",
                     overflow: "hidden",
                     cursor: "pointer",
                     padding: 0,
                     textAlign: "left",
                     color: "var(--text)",
-                    opacity: cell.inMonth ? 1 : 0.55,
                   }}
-                  title={total ? `${total} completion(s) — click to jump` : "No completions"}
+                  title={title}
                 >
-                  {bgCoverUrl ? (
+                  {/* Big day image or No photo */}
+                  {pick ? (
                     <img
-                      src={bgCoverUrl}
+                      src={pick}
                       alt="Proof"
                       style={{
                         position: "absolute",
@@ -875,21 +635,36 @@ setLoading(false);
                         width: "100%",
                         height: "100%",
                         objectFit: "cover",
-                        opacity: 0.55,
                       }}
                     />
-                  ) : null}
+                  ) : (
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontWeight: 900,
+                        opacity: 0.8,
+                      }}
+                    >
+                      No photo
+                    </div>
+                  )}
 
+                  {/* Overlay for readability */}
                   <div
                     style={{
                       position: "absolute",
                       inset: 0,
-                      background: bgCoverUrl
-                        ? "linear-gradient(to top, rgba(0,0,0,0.68), rgba(0,0,0,0.12))"
+                      background: pick
+                        ? "linear-gradient(to top, rgba(0,0,0,0.70), rgba(0,0,0,0.10))"
                         : "transparent",
                     }}
                   />
 
+                  {/* Day number */}
                   <div
                     style={{
                       position: "absolute",
@@ -897,33 +672,26 @@ setLoading(false);
                       left: 10,
                       fontWeight: 900,
                       fontSize: 13,
-                      textShadow: bgCoverUrl ? "0 1px 8px rgba(0,0,0,0.45)" : "",
+                      textShadow: pick ? "0 1px 8px rgba(0,0,0,0.45)" : "",
                       opacity: 0.95,
                     }}
                   >
-                    {cell.date.getDate()}
+                    {cell.day}
                   </div>
 
-                  {/* Lanes */}
+                  {/* Small count badge */}
                   <div
                     style={{
                       position: "absolute",
-                      left: 10,
+                      bottom: 8,
                       right: 10,
-                      bottom: 10,
-                      display: "grid",
-                      gridTemplateColumns: "repeat(4, 1fr)",
-                      gap: 8,
+                      fontSize: 12,
+                      fontWeight: 900,
+                      opacity: items.length ? 0.95 : 0.6,
+                      textShadow: pick ? "0 1px 8px rgba(0,0,0,0.45)" : "",
                     }}
                   >
-                    {laneBox("S", meta?.solo.coverUrl ?? null, meta?.solo.count ?? 0)}
-                    {laneBox("Y", meta?.shared_you.coverUrl ?? null, meta?.shared_you.count ?? 0)}
-                    {laneBox("B", meta?.shared_both.coverUrl ?? null, meta?.shared_both.count ?? 0)}
-                    {laneBox(
-                      "P",
-                      meta?.shared_partner.coverUrl ?? null,
-                      meta?.shared_partner.count ?? 0
-                    )}
+                    {items.length ? `${items.length}` : "0"}
                   </div>
                 </button>
               );
@@ -931,7 +699,6 @@ setLoading(false);
           </div>
 
           <div style={{ height: 10 }} />
-
           <div style={{ opacity: 0.75, fontSize: 13 }}>
             Tip: Click a day to jump to that day’s completed proofs below.
           </div>
@@ -939,7 +706,7 @@ setLoading(false);
 
         <div style={{ height: 16 }} />
 
-        {/* Day-by-day feed */}
+        {/* Day-by-day feed (kept) */}
         <section
           ref={listRef}
           style={{
@@ -950,9 +717,7 @@ setLoading(false);
             boxShadow: "0 10px 24px rgba(0,0,0,0.20)",
           }}
         >
-          <div style={{ fontSize: 20, fontWeight: 900 }}>
-            Completed proofs (by day)
-          </div>
+          <div style={{ fontSize: 20, fontWeight: 900 }}>Completed proofs (by day)</div>
           <div style={{ marginTop: 6, opacity: 0.85 }}>
             Total: <b>{completions.length}</b>
           </div>
@@ -983,163 +748,110 @@ setLoading(false);
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {dayGroups.map((g) => {
-                const buckets = groupByBucket(g.items);
-
-                function renderBucket(bucketKey: BucketKey) {
-                  const items = buckets[bucketKey];
-                  if (items.length === 0) return null;
-
-                  return (
-                    <div style={{ marginTop: 12 }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: 10,
-                          flexWrap: "wrap",
-                          alignItems: "baseline",
-                        }}
-                      >
-                        <div style={{ fontWeight: 900, fontSize: 14 }}>
-                          {bucketLabel(bucketKey)}
-                        </div>
-                        <div style={{ opacity: 0.8, fontSize: 13 }}>
-                          {items.length} item(s)
-                        </div>
-                      </div>
-
-                      <div style={{ height: 10 }} />
-
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                        {items.map((c) => {
-                          const title =
-                            c.tasks?.[0]?.title ?? c.proof_note ?? "Completed";
-                          const url = c.photo_path ? photoUrls[c.photo_path] : null;
-
-                          return (
-                            <div
-                              key={c.id}
-                              style={{
-                                width: 160,
-                                borderRadius: 14,
-                                overflow: "hidden",
-                                border: "1px solid var(--border)",
-                                background: "rgba(255,255,255,0.02)",
-                              }}
-                            >
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (!url) return;
-                                  setActivePhotoUrl(url);
-                                  setActivePhotoAlt(title);
-                                }}
-                                style={{
-                                  width: "100%",
-                                  height: 120,
-                                  padding: 0,
-                                  margin: 0,
-                                  border: "none",
-                                  background: "rgba(0,0,0,0.15)",
-                                  cursor: url ? "pointer" : "default",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  overflow: "hidden",
-                                }}
-                                title={url ? "Click to view full screen" : "No photo"}
-                              >
-                                {url ? (
-                                  <img
-                                    src={url}
-                                    alt="Proof"
-                                    style={{
-                                      width: "100%",
-                                      height: "100%",
-                                      objectFit: "cover",
-                                    }}
-                                  />
-                                ) : (
-                                  <div
-                                    style={{
-                                      opacity: 0.8,
-                                      fontWeight: 900,
-                                      fontSize: 12,
-                                    }}
-                                  >
-                                    No photo
-                                  </div>
-                                )}
-                              </button>
-
-                              <div style={{ padding: 10 }}>
-                                <div
-                                  style={{
-                                    fontWeight: 900,
-                                    fontSize: 13,
-                                    lineHeight: 1.2,
-                                  }}
-                                >
-                                  {title}
-                                </div>
-                                <div
-                                  style={{
-                                    opacity: 0.75,
-                                    fontSize: 12,
-                                    marginTop: 6,
-                                  }}
-                                >
-                                  {new Date(c.completed_at).toLocaleTimeString([], {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  })}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                }
-
-                return (
+              {dayGroups.map((g) => (
+                <div
+                  key={g.key}
+                  id={`day-${g.key}`}
+                  style={{
+                    border: "1px solid var(--border)",
+                    borderRadius: 14,
+                    padding: 12,
+                    background: "rgba(255,255,255,0.02)",
+                  }}
+                >
                   <div
-                    key={g.key}
-                    id={`day-${g.key}`}
                     style={{
-                      border: "1px solid var(--border)",
-                      borderRadius: 14,
-                      padding: 12,
-                      background: "rgba(255,255,255,0.02)",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      flexWrap: "wrap",
+                      alignItems: "baseline",
                     }}
                   >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 10,
-                        flexWrap: "wrap",
-                        alignItems: "baseline",
-                      }}
-                    >
-                      <div style={{ fontWeight: 900, fontSize: 16 }}>
-                        {dayLabel(g.date)}
-                      </div>
-                      <div style={{ opacity: 0.85 }}>
-                        {g.items.length} completion(s)
-                      </div>
-                    </div>
-
-                    {/* Buckets */}
-                    {renderBucket("solo")}
-                    {renderBucket("shared_you")}
-                    {renderBucket("shared_both")}
-                    {renderBucket("shared_partner")}
+                    <div style={{ fontWeight: 900, fontSize: 16 }}>{dayLabel(g.date)}</div>
+                    <div style={{ opacity: 0.85 }}>{g.items.length} completion(s)</div>
                   </div>
-                );
-              })}
+
+                  <div style={{ height: 10 }} />
+
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                    {g.items.map((c) => {
+                      const title = c.tasks?.[0]?.title ?? c.proof_note ?? "Completed";
+                      const url = c.photo_path ? photoUrls[c.photo_path] : null;
+
+                      return (
+                        <div
+                          key={c.id}
+                          style={{
+                            width: 160,
+                            borderRadius: 14,
+                            overflow: "hidden",
+                            border: "1px solid var(--border)",
+                            background: "rgba(255,255,255,0.02)",
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!url) return;
+                              setActivePhotoUrl(url);
+                              setActivePhotoAlt(title);
+                            }}
+                            style={{
+                              width: "100%",
+                              height: 120,
+                              padding: 0,
+                              margin: 0,
+                              border: "none",
+                              background: "rgba(0,0,0,0.15)",
+                              cursor: url ? "pointer" : "default",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              overflow: "hidden",
+                            }}
+                            title={url ? "Click to view full screen" : "No photo"}
+                          >
+                            {url ? (
+                              <img
+                                src={url}
+                                alt="Proof"
+                                style={{
+                                  width: "100%",
+                                  height: "100%",
+                                  objectFit: "cover",
+                                }}
+                              />
+                            ) : (
+                              <div style={{ opacity: 0.8, fontWeight: 900, fontSize: 12 }}>
+                                No photo
+                              </div>
+                            )}
+                          </button>
+
+                          <div style={{ padding: 10 }}>
+                            <div
+                              style={{
+                                fontWeight: 900,
+                                fontSize: 13,
+                                lineHeight: 1.2,
+                              }}
+                            >
+                              {title}
+                            </div>
+                            <div style={{ opacity: 0.75, fontSize: 12, marginTop: 6 }}>
+                              {new Date(c.completed_at).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </section>
