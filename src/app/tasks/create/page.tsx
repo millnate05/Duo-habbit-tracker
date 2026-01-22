@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
@@ -125,9 +125,10 @@ function StepChip({ label, active }: { label: string; active: boolean }) {
   );
 }
 
-export default function CreateOrEditTaskPage() {
+function CreateOrEditTaskInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+
   const editId = searchParams.get("id"); // if present => edit mode
   const isEdit = !!editId;
 
@@ -542,7 +543,6 @@ export default function CreateOrEditTaskPage() {
       };
 
       if (!isEdit) {
-        // CREATE
         const { data: inserted, error } = await supabase
           .from("tasks")
           .insert({ ...payload, user_id: userId, archived: false })
@@ -552,7 +552,6 @@ export default function CreateOrEditTaskPage() {
 
         const newTask = inserted as TaskRow;
 
-        // reminder (optional) – enforce max 1
         const draft = createReminders[0] ? normalizeDraft(createReminders[0]) : null;
         if (draft) {
           const fields = draftToDbFields(newTask.id, draft);
@@ -560,11 +559,9 @@ export default function CreateOrEditTaskPage() {
           if (rErr) throw rErr;
         }
       } else {
-        // UPDATE
         if (!editId) throw new Error("Missing task id for edit.");
         const { error } = await supabase.from("tasks").update(payload).eq("id", editId).eq("user_id", userId);
         if (error) throw error;
-        // (optional) editing reminders later
       }
 
       router.push("/tasks");
@@ -790,5 +787,13 @@ export default function CreateOrEditTaskPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function CreateOrEditTaskPage() {
+  return (
+    <Suspense fallback={<main style={{ padding: 24 }}>Loading…</main>}>
+      <CreateOrEditTaskInner />
+    </Suspense>
   );
 }
