@@ -10,22 +10,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   const [leftOpen, setLeftOpen] = useState(false);
-  const [rightOpen, setRightOpen] = useState(false);
 
   const leftRef = useRef<HTMLDivElement | null>(null);
-  const rightRef = useRef<HTMLDivElement | null>(null);
 
   // Close menus on outside click / Escape
   useEffect(() => {
     function onDown(e: MouseEvent) {
       const t = e.target as Node;
       if (leftRef.current && !leftRef.current.contains(t)) setLeftOpen(false);
-      if (rightRef.current && !rightRef.current.contains(t)) setRightOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
         setLeftOpen(false);
-        setRightOpen(false);
       }
     }
     window.addEventListener("mousedown", onDown);
@@ -42,7 +38,7 @@ export default function RootLayout({
   const buttonBase = (active: boolean): React.CSSProperties => ({
     width: 44,
     height: 44,
-    borderRadius: 14, // "less severe pill" feel
+    borderRadius: 14,
     border: "1px solid rgba(255,255,255,0.14)",
     background: active ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.04)",
     color: shellText,
@@ -104,24 +100,39 @@ export default function RootLayout({
     );
   }
 
-  // Center Home button style (slightly wider)
-  const homeButton: React.CSSProperties = {
-    height: 44,
-    padding: "0 14px",
-    borderRadius: 14,
+  // New minimalist Home button (icon-only, larger, centered)
+  const homeIconButton: React.CSSProperties = {
+    width: 54,
+    height: 54,
+    borderRadius: 18,
     border: "1px solid rgba(255,255,255,0.14)",
     background: "rgba(255,255,255,0.04)",
     color: shellText,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
+    display: "grid",
+    placeItems: "center",
     textDecoration: "none",
     fontWeight: 900,
     boxShadow: "0 10px 24px rgba(0,0,0,0.35)",
     userSelect: "none",
-    whiteSpace: "nowrap",
   };
+
+  // Minimal home icon (SVG so it’s clean and consistent)
+  const HomeIcon = ({ size = 26 }: { size?: number }) => (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M3.5 10.5L12 3.75L20.5 10.5V20.25C20.5 20.6642 20.1642 21 19.75 21H14.25V15.25C14.25 14.8358 13.9142 14.5 13.5 14.5H10.5C10.0858 14.5 9.75 14.8358 9.75 15.25V21H4.25C3.83579 21 3.5 20.6642 3.5 20.25V10.5Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 
   return (
     <html lang="en">
@@ -161,10 +172,7 @@ export default function RootLayout({
             <div ref={leftRef} style={{ position: "relative" }}>
               <div
                 style={buttonBase(leftOpen)}
-                onClick={() => {
-                  setLeftOpen((v) => !v);
-                  setRightOpen(false);
-                }}
+                onClick={() => setLeftOpen((v) => !v)}
                 role="button"
                 aria-label="Open profile menu"
                 title="Profile menu"
@@ -209,58 +217,32 @@ export default function RootLayout({
               ) : null}
             </div>
 
-            {/* Center: Home button */}
+            {/* Center: Minimal Home icon button */}
             <Link
               href="/"
-              onClick={() => {
-                setLeftOpen(false);
-                setRightOpen(false);
-              }}
-              style={homeButton}
+              onClick={() => setLeftOpen(false)}
+              style={homeIconButton}
               aria-label="Go to Home"
               title="Home"
             >
-              <span style={{ fontSize: 16, lineHeight: 1 }}>⌂</span>
-              <span>Home</span>
+              <HomeIcon size={28} />
             </Link>
 
-            {/* Right: Plus button */}
-            <div ref={rightRef} style={{ position: "relative" }}>
-              <div
-                style={{
-                  ...buttonBase(rightOpen),
-                  border: `1px solid ${theme.accent.primary}`,
-                }}
-                onClick={() => {
-                  setRightOpen((v) => !v);
-                  setLeftOpen(false);
-                }}
-                role="button"
-                aria-label="Open actions menu"
-                title="Actions"
-              >
-                <span style={{ fontSize: 22, lineHeight: 1, fontWeight: 900 }}>
-                  +
-                </span>
-              </div>
-
-              {rightOpen ? (
-                <div style={{ ...menu, right: 0 }}>
-                  <MenuLink
-                    href="/tasks"
-                    label="Tasks"
-                    icon="🗒️"
-                    onClick={() => setRightOpen(false)}
-                  />
-                  <MenuLink
-                    href="/shared"
-                    label="Shared"
-                    icon="🤝"
-                    onClick={() => setRightOpen(false)}
-                  />
-                </div>
-              ) : null}
-            </div>
+            {/* Right: Plus button -> now goes straight to /tasks (no menu) */}
+            <Link
+              href="/tasks"
+              onClick={() => setLeftOpen(false)}
+              style={{
+                ...buttonBase(false),
+                border: `1px solid ${theme.accent.primary}`,
+              }}
+              aria-label="Go to Tasks"
+              title="Tasks"
+            >
+              <span style={{ fontSize: 22, lineHeight: 1, fontWeight: 900 }}>
+                +
+              </span>
+            </Link>
           </div>
         </header>
 
