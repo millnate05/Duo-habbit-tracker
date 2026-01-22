@@ -38,6 +38,8 @@ type ReminderDraft = {
   days_of_week: number[]; // weekly: enforce exactly ONE day (0..6)
 };
 
+const ORANGE = "#ff7a18"; // <-- FORCE ORANGE (not theme-dependent)
+
 const DOW = [
   { n: 0, label: "Sun" },
   { n: 1, label: "Mon" },
@@ -95,18 +97,14 @@ function onNumberFieldChange(setter: (v: string) => void, raw: string) {
 }
 
 /**
- * IMPORTANT:
- * - The zoom you mentioned is almost always mobile Safari "auto zoom on focus"
- *   when input font-size < 16px.
- * - So we force input/select/textarea to 16px.
- * - Also force -webkit-text-size-adjust to stop Safari scaling text.
+ * - Prevents iOS zoom: enforce 16px on inputs/selects/textarea
+ * - Force orange CSS var
  */
 const globalFixesCSS = `
-:root { --dht-orange: ${theme.accent.primary}; }
-
+:root { --dht-orange: ${ORANGE}; }
 * { -webkit-text-size-adjust: 100%; }
+input, select, textarea, button { font-size: 16px; }
 
-input, select, textarea, button { font-size: 16px; } /* prevents iOS zoom */
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 input[type="number"] { -moz-appearance: textfield; }
@@ -148,72 +146,32 @@ function Icon({
 function ITitle() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-      <path
-        d="M7 7h10M7 12h10M7 17h6"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-      />
+      <path d="M7 7h10M7 12h10M7 17h6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
     </svg>
   );
 }
 function IType() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-      <path
-        d="M7 7h10v10H7z"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M9 9h6"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-      />
+      <path d="M7 7h10v10H7z" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round" />
+      <path d="M9 9h6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
     </svg>
   );
 }
 function IShare() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-      <path
-        d="M16 8a3 3 0 1 0-2.8-4"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-      />
-      <path
-        d="M7 14a3 3 0 1 0 0 6a3 3 0 0 0 0-6Z"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M16.5 7.5 9.6 12.2M9.6 15.8l6.9 4.7"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-      />
-      <path
-        d="M19 18a3 3 0 1 0-1.2 2.4"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-      />
+      <path d="M16 8a3 3 0 1 0-2.8-4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+      <path d="M7 14a3 3 0 1 0 0 6a3 3 0 0 0 0-6Z" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round" />
+      <path d="M16.5 7.5 9.6 12.2M9.6 15.8l6.9 4.7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+      <path d="M19 18a3 3 0 1 0-1.2 2.4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
     </svg>
   );
 }
 function ICalendar() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-      <path
-        d="M7 3v3M17 3v3M4 8h16"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-      />
+      <path d="M7 3v3M17 3v3M4 8h16" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
       <path
         d="M6 5h12a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"
         stroke="currentColor"
@@ -226,18 +184,8 @@ function ICalendar() {
 function ISkips() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-      <path
-        d="M8 7h8M8 12h8M8 17h5"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-      />
-      <path
-        d="M18 14l2 2m0-2-2 2"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-      />
+      <path d="M8 7h8M8 12h8M8 17h5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+      <path d="M18 14l2 2m0-2-2 2" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
     </svg>
   );
 }
@@ -250,12 +198,7 @@ function IBell() {
         strokeWidth="2.2"
         strokeLinejoin="round"
       />
-      <path
-        d="M10 19a2 2 0 0 0 4 0"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-      />
+      <path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
     </svg>
   );
 }
@@ -278,12 +221,12 @@ function SectionHeader({
           width: 34,
           height: 34,
           borderRadius: 12,
-          border: "1px solid rgba(255,255,255,0.10)",
-          background: "rgba(255,255,255,0.03)",
+          border: `1px solid rgba(255,255,255,0.12)`,
+          background: `linear-gradient(180deg, rgba(255,122,24,0.14), rgba(255,255,255,0.03))`,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.25)",
+          boxShadow: `0 10px 22px rgba(0,0,0,0.28), inset 0 0 0 1px rgba(0,0,0,0.25)`,
         }}
       >
         {icon}
@@ -313,13 +256,13 @@ function PrimaryButton({
       style={{
         padding: "12px 16px",
         borderRadius: 16,
-        border: `1px solid ${theme.accent.primary}`,
-        background: theme.accent.primary,
+        border: `1px solid rgba(255,122,24,0.95)`,
+        background: ORANGE,
         color: "#000",
         fontWeight: 950,
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.6 : 1,
-        boxShadow: `0 10px 22px rgba(0,0,0,0.35), 0 0 0 3px rgba(255,255,255,0.06)`,
+        boxShadow: `0 14px 28px rgba(255,122,24,0.18), 0 10px 22px rgba(0,0,0,0.35)`,
       }}
     >
       {children}
@@ -333,12 +276,14 @@ function SoftButton({
   disabled,
   small,
   active,
+  orangeBorder,
 }: {
   children: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
   small?: boolean;
   active?: boolean;
+  orangeBorder?: boolean;
 }) {
   return (
     <button
@@ -348,8 +293,12 @@ function SoftButton({
       style={{
         padding: small ? "8px 10px" : "12px 14px",
         borderRadius: 14,
-        border: `1px solid ${active ? "var(--dht-orange)" : "var(--border)"}`,
-        background: active ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.03)",
+        border: `1px solid ${
+          active || orangeBorder ? "rgba(255,122,24,0.85)" : "var(--border)"
+        }`,
+        background: active
+          ? "rgba(255,122,24,0.12)"
+          : "rgba(255,255,255,0.03)",
         color: "var(--text)",
         fontWeight: 900,
         cursor: disabled ? "not-allowed" : "pointer",
@@ -357,7 +306,7 @@ function SoftButton({
         fontSize: small ? 13 : 14,
         lineHeight: 1,
         whiteSpace: "nowrap",
-        boxShadow: active ? `0 0 0 3px rgba(255,255,255,0.05)` : "none",
+        boxShadow: active ? `0 0 0 3px rgba(255,122,24,0.10)` : "none",
       }}
     >
       {children}
@@ -414,12 +363,13 @@ function DayPill({
       style={{
         padding: "8px 10px",
         borderRadius: 999,
-        border: `1px solid ${active ? "var(--dht-orange)" : "var(--border)"}`,
-        background: active ? "rgba(255,255,255,0.08)" : "transparent",
+        border: `1px solid ${active ? "rgba(255,122,24,0.90)" : "var(--border)"}`,
+        background: active ? "rgba(255,122,24,0.12)" : "transparent",
         color: "var(--text)",
         fontWeight: 900,
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.6 : active ? 1 : 0.82,
+        boxShadow: active ? "0 0 0 3px rgba(255,122,24,0.08)" : "none",
       }}
     >
       {label}
@@ -446,13 +396,13 @@ function Toggle({
         width: 54,
         height: 30,
         borderRadius: 999,
-        border: `1px solid ${checked ? "rgba(255,255,255,0.20)" : "var(--border)"}`,
-        background: checked ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.03)",
+        border: `1px solid ${checked ? "rgba(255,122,24,0.55)" : "var(--border)"}`,
+        background: checked ? "rgba(255,122,24,0.10)" : "rgba(255,255,255,0.03)",
         position: "relative",
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.6 : 1,
         padding: 0,
-        boxShadow: checked ? `0 0 0 3px rgba(255,255,255,0.05)` : "none",
+        boxShadow: checked ? `0 0 0 3px rgba(255,122,24,0.08)` : "none",
       }}
     >
       <span
@@ -463,9 +413,9 @@ function Toggle({
           width: 24,
           height: 24,
           borderRadius: 999,
-          background: checked ? "var(--dht-orange)" : "rgba(255,255,255,0.35)",
+          background: checked ? ORANGE : "rgba(255,255,255,0.35)",
           transition: "left 160ms ease",
-          boxShadow: checked ? "0 6px 14px rgba(0,0,0,0.35)" : "none",
+          boxShadow: checked ? "0 8px 16px rgba(0,0,0,0.35)" : "none",
         }}
       />
     </button>
@@ -486,7 +436,7 @@ function CreateOrEditTaskInner() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
-  // Fields (in the order you requested)
+  // Fields (in order)
   const [title, setTitle] = useState("");
   const [type, setType] = useState<TaskType>("habit");
 
@@ -512,7 +462,7 @@ function CreateOrEditTaskInner() {
     outline: "none",
     width: "100%",
     fontWeight: 700,
-    fontSize: 16, // prevent focus zoom
+    fontSize: 16,
     boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.25)",
   };
 
@@ -594,7 +544,6 @@ function CreateOrEditTaskInner() {
         setScheduledDays(t.scheduled_days ?? null);
         setWeeklySkipsAllowedStr(String(t.weekly_skips_allowed ?? 0));
 
-        // baseline: reminders not loaded from DB yet
         setDraftReminders([]);
       } catch (e: any) {
         if (!alive) return;
@@ -686,13 +635,13 @@ function CreateOrEditTaskInner() {
             <div style={{ fontWeight: 950, fontSize: 16 }}>Reminders</div>
           </div>
 
-          <SoftButton disabled={busy || hasOne} onClick={() => setDrafts([defaultReminderDraft()])} small>
+          <SoftButton disabled={busy || hasOne} onClick={() => setDrafts([defaultReminderDraft()])} small orangeBorder>
             + Add reminder
           </SoftButton>
         </div>
 
         {!hasOne ? (
-          <div style={{ border: "1px dashed rgba(255,255,255,0.18)", borderRadius: 16, padding: 14, opacity: 0.9 }}>
+          <div style={{ border: "1px dashed rgba(255,122,24,0.35)", borderRadius: 16, padding: 14, opacity: 0.95 }}>
             No reminder set.
           </div>
         ) : null}
@@ -714,7 +663,7 @@ function CreateOrEditTaskInner() {
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                <div style={{ fontWeight: 950 }}>{describeReminder(d)}</div>
+                <div style={{ fontWeight: 950, color: "var(--dht-orange)" }}>{describeReminder(d)}</div>
                 <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                   <label style={{ display: "inline-flex", gap: 8, alignItems: "center", fontWeight: 900 }}>
                     <input
@@ -907,7 +856,7 @@ function CreateOrEditTaskInner() {
   }
 
   const pageTitle = isEdit ? "Edit task" : "New task";
-  const primaryText = isEdit ? "Save changes" : "Create task";
+  const primaryText = isEdit ? "Save" : "Create";
 
   return (
     <main
@@ -916,7 +865,7 @@ function CreateOrEditTaskInner() {
         background: theme.page.background,
         color: theme.page.text,
         padding: 20,
-        paddingBottom: 140, // space for sticky bottom bar
+        paddingBottom: 110,
       }}
     >
       <style>{globalFixesCSS}</style>
@@ -946,9 +895,6 @@ function CreateOrEditTaskInner() {
 
           <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", textAlign: "center" }}>
             <h1 style={{ margin: 0, fontSize: 34, fontWeight: 950 }}>{pageTitle}</h1>
-            <div style={{ marginTop: 6, fontSize: 13, opacity: 0.8 }}>
-              <span style={{ color: "var(--dht-orange)", fontWeight: 900 }}>Orange</span> accents + icons + sticky create ✅
-            </div>
           </div>
 
           <div style={{ width: 64 }} />
@@ -959,7 +905,7 @@ function CreateOrEditTaskInner() {
             style={{
               marginTop: 14,
               padding: 12,
-              border: "1px solid rgba(255,255,255,0.16)",
+              border: "1px solid rgba(255,122,24,0.25)",
               borderRadius: 16,
               background: "rgba(255,255,255,0.02)",
               boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.25)",
@@ -974,11 +920,11 @@ function CreateOrEditTaskInner() {
         {/* Main card */}
         <div
           style={{
-            border: "1px solid rgba(255,255,255,0.14)",
+            border: "1px solid rgba(255,122,24,0.20)",
             borderRadius: 22,
             padding: 16,
             background: "rgba(255,255,255,0.02)",
-            boxShadow: "0 10px 24px rgba(0,0,0,0.25)",
+            boxShadow: "0 10px 24px rgba(0,0,0,0.25), 0 0 0 4px rgba(255,122,24,0.06) inset",
             display: "flex",
             flexDirection: "column",
             gap: 14,
@@ -993,14 +939,13 @@ function CreateOrEditTaskInner() {
                 </Icon>
               }
               title="Title"
-              subtitle="Give it a clear name you’ll recognize instantly."
             />
             <input
               ref={titleRef}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g., Drink water"
-              style={{ ...baseField, fontSize: 16 }}
+              style={baseField}
               disabled={busy}
             />
           </section>
@@ -1014,7 +959,6 @@ function CreateOrEditTaskInner() {
                 </Icon>
               }
               title="Type"
-              subtitle="Habit repeats. Single is one-and-done."
             />
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1053,9 +997,8 @@ function CreateOrEditTaskInner() {
             </div>
           </section>
 
-          {/* 3) Shared toggle + assignment (your requested edits) */}
+          {/* 3) Shared */}
           <section style={{ border: "1px solid var(--border)", borderRadius: 18, padding: 14 }}>
-            {/* Removed "Shared" title; only show "Share this task?" */}
             <SectionHeader
               icon={
                 <Icon>
@@ -1076,8 +1019,8 @@ function CreateOrEditTaskInner() {
                       fontWeight: 950,
                       padding: "3px 8px",
                       borderRadius: 999,
-                      border: `1px solid rgba(255,255,255,0.12)`,
-                      background: isShared ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.03)",
+                      border: `1px solid rgba(255,122,24,0.35)`,
+                      background: isShared ? "rgba(255,122,24,0.12)" : "rgba(255,255,255,0.03)",
                       color: isShared ? "var(--dht-orange)" : "rgba(255,255,255,0.75)",
                     }}
                   >
@@ -1089,16 +1032,10 @@ function CreateOrEditTaskInner() {
               <Toggle checked={isShared} onChange={(v) => setIsShared(v)} disabled={busy} />
             </div>
 
-            {/* Assignment buttons ALWAYS visible; Partner/Both disabled when not shared */}
             <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ fontWeight: 900 }}>Assigned to</div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <SoftButton
-                  small
-                  disabled={busy}
-                  active={assignedTo === "me"}
-                  onClick={() => setAssignedTo("me")}
-                >
+                <SoftButton small disabled={busy} active={assignedTo === "me"} onClick={() => setAssignedTo("me")}>
                   {assignedTo === "me" ? "✓ Me" : "Me"}
                 </SoftButton>
 
@@ -1119,10 +1056,6 @@ function CreateOrEditTaskInner() {
                 >
                   {assignedTo === "both" ? "✓ Both" : "Both"}
                 </SoftButton>
-              </div>
-
-              <div style={{ fontSize: 12, opacity: 0.72 }}>
-                Partner/Both only selectable when sharing is on.
               </div>
             </div>
           </section>
@@ -1151,7 +1084,7 @@ function CreateOrEditTaskInner() {
             </div>
           </section>
 
-          {/* 5) Weekly skips */}
+          {/* 5) Weekly skips (tip removed) */}
           <section style={{ border: "1px solid var(--border)", borderRadius: 18, padding: 14 }}>
             <SectionHeader
               icon={
@@ -1160,7 +1093,6 @@ function CreateOrEditTaskInner() {
                 </Icon>
               }
               title="Weekly skips allowed"
-              subtitle="Allows misses without “failing” the week."
             />
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, alignItems: "end" }}>
@@ -1175,18 +1107,7 @@ function CreateOrEditTaskInner() {
                   placeholder="0"
                 />
               </div>
-              <div
-                style={{
-                  fontSize: 12,
-                  opacity: 0.85,
-                  padding: "10px 12px",
-                  borderRadius: 14,
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(255,255,255,0.03)",
-                }}
-              >
-                Tip: Use <b style={{ color: "var(--dht-orange)" }}>1–2</b> if you want “grace” built in.
-              </div>
+              <div style={{ fontSize: 13, opacity: 0.78 }}>Allows misses without “failing” the week.</div>
             </div>
           </section>
 
@@ -1195,7 +1116,7 @@ function CreateOrEditTaskInner() {
             <ReminderEditor drafts={draftReminders} setDrafts={setDraftReminders} />
           </section>
 
-          {/* Non-sticky actions row (kept for desktop convenience) */}
+          {/* Actions: Cancel left, Create/Save on the right (no sticky footer text) */}
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
             <SoftButton disabled={busy} onClick={() => router.push("/tasks")}>
               Cancel
@@ -1208,50 +1129,11 @@ function CreateOrEditTaskInner() {
                 </DangerButton>
               ) : null}
 
-              <PrimaryButton disabled={busy || !readyToSave} onClick={saveTask}>
+              {/* Create button (opposite cancel), clean label */}
+              <SoftButton disabled={busy || !readyToSave} onClick={saveTask} orangeBorder>
                 {primaryText}
-              </PrimaryButton>
+              </SoftButton>
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Sticky bottom bar: your requested create/save at the bottom */}
-      <div
-        style={{
-          position: "fixed",
-          left: 0,
-          right: 0,
-          bottom: 0,
-          padding: "14px 16px",
-          background: "rgba(0,0,0,0.55)",
-          backdropFilter: "blur(12px)",
-          borderTop: "1px solid rgba(255,255,255,0.12)",
-          zIndex: 50,
-        }}
-      >
-        <div style={{ maxWidth: 980, margin: "0 auto", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <div style={{ fontWeight: 950, fontSize: 13 }}>
-              <span style={{ color: "var(--dht-orange)" }}>{primaryText}</span>
-              <span style={{ opacity: 0.75 }}> • </span>
-              <span style={{ opacity: 0.8 }}>{readyToSave ? "Ready" : "Needs a title"}</span>
-            </div>
-            <div style={{ fontSize: 12, opacity: 0.75 }}>
-              {type === "habit" ? `Habit • ${times} / ${freqPer}` : "Single task"}
-            </div>
-          </div>
-
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            {isEdit ? (
-              <DangerButton disabled={busy} onClick={deleteTask}>
-                Delete
-              </DangerButton>
-            ) : null}
-
-            <PrimaryButton disabled={busy || !readyToSave} onClick={saveTask}>
-              {primaryText}
-            </PrimaryButton>
           </div>
         </div>
       </div>
